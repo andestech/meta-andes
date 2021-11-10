@@ -10,3 +10,16 @@ export LOCAL_SRC="/path/to/local/source"
 bitbake core-image-full-cmdline
 gunzip -c <IMAGE>.wic.gz | sudo dd of=/dev/sdX bs=4M iflag=fullblock oflag=direct conv=fsync status=progress
 ```
+
+Reset the board via GDB
+
+```
+$GDB -ex "target remote <TARGET_IP>:<PORT_NUMBER>" \
+     -ex "set confirm off" \
+     -ex "set pagination off" \
+     -ex "monitor reset halt" \
+     -ex "set \$ra=0" \
+     -ex "set \$sp=0" \
+     -ex "flushregs" \
+     -ex "c"
+```
