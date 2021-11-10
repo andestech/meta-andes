@@ -1,0 +1,26 @@
+From c64ed5734f1f58c642809c8b5a36a062873ea5bb Mon Sep 17 00:00:00 2001
+From: lyctw <lyctw.ee@gmail.com>
+Date: Tue, 2 Nov 2021 13:22:01 +0800
+Subject: [PATCH 3/3] Enable printing OpenSBI banner
+
+Signed-off-by: lyctw <lyctw.ee@gmail.com>
+---
+ include/opensbi.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/opensbi.h b/include/opensbi.h
+index d812cc8c..8b03cabd 100644
+--- a/include/opensbi.h
++++ b/include/opensbi.h
+@@ -20,7 +20,7 @@
+ 
+ enum sbi_scratch_options {
+ 	/** Disable prints during boot */
+-	SBI_SCRATCH_NO_BOOT_PRINTS = (1 << 0),
++	SBI_SCRATCH_NO_BOOT_PRINTS = (0),
+ };
+ 
+ /** Representation dynamic info passed by previous booting stage */
+-- 
+2.25.1
+

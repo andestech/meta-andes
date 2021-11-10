@@ -1,0 +1,32 @@
+From 3962bc416c13d02a9a334baecddfc26951a7e39d Mon Sep 17 00:00:00 2001
+From: lyctw <lyctw.ee@gmail.com>
+Date: Tue, 2 Nov 2021 13:20:56 +0800
+Subject: [PATCH 2/3] Fix AX45MP XIP mode booting fail in VCU118 issue
+
+Currently only one hart will jump to U-Boot proper from OpenSBI.
+It is unnecessary to check hart id in S-mode, but it is still
+necessary to check in M-mode.
+
+Signed-off-by: lyctw <lyctw.ee@gmail.com>
+---
+ arch/riscv/cpu/start.S | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/riscv/cpu/start.S b/arch/riscv/cpu/start.S
+index 308b0a97..aa75f47d 100644
+--- a/arch/riscv/cpu/start.S
++++ b/arch/riscv/cpu/start.S
+@@ -139,8 +139,10 @@ call_harts_early_init:
+ 	 * accesses gd).
+ 	 */
+ 	mv	gp, s0
++#if !CONFIG_IS_ENABLED(RISCV_SMODE)
+ 	bnez	tp, secondary_hart_loop
+ #endif
++#endif
+ 
+ #ifdef CONFIG_OF_PRIOR_STAGE
+ 	la	t0, prior_stage_fdt_address
+-- 
+2.25.1
+

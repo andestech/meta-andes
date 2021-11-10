@@ -1,0 +1,25 @@
+From 04b3ee463743b71aefd88add92ca9eb7f95e1fba Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Tue, 12 Oct 2021 13:09:19 +0800
+Subject: [PATCH 2/3] Add -fno-pie -no-pie to disable PIC
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Makefile b/Makefile
+index 100332e..7f43b92 100644
+--- a/Makefile
++++ b/Makefile
+@@ -215,6 +215,7 @@ ASFLAGS		+=	-mcmodel=$(PLATFORM_RISCV_CODE_MODEL)
+ ASFLAGS		+=	$(GENFLAGS)
+ ASFLAGS		+=	$(platform-asflags-y)
+ ASFLAGS		+=	$(firmware-asflags-y)
++ASFLAGS   +=  -fno-pie -no-pie
+ 
+ ARFLAGS		=	rcs
+ 
+-- 
+2.17.0
+
