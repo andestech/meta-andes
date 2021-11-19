@@ -1,19 +1,20 @@
-From 18f2bf743269a500f105a4fc0e4b8c063cde812e Mon Sep 17 00:00:00 2001
+From b6f9dcea541390a792a2f8a811a034da3b6295e5 Mon Sep 17 00:00:00 2001
 From: Yu Chien Peter Lin <peterlin@andestech.com>
 Date: Fri, 15 Oct 2021 14:51:15 +0800
 Subject: [PATCH] Add-custom-CSR
 
 ---
- arch/riscv/include/asm/andesv5/csr.h | 37 ++++++++++++++++++++++++++++
- arch/riscv/include/asm/switch_to.h   |  5 ++--
- arch/riscv/kernel/perf_event.c       | 30 +++++++++++-----------
- 3 files changed, 55 insertions(+), 17 deletions(-)
+ arch/riscv/include/asm/andesv5/csr.h | 48 ++++++++++++++++++++++++++++
+ arch/riscv/include/asm/switch_to.h   |  5 +--
+ arch/riscv/kernel/perf_event.c       | 30 ++++++++---------
+ arch/riscv/kernel/ptrace.c           |  4 +--
+ 4 files changed, 68 insertions(+), 19 deletions(-)
 
 diff --git a/arch/riscv/include/asm/andesv5/csr.h b/arch/riscv/include/asm/andesv5/csr.h
-index 438b50dc0..43a233161 100644
+index 438b50dc0ba2..fc8ac68a43ea 100644
 --- a/arch/riscv/include/asm/andesv5/csr.h
 +++ b/arch/riscv/include/asm/andesv5/csr.h
-@@ -101,3 +101,40 @@
+@@ -101,3 +101,51 @@
  	L2C_HPM_C0_CTL_OFFSET + (n * L2C_HPM_PER_CORE_OFFSET)
  #define L2C_REG_CN_HPM_OFFSET(n)	\
  	L2C_REG_C0_HPM_OFFSET + (n * L2C_HPM_PER_CORE_OFFSET)
@@ -21,6 +22,17 @@ index 438b50dc0..43a233161 100644
 +/**********************************
 + * AndeStar V5 supervisor mode CSRs
 + **********************************/
++
++/* Debug/Trace Registers */
++#define CSR_TSELECT   0x7a0
++#define CSR_TDATA1    0x7a1
++#define CSR_MCONTROL  0x7a1
++#define CSR_TDATA2    0x7a2
++#define CSR_TDATA3    0x7a3
++#define CSR_TINFO     0x7a4
++#define CSR_TCONTROL  0x7a5
++#define CSR_MCONTEXT  0x7a8
++#define CSR_SCONTEXT  0x7aa
 +
 +/* Supervisor Trap Related */
 +#define CSR_SLIE            0x9c4
@@ -55,7 +67,7 @@ index 438b50dc0..43a233161 100644
 +#define CSR_SLEEPVALUE      0x811
 +#define CSR_TXEVT           0x812
 diff --git a/arch/riscv/include/asm/switch_to.h b/arch/riscv/include/asm/switch_to.h
-index 66a833133..b142f8426 100644
+index 66a8331331c0..b142f84263cb 100644
 --- a/arch/riscv/include/asm/switch_to.h
 +++ b/arch/riscv/include/asm/switch_to.h
 @@ -10,6 +10,7 @@
@@ -81,7 +93,7 @@ index 66a833133..b142f8426 100644
  extern bool has_dsp;
  #else
 diff --git a/arch/riscv/kernel/perf_event.c b/arch/riscv/kernel/perf_event.c
-index 22cc98a8a..fe2013f44 100644
+index 22cc98a8aa50..fe2013f44dff 100644
 --- a/arch/riscv/kernel/perf_event.c
 +++ b/arch/riscv/kernel/perf_event.c
 @@ -409,28 +409,28 @@ void riscv_pmu_disable_counter(int idx)
@@ -185,6 +197,22 @@ index 22cc98a8a..fe2013f44 100644
  	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_SET_PFM, 0, 0, 0, 0, 0, 0);
  }
  
+diff --git a/arch/riscv/kernel/ptrace.c b/arch/riscv/kernel/ptrace.c
+index e43345a74043..f3d273709404 100644
+--- a/arch/riscv/kernel/ptrace.c
++++ b/arch/riscv/kernel/ptrace.c
+@@ -178,9 +178,9 @@ void do_singlestep(void)
+ {
+ 	if (test_thread_flag(TIF_SINGLESTEP)) {
+ 		sbi_set_trigger(TRIGGER_TYPE_ICOUNT, ICOUNT, 1);
+-		csr_write(scontext, 1);
++		csr_write(CSR_SCONTEXT, 1);
+ 	} else {
+-		csr_write(scontext, 0);
++		csr_write(CSR_SCONTEXT, 0);
+ 	}
+ }
+ /*
 -- 
-2.17.0
+2.25.1
 
