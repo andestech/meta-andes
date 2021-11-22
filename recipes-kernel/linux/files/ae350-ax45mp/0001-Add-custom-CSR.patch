@@ -1,4 +1,4 @@
-From b6f9dcea541390a792a2f8a811a034da3b6295e5 Mon Sep 17 00:00:00 2001
+From 09b7fa6dd553879fd07627c6acbe644877725959 Mon Sep 17 00:00:00 2001
 From: Yu Chien Peter Lin <peterlin@andestech.com>
 Date: Fri, 15 Oct 2021 14:51:15 +0800
 Subject: [PATCH] Add-custom-CSR
@@ -7,8 +7,8 @@ Subject: [PATCH] Add-custom-CSR
  arch/riscv/include/asm/andesv5/csr.h | 48 ++++++++++++++++++++++++++++
  arch/riscv/include/asm/switch_to.h   |  5 +--
  arch/riscv/kernel/perf_event.c       | 30 ++++++++---------
- arch/riscv/kernel/ptrace.c           |  4 +--
- 4 files changed, 68 insertions(+), 19 deletions(-)
+ arch/riscv/kernel/ptrace.c           |  5 +--
+ 4 files changed, 69 insertions(+), 19 deletions(-)
 
 diff --git a/arch/riscv/include/asm/andesv5/csr.h b/arch/riscv/include/asm/andesv5/csr.h
 index 438b50dc0ba2..fc8ac68a43ea 100644
@@ -198,10 +198,18 @@ index 22cc98a8aa50..fe2013f44dff 100644
  }
  
 diff --git a/arch/riscv/kernel/ptrace.c b/arch/riscv/kernel/ptrace.c
-index e43345a74043..f3d273709404 100644
+index e43345a74043..d5ce6c7dfd08 100644
 --- a/arch/riscv/kernel/ptrace.c
 +++ b/arch/riscv/kernel/ptrace.c
-@@ -178,9 +178,9 @@ void do_singlestep(void)
+@@ -19,6 +19,7 @@
+ #include <linux/sched.h>
+ #include <linux/sched/task_stack.h>
+ #include <linux/tracehook.h>
++#include <asm/andesv5/csr.h>
+ 
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/syscalls.h>
+@@ -178,9 +179,9 @@ void do_singlestep(void)
  {
  	if (test_thread_flag(TIF_SINGLESTEP)) {
  		sbi_set_trigger(TRIGGER_TYPE_ICOUNT, ICOUNT, 1);
