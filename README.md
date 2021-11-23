@@ -4,13 +4,13 @@ This is a BSP layer depends on:
 
 ```
 URI: git@github.com:openembedded/openembedded-core.git
-branch: honister
+branch: dunfell
 
 URI: git@github.com:openembedded/meta-openembedded.git
-branch: honister
+branch: dunfell
 
 URI: git@github.com:riscv/meta-riscv.git
-branch: master
+branch: dunfell
 ```
 
 ## Creating Workspace
