@@ -76,7 +76,7 @@ INHERIT += "uninative"
 DISTRO_FEATURES:append = " largefile opengl ptest multiarch wayland pam systemd "
 DISTRO_FEATURES_BACKFILL_CONSIDERED += "sysvinit"
 VIRTUAL-RUNTIME_init_manager = "systemd"
-HOSTTOOLS_NONFATAL:append = " ssh"
+HOSTTOOLS_NONFATAL:append = " ssh bc dtc"
 
 DISTRO_NAME = "AndeSight"
 DISTRO_VERSION = "2021.11"
