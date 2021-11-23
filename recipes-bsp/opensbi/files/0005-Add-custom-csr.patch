@@ -16,16 +16,16 @@ index 54f6e9d..8d3628d 100644
   * AndeStar V5 supervisor mode CSRs
   **********************************/
  
-+/* Debug/Trace Registers */                                                                                                        
-+#define CSR_TSELECT   0x7a0                                                                                                        
-+#define CSR_TDATA1    0x7a1                                                                                                        
-+#define CSR_MCONTROL  0x7a1                                                                                                        
-+#define CSR_TDATA2    0x7a2                                                                                                        
-+#define CSR_TDATA3    0x7a3                                                                                                        
-+#define CSR_TINFO     0x7a4                                                                                                        
-+#define CSR_TCONTROL  0x7a5                                                                                                        
-+#define CSR_MCONTEXT  0x7a8                                                                                                        
-+#define CSR_SCONTEXT  0x7aa  
++/* Debug/Trace Registers */
++#define CSR_TSELECT   0x7a0
++#define CSR_TDATA1    0x7a1
++#define CSR_MCONTROL  0x7a1
++#define CSR_TDATA2    0x7a2
++#define CSR_TDATA3    0x7a3
++#define CSR_TINFO     0x7a4
++#define CSR_TCONTROL  0x7a5
++#define CSR_MCONTEXT  0x7a8
++#define CSR_SCONTEXT  0x7aa
 +
  /* Supervisor Trap Related */
  #define CSR_SLIE            0x9c4

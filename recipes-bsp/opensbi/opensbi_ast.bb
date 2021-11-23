@@ -13,6 +13,7 @@ SRC_URI = "git://${LOCAL_SRC}/opensbi;protocol=file;branch=${BRANCH} \
            file://0002-Add-fno-pie-no-pie-to-disable-PIC.patch \
            file://0003-Comment-out-cache-hook.patch \
            file://0004-Fix-gcc-11-compiling-errors.patch \
+           file://0005-Add-custom-csr.patch \
           "
 
 SRCREV = "57e024a403b3e88c7b8181d9dccc4a9b5d379a89"

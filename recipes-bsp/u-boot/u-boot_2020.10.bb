@@ -1,15 +1,18 @@
-LICENSE = "GPLv2+"
-LIC_FILES_CHKSUM = "file://Licenses/README;md5=30503fd321432fc713238f582193b78e"
+require recipes-bsp/u-boot/u-boot-common.inc
+require recipes-bsp/u-boot/u-boot.inc
+LIC_FILES_CHKSUM = "file://Licenses/README;md5=5a7450c57ffe5ae63fd732446b988025"
+
 FILESEXTRAPATHS:prepend := "${THISDIR}/files/ae350-ax45mp:"
-DEPENDS:append:ae350-ax45mp = " opensbi u-boot-tools-native"
+DEPENDS:append = " opensbi u-boot-tools-native"
 
 SRCREV="050acee119b3757fee3bd128f55d720fdd9bb890"
-BRANCH="v2020.10"
-SRC_URI:ae350-ax45mp = " \
-    git://ftp.denx.de/pub/u-boot;protocol=https;branch=${BRANCH} \
+
+SRC_URI = " \
+    git://git.denx.de/u-boot.git;branch=master \
     file://0001-Solve-mmc-no-partition-table-error.patch \
     file://0002-Fix-AX45MP-XIP-mode-booting-fail-in-VCU118-issue.patch \
     file://0003-Enable-printing-OpenSBI-banner.patch \
+    file://u-boot.cfg \
     "
 
 SRC_URI:append:ae350-ax45mp = " \
