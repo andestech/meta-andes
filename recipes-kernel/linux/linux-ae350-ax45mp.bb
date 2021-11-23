@@ -5,18 +5,14 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=bbea815ee2795b2f4230826c0c6b8814"
 inherit kernel
 require recipes-kernel/linux/linux-yocto.inc
 
-BRANCH = "RISCV-Linux-5.4-ast-v5_0_0-branch"
+BRANCH = "RISCV-Linux-5.4-ast-v5_1_0-branch"
 SRC_URI = "git://${LOCAL_SRC}/linux-5.4;protocol=file;branch=${BRANCH} \
-           file://0001-Add-custom-CSR.patch \
            file://linux.cfg \
           "
 
-SRCREV = "ec7e3bd0b86b31d423ed305a6f137b288bdc1bf2"
-LINUX_VERSION = "5.4"
-LINUX_VERSION_EXTENSION:append = "-ast500"
+SRCREV = "2ab5520e7d164413793cf847a98b888e899866ad"
 
-
-PV = "${LINUX_VERSION}+git${SRCPV}"
+PV = "5.4.147"
 
 KCONFIG_MODE = "--alldefconfig"
 KBUILD_DEFCONFIG:ae350-ax45mp = "ae350_rv64_smp_defconfig"
