@@ -6,9 +6,6 @@ MACHINE="ae350-ax45mp"
 CONFFILE="conf/auto.conf"
 BITBAKEIMAGE="core-image-full-cmdline"
 
-# User should specify LOCAL_SRC for Linux and OpenSBI
-export BB_ENV_EXTRAWHITE="$BB_ENV_EXTRAWHITE LOCAL_SRC"
-
 # make sure sstate is there
 #echo "Creating sstate directory"
 #mkdir -p ~/sstate/$MACHINE

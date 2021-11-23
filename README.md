@@ -49,6 +49,7 @@ Export the path as environment variable `LOCAL_SRC`.
 
 ```
 export LOCAL_SRC="/path/to/source/code/"
+export BB_ENV_EXTRAWHITE="$BB_ENV_EXTRAWHITE LOCAL_SRC"
 ```
 
 Start the build process, at least 80 GB of files will be generated, please prepare about 100 GB of hard disk space.
