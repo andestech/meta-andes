@@ -80,7 +80,7 @@ HOSTTOOLS_NONFATAL:append = " ssh bc dtc"
 
 DISTRO_NAME = "AndeSight"
 DISTRO_VERSION = "2021.11"
-DISTRO_CODENAME = "ast-v5.0.0"
+DISTRO_CODENAME = "ast-v5.1.0"
 EOF
 
 echo "To build an image run"

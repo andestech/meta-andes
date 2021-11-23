@@ -1,5 +1,5 @@
 FILESEXTRAPATHS =. "${FILE_DIRNAME}/files/ae350-ax45mp:"
-SUMMARY = "Andes ast-v5_0_0 Linux 5.4"
+SUMMARY = "Andes ast-v5_1_0 Linux 5.4"
 LIC_FILES_CHKSUM = "file://COPYING;md5=bbea815ee2795b2f4230826c0c6b8814"
 
 inherit kernel

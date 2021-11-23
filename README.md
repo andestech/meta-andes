@@ -17,7 +17,7 @@ branch: dunfell
 
 ```
 mkdir riscv-andes && cd riscv-andes
-repo init -u git://github.com/andestech/meta-andes -b ast-v5_0_0-branch -m tools/manifests/andes.xml
+repo init -u git://github.com/andestech/meta-andes -b ast-v5_1_0-branch -m tools/manifests/andes.xml
 repo sync
 ```
 
@@ -37,7 +37,7 @@ Run `setup.sh`, a build directory will be created and add `meta-andes` layer aut
 . ./meta-andes/setup.sh
 ```
 
-Extract Linux and OpenSBI tarballs from AndeSight™ v5.0.0 packages to a local directory.
+Extract Linux and OpenSBI tarballs from AndeSight™ v5.1.0 packages to a local directory.
 
 ```
 /path/to/source/code/
