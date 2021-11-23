@@ -6,17 +6,12 @@ LIC_FILES_CHKSUM = "file://COPYING.BSD;md5=42dd9555eb177f35150cf9aa240b61e5"
 inherit autotools-brokensep deploy
 
 PV = "0.7+git${SRCPV}"
-BRANCH = "opensbi-ast-v5_0_0-branch"
+BRANCH = "opensbi-ast-v5_1_0-branch"
 
 SRC_URI = "git://${LOCAL_SRC}/opensbi;protocol=file;branch=${BRANCH} \
-           file://0001-Add-fno-stack-protector-to-avoid-linking-errors.patch \
-           file://0002-Add-fno-pie-no-pie-to-disable-PIC.patch \
-           file://0003-Comment-out-cache-hook.patch \
-           file://0004-Fix-gcc-11-compiling-errors.patch \
-           file://0005-Add-custom-csr.patch \
           "
 
-SRCREV = "57e024a403b3e88c7b8181d9dccc4a9b5d379a89"
+SRCREV = "374fb296114031f1ecbf671ebdf80031f0a404f5"
 S = "${WORKDIR}/git"
 
 EXTRA_OEMAKE += "PLATFORM=${RISCV_SBI_PLAT} I=${D} INSTALL_LIB_PATH=lib FW_PIC=n"
