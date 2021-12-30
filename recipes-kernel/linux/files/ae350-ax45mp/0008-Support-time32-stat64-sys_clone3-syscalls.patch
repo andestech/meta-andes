@@ -1,0 +1,48 @@
+From 4d02088e32ecb5abb3c84d9364f15db2044fadf3 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Tue, 28 Dec 2021 16:47:28 +0800
+Subject: [PATCH 08/12] Support time32, stat64, sys_clone3 syscalls
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ arch/riscv/include/asm/unistd.h      | 3 +++
+ arch/riscv/include/uapi/asm/unistd.h | 6 +++---
+ 2 files changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/arch/riscv/include/asm/unistd.h b/arch/riscv/include/asm/unistd.h
+index 977ee6181dab..42ebae0693b1 100644
+--- a/arch/riscv/include/asm/unistd.h
++++ b/arch/riscv/include/asm/unistd.h
+@@ -9,6 +9,9 @@
+  */
+
+ #define __ARCH_WANT_SYS_CLONE
++#define __ARCH_WANT_STAT64
++#define __ARCH_WANT_SYS_CLONE3
++#define __ARCH_WANT_TIME32_SYSCALLS
+
+ #include <uapi/asm/unistd.h>
+
+diff --git a/arch/riscv/include/uapi/asm/unistd.h b/arch/riscv/include/uapi/asm/unistd.h
+index 8062996c2dfd..c05ce62b2b33 100644
+--- a/arch/riscv/include/uapi/asm/unistd.h
++++ b/arch/riscv/include/uapi/asm/unistd.h
+@@ -15,12 +15,12 @@
+  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  */
+
+-#ifdef __LP64__
+ #define __ARCH_WANT_NEW_STAT
+ #define __ARCH_WANT_SET_GET_RLIMIT
+-#endif /* __LP64__ */
+-
++#define __ARCH_WANT_SYS_NEWFSTATAT
+ #define __ARCH_WANT_SYS_CLONE3
++#define __ARCH_WANT_TIME32_SYSCALLS
++#define __ARCH_WANT_STAT64
+
+ #include <asm-generic/unistd.h>
+
+--
+2.25.1
+

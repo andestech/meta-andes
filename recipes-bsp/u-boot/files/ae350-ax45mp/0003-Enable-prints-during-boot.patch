@@ -1,7 +1,7 @@
-From 0ccad21959cfd1088a0a4c6efb5b318988c3250e Mon Sep 17 00:00:00 2001
+From 8e860521bcb3813fe18988afd8661d234bbccd68 Mon Sep 17 00:00:00 2001
 From: Yu Chien Peter Lin <peterlin@andestech.com>
-Date: Thu, 7 Oct 2021 11:42:42 +0800
-Subject: [PATCH 3/3] Enable printing OpenSBI banner
+Date: Wed, 29 Dec 2021 13:34:48 +0800
+Subject: [PATCH 3/3] Enable prints during boot
 
 Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
 ---
@@ -9,18 +9,18 @@ Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/include/opensbi.h b/include/opensbi.h
-index d812cc8c..8b03cabd 100644
+index d812cc8c..3121355e 100644
 --- a/include/opensbi.h
 +++ b/include/opensbi.h
 @@ -20,7 +20,7 @@
- 
+
  enum sbi_scratch_options {
- 	/** Disable prints during boot */
+	/** Disable prints during boot */
 -	SBI_SCRATCH_NO_BOOT_PRINTS = (1 << 0),
-+	SBI_SCRATCH_NO_BOOT_PRINTS = (0),
++    SBI_SCRATCH_NO_BOOT_PRINTS = (0),
  };
- 
+
  /** Representation dynamic info passed by previous booting stage */
--- 
-2.17.0
+--
+2.25.1
 

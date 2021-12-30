@@ -5,13 +5,16 @@ LIC_FILES_CHKSUM = "file://COPYING.BSD;md5=42dd9555eb177f35150cf9aa240b61e5"
 
 inherit autotools-brokensep deploy
 
-PV = "0.7+git${SRCPV}"
-BRANCH = "opensbi-ast-v5_1_0-branch"
+PV = "0.9+git${SRCPV}"
 
-SRC_URI = "git://${LOCAL_SRC}/opensbi;protocol=file;branch=${BRANCH} \
+BRANCH = "master"
+SRCREV="234ed8e427f4d92903123199f6590d144e0d9351"
+
+SRC_URI = "git://github.com/riscv-software-src/opensbi.git;branch=${BRANCH} \
+           file://0001-Disable-PIC-explicitly-for-assembling.patch \
+           file://0002-Enable-cache-for-opensbi-jump-mode.patch \
           "
 
-SRCREV = "374fb296114031f1ecbf671ebdf80031f0a404f5"
 S = "${WORKDIR}/git"
 
 EXTRA_OEMAKE += "PLATFORM=${RISCV_SBI_PLAT} I=${D} INSTALL_LIB_PATH=lib FW_PIC=n"

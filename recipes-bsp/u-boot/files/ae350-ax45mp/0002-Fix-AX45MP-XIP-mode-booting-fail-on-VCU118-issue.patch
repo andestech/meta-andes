@@ -1,13 +1,13 @@
-From 07e2ef51981f8dedbe2149efd4b643733174ed9a Mon Sep 17 00:00:00 2001
-From: lyctw <lyctw.ee@gmail.com>
-Date: Mon, 4 Oct 2021 17:04:53 +0800
-Subject: [PATCH 2/3] Fix AX45MP XIP mode booting fail in VCU118 issue
+From f2ac23db015af66e94c20d4d3fd1ddb979e4d702 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Wed, 29 Dec 2021 13:33:49 +0800
+Subject: [PATCH 2/3] Fix AX45MP XIP mode booting fail on VCU118 issue
 
 Currently only one hart will jump to U-Boot proper from OpenSBI.
 It is unnecessary to check hart id in S-mode, but it is still
 necessary to check in M-mode.
 
-Signed-off-by: lyctw <lyctw.ee@gmail.com>
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
 ---
  arch/riscv/cpu/start.S | 2 ++
  1 file changed, 2 insertions(+)
@@ -17,16 +17,16 @@ index bf9fdf36..4339cca6 100644
 --- a/arch/riscv/cpu/start.S
 +++ b/arch/riscv/cpu/start.S
 @@ -111,8 +111,10 @@ call_board_init_f_0:
- 	amoswap.w s2, t1, 0(t0)
- 	bnez	s2, wait_for_gd_init
+	amoswap.w s2, t1, 0(t0)
+	bnez	s2, wait_for_gd_init
  #else
 +#if !CONFIG_IS_ENABLED(RISCV_SMODE)
- 	bnez	tp, secondary_hart_loop
+	bnez	tp, secondary_hart_loop
  #endif
 +#endif
- 
+
  #ifdef CONFIG_OF_PRIOR_STAGE
- 	la	t0, prior_stage_fdt_address
--- 
-2.17.0
+	la	t0, prior_stage_fdt_address
+--
+2.25.1
 

@@ -9,9 +9,11 @@ SRCREV="050acee119b3757fee3bd128f55d720fdd9bb890"
 
 SRC_URI = " \
     git://git.denx.de/u-boot.git;branch=master \
-    file://0001-Solve-mmc-no-partition-table-error.patch \
-    file://0002-Fix-AX45MP-XIP-mode-booting-fail-in-VCU118-issue.patch \
-    file://0003-Enable-printing-OpenSBI-banner.patch \
+    file://0001-Fix-mmc-no-partition-table-error.patch \
+    file://0002-Fix-AX45MP-XIP-mode-booting-fail-on-VCU118-issue.patch \
+    file://0003-Enable-prints-during-boot.patch \
+    file://0004-Enable-cache-in-uboot-spl.patch \
+    file://0005-prevent-fw_dynamic-relocation.patch \
     file://u-boot.cfg \
     "
 
