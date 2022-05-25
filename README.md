@@ -17,7 +17,7 @@ branch: dunfell
 
 ```
 mkdir riscv-andes && cd riscv-andes
-repo init -u git://github.com/andestech/meta-andes -b ast-v5_1_0-branch -m tools/manifests/andes.xml
+repo init -u git://github.com/andestech/meta-andes -b dunfell -m tools/manifests/andes.xml
 repo sync
 ```
 
