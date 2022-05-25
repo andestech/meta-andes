@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <manifest>
-  <remote name="openembedded" fetch="git://github.com/openembedded/" />
-  <remote name="riscv" fetch="git://github.com/riscv/" />
-  <remote name="andes" fetch="git://github.com/andestech/" />
+  <remote name="openembedded" fetch="https://github.com/openembedded/" />
+  <remote name="riscv" fetch="https://github.com/riscv/" />
+  <remote name="andes" fetch="https://github.com/andestech/" />
   <default remote="openembedded" revision="master" />
 
   <project name="meta-andes" remote="andes" path="meta-andes" revision="d50c3f79cc91bd2aaf20c1b97fcb56c91935147c" />
