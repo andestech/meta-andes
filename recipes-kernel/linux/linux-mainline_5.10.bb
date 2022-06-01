@@ -7,7 +7,7 @@ KERNEL_VERSION_SANITY_SKIP="1"
 BRANCH = "linux-5.10.y"
 SRCREV = "v5.10.84"
 SRC_URI = " \
-    git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;branch=${BRANCH} \
+    git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protocol=http;branch=${BRANCH} \
 "
 
 LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
