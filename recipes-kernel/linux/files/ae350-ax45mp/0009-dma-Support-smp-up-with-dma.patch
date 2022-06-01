@@ -1,7 +1,7 @@
-From 27a98deea31b3d724fccb2728f43053ee1a814df Mon Sep 17 00:00:00 2001
+From 7950262586a81337980cbefc2871515ea2c5906f Mon Sep 17 00:00:00 2001
 From: Yu Chien Peter Lin <peterlin@andestech.com>
-Date: Tue, 28 Dec 2021 16:59:12 +0800
-Subject: [PATCH 09/12] dma: Support smp/up with dma
+Date: Mon, 24 Jan 2022 20:49:06 +0800
+Subject: [PATCH 09/15] dma: Support smp/up with dma
 
 Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
 ---
@@ -11,7 +11,7 @@ Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
 
 diff --git a/arch/riscv/mm/dma-mapping.c b/arch/riscv/mm/dma-mapping.c
 new file mode 100755
-index 000000000000..8072e765f3ae
+index 000000000..8072e765f
 --- /dev/null
 +++ b/arch/riscv/mm/dma-mapping.c
 @@ -0,0 +1,101 @@
@@ -116,6 +116,6 @@ index 000000000000..8072e765f3ae
 +{
 +	dev->dma_coherent = coherent;
 +}
---
-2.25.1
+-- 
+2.34.1
 

@@ -1,7 +1,7 @@
-From 8ffdbcee891ea3b127f34d0ff745d7578b487a71 Mon Sep 17 00:00:00 2001
+From c0e6b8df56672df37a9ed3e18c9afc3969ef1856 Mon Sep 17 00:00:00 2001
 From: Yu Chien Peter Lin <peterlin@andestech.com>
-Date: Tue, 28 Dec 2021 16:16:45 +0800
-Subject: [PATCH 04/12] Andes support for FTSDC
+Date: Mon, 24 Jan 2022 20:27:37 +0800
+Subject: [PATCH 04/15] Andes support for FTSDC
 
 Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
 ---
@@ -14,22 +14,22 @@ Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
  create mode 100644 drivers/mmc/host/ftsdc010.h
 
 diff --git a/drivers/mmc/host/Kconfig b/drivers/mmc/host/Kconfig
-index 30ff42fd173e..834cdb8b73cc 100644
+index 30ff42fd1..834cdb8b7 100644
 --- a/drivers/mmc/host/Kconfig
 +++ b/drivers/mmc/host/Kconfig
 @@ -503,7 +503,7 @@ config MMC_OMAP_HS
-
+ 
  config MMC_WBSD
-	tristate "Winbond W83L51xD SD/MMC Card Interface support"
+ 	tristate "Winbond W83L51xD SD/MMC Card Interface support"
 -	depends on ISA_DMA_API && !M68K
 +	depends on ISA_DMA_API
-	help
-	  This selects the Winbond(R) W83L51xD Secure digital and
-	  Multimedia card Interface.
+ 	help
+ 	  This selects the Winbond(R) W83L51xD Secure digital and
+ 	  Multimedia card Interface.
 @@ -608,6 +608,15 @@ config MMC_DAVINCI
-	  If you have an DAVINCI board with a Multimedia Card slot,
-	  say Y or M here.  If unsure, say N.
-
+ 	  If you have an DAVINCI board with a Multimedia Card slot,
+ 	  say Y or M here.  If unsure, say N.
+ 
 +config MMC_FTSDC
 +	tristate "Andestech SDC Multimedia Card Interface support"
 +	depends on RISCV
@@ -40,10 +40,10 @@ index 30ff42fd173e..834cdb8b73cc 100644
 +
 +
  config MMC_GOLDFISH
-	tristate "goldfish qemu Multimedia Card Interface support"
-	depends on GOLDFISH || COMPILE_TEST
+ 	tristate "goldfish qemu Multimedia Card Interface support"
+ 	depends on GOLDFISH || COMPILE_TEST
 diff --git a/drivers/mmc/host/Makefile b/drivers/mmc/host/Makefile
-index 451c25fc2c69..fbc58512f23a 100644
+index 451c25fc2..fbc58512f 100644
 --- a/drivers/mmc/host/Makefile
 +++ b/drivers/mmc/host/Makefile
 @@ -34,6 +34,7 @@ obj-$(CONFIG_MMC_ATMELMCI)	+= atmel-mci.o
@@ -56,7 +56,7 @@ index 451c25fc2c69..fbc58512f23a 100644
  ifeq ($(CONFIG_OF),y)
 diff --git a/drivers/mmc/host/ftsdc010.c b/drivers/mmc/host/ftsdc010.c
 new file mode 100644
-index 000000000000..940b4c03787c
+index 000000000..940b4c037
 --- /dev/null
 +++ b/drivers/mmc/host/ftsdc010.c
 @@ -0,0 +1,1557 @@
@@ -1619,7 +1619,7 @@ index 000000000000..940b4c03787c
 +MODULE_LICENSE("GPL v2");
 diff --git a/drivers/mmc/host/ftsdc010.h b/drivers/mmc/host/ftsdc010.h
 new file mode 100644
-index 000000000000..d8cbe57fab1d
+index 000000000..d8cbe57fa
 --- /dev/null
 +++ b/drivers/mmc/host/ftsdc010.h
 @@ -0,0 +1,257 @@
@@ -1880,6 +1880,6 @@ index 000000000000..d8cbe57fab1d
 +};
 +
 +#endif
---
-2.25.1
+-- 
+2.34.1
 

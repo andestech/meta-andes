@@ -1,26 +1,28 @@
-From ed7c9a2ee9a2ed0ab298be50fc13fdd4d0af8db1 Mon Sep 17 00:00:00 2001
+From 66f786fe4a554e9d23e8e6ea58bb81d6b9030cb5 Mon Sep 17 00:00:00 2001
 From: Yu Chien Peter Lin <peterlin@andestech.com>
-Date: Mon, 24 Jan 2022 20:05:54 +0800
-Subject: [PATCH 01/15] Add AE350 platform defconfig
+Date: Wed, 30 Mar 2022 13:16:19 +0800
+Subject: [PATCH 15/15] Add AE350 platform defconfig for A45MP
 
 Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
 ---
- arch/riscv/configs/ae350_rv64_smp_defconfig | 136 ++++++++++++++++++++
- 1 file changed, 136 insertions(+)
- create mode 100755 arch/riscv/configs/ae350_rv64_smp_defconfig
+ arch/riscv/configs/ae350_rv32_smp_defconfig | 141 ++++++++++++++++++++
+ 1 file changed, 141 insertions(+)
+ create mode 100755 arch/riscv/configs/ae350_rv32_smp_defconfig
 
-diff --git a/arch/riscv/configs/ae350_rv64_smp_defconfig b/arch/riscv/configs/ae350_rv64_smp_defconfig
+diff --git a/arch/riscv/configs/ae350_rv32_smp_defconfig b/arch/riscv/configs/ae350_rv32_smp_defconfig
 new file mode 100755
-index 000000000..28a29ddc1
+index 000000000..d0ad988ea
 --- /dev/null
-+++ b/arch/riscv/configs/ae350_rv64_smp_defconfig
-@@ -0,0 +1,136 @@
++++ b/arch/riscv/configs/ae350_rv32_smp_defconfig
+@@ -0,0 +1,141 @@
++CONFIG_ARCH_RV32I=y
++CONFIG_CMODEL_MEDANY=y
 +CONFIG_SMP=y
 +CONFIG_NR_CPUS=4
 +CONFIG_ANDES_PMU=y
 +CONFIG_PREEMPT=y
 +CONFIG_HZ_100=y
-+CONFIG_CROSS_COMPILE="riscv64-linux-"
++CONFIG_CROSS_COMPILE="riscv32-linux-"
 +CONFIG_DEFAULT_HOSTNAME="andes-test"
 +# CONFIG_SWAP is not set
 +CONFIG_SYSVIPC=y
@@ -38,11 +40,13 @@ index 000000000..28a29ddc1
 +CONFIG_NAMESPACES=y
 +CONFIG_USER_NS=y
 +CONFIG_BLK_DEV_INITRD=y
++CONFIG_INITRAMFS_SOURCE=""
 +# CONFIG_RD_BZIP2 is not set
 +# CONFIG_RD_LZMA is not set
 +# CONFIG_RD_XZ is not set
 +# CONFIG_RD_LZO is not set
 +# CONFIG_RD_LZ4 is not set
++CONFIG_INITRAMFS_COMPRESSION_GZIP=y
 +CONFIG_SYSCTL_SYSCALL=y
 +CONFIG_CHECKPOINT_RESTORE=y
 +CONFIG_KALLSYMS_ALL=y
@@ -52,7 +56,7 @@ index 000000000..28a29ddc1
 +CONFIG_MODULE_UNLOAD=y
 +# CONFIG_BLK_DEV_BSG is not set
 +CONFIG_PARTITION_ADVANCED=y
-+CONFIG_EFI_PARTITION=y
++# CONFIG_EFI_PARTITION is not set
 +# CONFIG_IOSCHED_DEADLINE is not set
 +CONFIG_NET=y
 +CONFIG_PACKET=y
@@ -128,6 +132,7 @@ index 000000000..28a29ddc1
 +CONFIG_DEBUG_INFO=y
 +CONFIG_DEBUG_INFO_DWARF4=y
 +CONFIG_GDB_SCRIPTS=y
++CONFIG_FRAME_WARN=2048
 +CONFIG_READABLE_ASM=y
 +CONFIG_DEBUG_FS=y
 +CONFIG_HEADERS_CHECK=y

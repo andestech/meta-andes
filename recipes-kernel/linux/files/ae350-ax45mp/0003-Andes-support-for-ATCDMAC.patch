@@ -1,7 +1,7 @@
-From ddc5b4035397fcdc91afc3a008b6632fa82e3715 Mon Sep 17 00:00:00 2001
+From c6cc91d08c40bc810da7c3153de917ade90b58ce Mon Sep 17 00:00:00 2001
 From: Yu Chien Peter Lin <peterlin@andestech.com>
-Date: Tue, 28 Dec 2021 10:55:06 +0800
-Subject: [PATCH 03/12] Andes support for ATCDMAC
+Date: Mon, 24 Jan 2022 20:24:42 +0800
+Subject: [PATCH 03/15] Andes support for ATCDMAC
 
 Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
 ---
@@ -25,7 +25,7 @@ Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
 
 diff --git a/arch/riscv/include/asm/atcdmac300.h b/arch/riscv/include/asm/atcdmac300.h
 new file mode 100644
-index 000000000000..20fe88212dfc
+index 000000000..20fe88212
 --- /dev/null
 +++ b/arch/riscv/include/asm/atcdmac300.h
 @@ -0,0 +1,543 @@
@@ -574,7 +574,7 @@ index 000000000000..20fe88212dfc
 +#endif  /* __NDS_DMAD_ATF_INC__ */
 diff --git a/arch/riscv/include/asm/dmad.h b/arch/riscv/include/asm/dmad.h
 new file mode 100644
-index 000000000000..44c87b49e606
+index 000000000..44c87b49e
 --- /dev/null
 +++ b/arch/riscv/include/asm/dmad.h
 @@ -0,0 +1,71 @@
@@ -651,7 +651,7 @@ index 000000000000..44c87b49e606
 +#endif  /* __NDS_DMAD_INC__ */
 diff --git a/arch/riscv/platforms/Kconfig b/arch/riscv/platforms/Kconfig
 new file mode 100644
-index 000000000000..96462808c5ef
+index 000000000..96462808c
 --- /dev/null
 +++ b/arch/riscv/platforms/Kconfig
 @@ -0,0 +1,21 @@
@@ -678,7 +678,7 @@ index 000000000000..96462808c5ef
 +endmenu
 diff --git a/arch/riscv/platforms/Makefile b/arch/riscv/platforms/Makefile
 new file mode 100644
-index 000000000000..a95c2e44a903
+index 000000000..a95c2e44a
 --- /dev/null
 +++ b/arch/riscv/platforms/Makefile
 @@ -0,0 +1,2 @@
@@ -687,7 +687,7 @@ index 000000000000..a95c2e44a903
 \ No newline at end of file
 diff --git a/arch/riscv/platforms/ae350/Kconfig b/arch/riscv/platforms/ae350/Kconfig
 new file mode 100644
-index 000000000000..57d3a9aa5508
+index 000000000..57d3a9aa5
 --- /dev/null
 +++ b/arch/riscv/platforms/ae350/Kconfig
 @@ -0,0 +1,7 @@
@@ -700,14 +700,14 @@ index 000000000000..57d3a9aa5508
 +endmenu
 diff --git a/arch/riscv/platforms/ae350/Makefile b/arch/riscv/platforms/ae350/Makefile
 new file mode 100644
-index 000000000000..36c86ca38e3b
+index 000000000..36c86ca38
 --- /dev/null
 +++ b/arch/riscv/platforms/ae350/Makefile
 @@ -0,0 +1 @@
 +obj-y	= atcdmac300.o
 diff --git a/arch/riscv/platforms/ae350/atcdmac300.c b/arch/riscv/platforms/ae350/atcdmac300.c
 new file mode 100644
-index 000000000000..e635328f9362
+index 000000000..e635328f9
 --- /dev/null
 +++ b/arch/riscv/platforms/ae350/atcdmac300.c
 @@ -0,0 +1,2531 @@
@@ -3244,7 +3244,7 @@ index 000000000000..e635328f9362
 +#endif /* CONFIG_PLATFORM_AHBDMA */
 diff --git a/arch/riscv/platforms/dmad_intc.c b/arch/riscv/platforms/dmad_intc.c
 new file mode 100644
-index 000000000000..5f831add709a
+index 000000000..5f831add7
 --- /dev/null
 +++ b/arch/riscv/platforms/dmad_intc.c
 @@ -0,0 +1,49 @@
@@ -3297,6 +3297,6 @@ index 000000000000..5f831add709a
 +	return 0;
 +}
 +#endif /* CONFIG_PLATFORM_AHBDMA */
---
-2.25.1
+-- 
+2.34.1
 

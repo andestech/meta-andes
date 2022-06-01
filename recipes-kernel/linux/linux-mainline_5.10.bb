@@ -19,17 +19,19 @@ SRC_URI:append = " \
     file://0004-Andes-support-for-FTSDC.patch \
     file://0005-Non-cacheability-and-Cache-support.patch \
     file://0006-Add-andes-sbi-call-vendor-extension.patch \
-    file://0007-riscv-Porting-pte-update-function-local_flush_tlb_al.patch \
+    file://0007-riscv-Porting-pte-update-function.patch \
     file://0008-Support-time32-stat64-sys_clone3-syscalls.patch \
     file://0009-dma-Support-smp-up-with-dma.patch \
-    file://0010-riscv-platform-Fix-atcdmac300-chained-irq-mapping-is.patch \
-    file://0011-DMA-Add-msb-bit-patch.patch \
-    file://0012-Remove-unused-Andes-SBI-call.patch \
-    file://0013-Add-ae350-dts.patch \
+    file://0010-riscv-Fix-atcdmac300-chained-irq-mapping-issue.patch \
+    file://0011-riscv-DMA-add-msb-bit-patch.patch \
+    file://0012-riscv-Remove-unused-Andes-SBI-call.patch \
+    file://0013-faraday-ftmac100.c-Solve-NIC-RPKT_LOST-NORXBUF-issue.patch \
+    file://0014-driver-net-ethernet-faraday-Add-ftmac100_debug-contr.patch \
+    file://0015-Add-AE350-platform-defconfig-for-A45MP.patch \
+    file://0016-Add-ae350-dts.patch \
     file://linux.cfg \
     file://ae350_rv64_smp_defconfig \
     "
-# KBUILD_DEFCONFIG:ae350-ax45mp = "ae350_rv64_smp_defconfig"
 COMPATIBLE_MACHINE = "(ae350-ax45mp)"
 
 KERNEL_FEATURES:remove = "cfg/fs/vfat.scc"

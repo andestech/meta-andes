@@ -1,7 +1,7 @@
-From e0f510874201d32d720fc94948a266a29d9b4b52 Mon Sep 17 00:00:00 2001
+From 650471d7c6d89de2c9e6c85c583a823d42f2e31a Mon Sep 17 00:00:00 2001
 From: Yu Chien Peter Lin <peterlin@andestech.com>
-Date: Tue, 28 Dec 2021 16:20:40 +0800
-Subject: [PATCH 05/12] Non-cacheability and Cache support
+Date: Mon, 24 Jan 2022 20:31:18 +0800
+Subject: [PATCH 05/15] Non-cacheability and Cache support
 
 Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
 ---
@@ -23,7 +23,7 @@ Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
 
 diff --git a/arch/riscv/andesv5/Makefile b/arch/riscv/andesv5/Makefile
 new file mode 100644
-index 000000000000..6188956ae944
+index 000000000..6188956ae
 --- /dev/null
 +++ b/arch/riscv/andesv5/Makefile
 @@ -0,0 +1,4 @@
@@ -33,7 +33,7 @@ index 000000000000..6188956ae944
 +obj-y += sbi.o
 diff --git a/arch/riscv/andesv5/cache.c b/arch/riscv/andesv5/cache.c
 new file mode 100644
-index 000000000000..3d4e82f3525e
+index 000000000..3d4e82f35
 --- /dev/null
 +++ b/arch/riscv/andesv5/cache.c
 @@ -0,0 +1,414 @@
@@ -453,7 +453,7 @@ index 000000000000..3d4e82f3525e
 +arch_initcall(l2c_init)
 diff --git a/arch/riscv/andesv5/cctl.c b/arch/riscv/andesv5/cctl.c
 new file mode 100644
-index 000000000000..f3f61db29e0d
+index 000000000..f3f61db29
 --- /dev/null
 +++ b/arch/riscv/andesv5/cctl.c
 @@ -0,0 +1,260 @@
@@ -719,7 +719,7 @@ index 000000000000..f3f61db29e0d
 +MODULE_DESCRIPTION("Userspace Cache Control Module");
 diff --git a/arch/riscv/andesv5/noncache_dma.c b/arch/riscv/andesv5/noncache_dma.c
 new file mode 100644
-index 000000000000..fa83cebad777
+index 000000000..fa83cebad
 --- /dev/null
 +++ b/arch/riscv/andesv5/noncache_dma.c
 @@ -0,0 +1,113 @@
@@ -838,7 +838,7 @@ index 000000000000..fa83cebad777
 +}
 diff --git a/arch/riscv/include/asm/andesv5/csr.h b/arch/riscv/include/asm/andesv5/csr.h
 new file mode 100644
-index 000000000000..43936e1fb658
+index 000000000..43936e1fb
 --- /dev/null
 +++ b/arch/riscv/include/asm/andesv5/csr.h
 @@ -0,0 +1,160 @@
@@ -1004,7 +1004,7 @@ index 000000000000..43936e1fb658
 +#define CSR_SMISC_CTL			0x9d0
 diff --git a/arch/riscv/include/asm/andesv5/proc.h b/arch/riscv/include/asm/andesv5/proc.h
 new file mode 100644
-index 000000000000..d06fbff65ad0
+index 000000000..d06fbff65
 --- /dev/null
 +++ b/arch/riscv/include/asm/andesv5/proc.h
 @@ -0,0 +1,36 @@
@@ -1046,7 +1046,7 @@ index 000000000000..d06fbff65ad0
 +};
 diff --git a/arch/riscv/include/asm/andesv5/smu.h b/arch/riscv/include/asm/andesv5/smu.h
 new file mode 100644
-index 000000000000..14813492c159
+index 000000000..14813492c
 --- /dev/null
 +++ b/arch/riscv/include/asm/andesv5/smu.h
 @@ -0,0 +1,78 @@
@@ -1128,6 +1128,6 @@ index 000000000000..14813492c159
 +	// SBI_CALL_0(SBI_SUSPEND_MEM);
 +}
 +#endif
---
-2.25.1
+-- 
+2.34.1
 
