@@ -17,7 +17,7 @@ branch: dunfell
 
 ```
 mkdir riscv-andes && cd riscv-andes
-repo init -u git://github.com/andestech/meta-andes -b dunfell -m tools/manifests/andes.xml
+repo init -u https://github.com/andestech/meta-andes.git -b dunfell -m tools/manifests/andes.xml
 repo sync
 ```
 
@@ -37,28 +37,13 @@ Run `setup.sh`, a build directory will be created and add `meta-andes` layer aut
 . ./meta-andes/setup.sh
 ```
 
-Extract Linux and OpenSBI tarballs from AndeSight™ v5.1.0 packages to a local directory.
-
-```
-/path/to/source/code/
-	|- linux-5.4/
-	`- opensbi/
-```
-
-Export the path as environment variable `LOCAL_SRC`.
-
-```
-export LOCAL_SRC="/path/to/source/code/"
-export BB_ENV_EXTRAWHITE="$BB_ENV_EXTRAWHITE LOCAL_SRC"
-```
-
-Start the build process, at least 80 GB of files will be generated, please prepare about 100 GB of hard disk space.
+Start the build process, at least 80 GB of files will be generated, please meke sure it won't run out of space.
 
 ```
 bitbake core-image-full-cmdline
 ```
 
-> If BitBake consumes too much computing resources, `BB_NUMBER_THREADS` and `PARALLEL_MAKE` can be used to limit the number of parallel tasks. e.g. `PARALLEL_MAKE="-j 4" BB_NUMBER_THREADS=4 bitbake core-image-full-cmdline`
+> If BitBake consumes too many PC's resources, specify `BB_NUMBER_THREADS` and `PARALLEL_MAKE` to limit the number of parallel tasks. e.g. `PARALLEL_MAKE="-j 4" BB_NUMBER_THREADS=4 bitbake core-image-full-cmdline`
 > * `BB_NUMBER_THREADS`: Number of parallel BitBake tasks
 > * `PARALLEL_MAKE`: Number of parallel processes
 
