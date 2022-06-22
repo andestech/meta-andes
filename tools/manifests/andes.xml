@@ -6,7 +6,7 @@
   <remote name="andes" fetch="https://github.com/andestech/" />
   <default remote="openembedded" revision="master" />
 
-  <project name="meta-andes" remote="andes" path="meta-andes" revision="685ec6a8eca1f83a011bbbc988ff80fc65c17466" />
+  <project name="meta-andes" remote="andes" path="meta-andes" revision="8a0cf0aa8c184ef37d1f2e6f237a357be63533d3" />
   <project name="meta-riscv" remote="riscv" path="meta-riscv" revision="6f039004c2fa2be041c73d6ff711c86ae139faca" />
   <project name="openembedded-core" remote="openembedded" path="openembedded-core" revision="44b1970c40e9d73f6e63fb10cdc55837a26f5921" />
   <project name="bitbake" remote="openembedded" path="openembedded-core/bitbake" revision="c0348de8121c3a842bf44906f7e2f79e93f7275b" />
