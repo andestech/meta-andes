@@ -3,17 +3,16 @@ require recipes-bsp/u-boot/u-boot.inc
 LIC_FILES_CHKSUM = "file://Licenses/README;md5=5a7450c57ffe5ae63fd732446b988025"
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/files/ae350-ax45mp:"
-DEPENDS:append = " bc dtc opensbi u-boot-tools-native"
+DEPENDS:append = " bc dtc opensbi u-boot-tools-native python3-setuptools-native"
 
-SRCREV="050acee119b3757fee3bd128f55d720fdd9bb890"
+SRCREV="d637294e264adfeb29f390dfc393106fd4d41b17"
 
 SRC_URI = " \
     git://git.denx.de/u-boot.git;branch=master \
     file://0001-Fix-mmc-no-partition-table-error.patch \
-    file://0002-Fix-AX45MP-XIP-mode-booting-fail-on-VCU118-issue.patch \
-    file://0003-Enable-prints-during-boot.patch \
-    file://0004-Enable-cache-in-uboot-spl.patch \
-    file://0005-prevent-fw_dynamic-relocation.patch \
+    file://0002-Prevent-fw_dynamic-from-relocation.patch \
+    file://0003-Fix-u-boot-proper-booting-issue.patch \
+    file://0004-Enable-printing-OpenSBI-boot-logo.patch \
     file://u-boot.cfg \
     "
 
