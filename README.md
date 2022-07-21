@@ -13,62 +13,52 @@ URI: git@github.com:riscv/meta-riscv.git
 branch: dunfell
 ```
 
-## Creating Workspace
+## Building SD card image with kas-container
 
 ```
-mkdir riscv-andes && cd riscv-andes
-repo init -u https://github.com/andestech/meta-andes.git -b dunfell -m tools/manifests/andes.xml
-repo sync
+$ mkdir riscv-andes && cd riscv-andes
+$ git clone https://github.com/andestech/meta-andes.git -b dunfell
+$ wget https://raw.githubusercontent.com/siemens/kas/master/kas-container
+$ chmod a+x ./kas-container
+$ ./kas-container build meta-andes/ae350-ax45mp.yml
 ```
 
-Track the changes to the layers.
+The generated SD card image will be located in the **build/tmp-glibc/deploy/images/<MACHINE>** directory.
+
+## Running `bitbake` commands in kas shell
 
 ```
-repo start work --all
+$ ./kas-container shell meta-andes/ae350-ax45mp.yml
+...
+builder@0d38e0a5f8c7:/build$ # bitbake command goes here
 ```
 
-This command is equivalent to `git checkout -b work` based on revisions specified in `meta-andes/tools/manifests/andes.xml`.
+Some commonly used bitbake commands:
+* `bitbake-layers show-layers`
+* `bitbake <PACKAGE> -c listtasks`
+* `bitbake <IMAGE> -c populate_sdk`
 
-## Initializing Build Directory
-
-Run `setup.sh`, a build directory will be created and add `meta-andes` layer automatically.
-
-```
-. ./meta-andes/setup.sh
-```
-
-Start the build process, at least 80 GB of files will be generated, please meke sure it won't run out of space.
-
-```
-bitbake core-image-full-cmdline
-```
-
-> If BitBake consumes too many PC's resources, specify `BB_NUMBER_THREADS` and `PARALLEL_MAKE` to limit the number of parallel tasks. e.g. `PARALLEL_MAKE="-j 4" BB_NUMBER_THREADS=4 bitbake core-image-full-cmdline`
-> * `BB_NUMBER_THREADS`: Number of parallel BitBake tasks
-> * `PARALLEL_MAKE`: Number of parallel processes
-
-The resulting image and binaries reside in `$BUILDDIR/tmp-glibc/deploy/images/ae350-ax45mp`.
+> See the [kas](https://kas.readthedocs.io/en/latest/userguide.html) documents for more details.
 
 ## Flashing Image to SD Card
 
 Use Linux `dd` command to flash the image.
 
 ```
-gunzip -c <IMAGE>.wic.gz | sudo dd of=/dev/sdX bs=4M iflag=fullblock oflag=direct conv=fsync status=progress
+$ gunzip -c <IMAGE>.wic.gz | sudo dd of=/dev/sdX bs=4M iflag=fullblock oflag=direct conv=fsync status=progress
 ```
 
 On Windows and macOS, [belenaEther](https://www.balena.io/etcher/) provides GUI to flash the image.
 
 <img src="https://i.imgur.com/W7YZc8j.png" width="450px" />
 
-Insert SD card and reset the board and access serial console with baud `38400/8-N-1`, should boot Linux from mmc.
+Insert SD card and access serial console with baud `38400/8-N-1`, then reset the board, should boot Linux from mmc.
 
 ## Generating Cross Toolchain
 
-Run `bitbake meta-toolchain` to generate the cross toolchain installer script under `$BUILDDIR/tmp-glibc/deploy/sdk`.
-Once the cross toolchain has been setup, gcc and gdb can be accessed by `$CC` and `$GDB`.
+Run `bitbake <IMAGE> -c populate_sdk` to generate the cross toolchain installer script under **build/tmp-glibc/deploy/sdk**.
+Once the cross toolchain has been extracted, gcc and gdb can be executed by `$CC` and `$GDB`.
 
-> SDK environment variables. See `environment-setup-riscv64-oe-linux` file for more details.
 > * `$CC`: C Compiler
 > * `$CFLAGS`: C flags
 > * `$CXX`: C++ compiler
@@ -76,13 +66,15 @@ Once the cross toolchain has been setup, gcc and gdb can be accessed by `$CC` an
 > * `$AS`: Assembler
 > * `$GDB`: GNU Debugger
 > * `$OBJDUMP`: objdump
+>
+> Check more environment variables from `environment-setup-riscv64-oe-linux` file
 
 ### Reset the board via GDB
 
 Set `<TARGET_IP>` to the ICEman host IP address.
 
 ```
-$GDB -ex "target remote <TARGET_IP>:<PORT_NUMBER>" \
+$ $GDB -ex "target remote <TARGET_IP>:<PORT>" \
      -ex "set confirm off" \
      -ex "set pagination off" \
      -ex "monitor reset halt" \
