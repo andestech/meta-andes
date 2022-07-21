@@ -3,10 +3,10 @@ From: Yu Chien Peter Lin <peterlin@andestech.com>
 Date: Wed, 29 Dec 2021 16:04:54 +0800
 Subject: [PATCH] Disable PIC explicitly for assembling
 
-This patch is necessary if the fw_dynamic load address
-is not equal to link address.
-However, they are equal currently, since we include an u-boot
-patch for preventing fw_dynamic relocation.
+For some toolchain, this patch is needed if the fw_dynamic load
+address is not equal to link address. However we've added an u-boot
+patch that prevents fw_dynamic relocation by loading it to 0x0
+rather than 0x1000000.
 
 Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
 ---
