@@ -8,7 +8,7 @@
 
   <project name="meta-andes" remote="andes" path="meta-andes" revision="d50c3f79cc91bd2aaf20c1b97fcb56c91935147c" />
   <project name="meta-riscv" remote="riscv" path="meta-riscv" revision="6f039004c2fa2be041c73d6ff711c86ae139faca" />
-  <project name="openembedded-core" remote="openembedded" path="openembedded-core" revision="44b1970c40e9d73f6e63fb10cdc55837a26f5921" />
-  <project name="bitbake" remote="openembedded" path="openembedded-core/bitbake" revision="c0348de8121c3a842bf44906f7e2f79e93f7275b" />
-  <project name="meta-openembedded" remote="openembedded" path="meta-openembedded" revision="7889158dcd187546fc5e99fd81d0779cad3e8d17" />
+  <project name="openembedded-core" remote="openembedded" path="openembedded-core" revision="bba069463ca3813666d084643b0239b9af0199e1" />
+  <project name="bitbake" remote="openembedded" path="openembedded-core/bitbake" revision="0784db7dd0fef6f0621ad8d74372f44e87fef950" />
+  <project name="meta-openembedded" remote="openembedded" path="meta-openembedded" revision="52cee67833d1975a5bd52e4556c4cd312425a017" />
 </manifest>

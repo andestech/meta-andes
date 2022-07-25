@@ -79,8 +79,8 @@ VIRTUAL-RUNTIME_init_manager = "systemd"
 HOSTTOOLS_NONFATAL:append = " ssh bc dtc"
 
 DISTRO_NAME = "AndeSight"
-DISTRO_VERSION = "2021.11"
-DISTRO_CODENAME = "ast-v5.1.0"
+DISTRO_VERSION = "2022.08"
+DISTRO_CODENAME = "ast-v5.2.0"
 EOF
 
 echo "To build an image run"

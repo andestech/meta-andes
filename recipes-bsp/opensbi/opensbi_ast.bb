@@ -5,13 +5,13 @@ LIC_FILES_CHKSUM = "file://COPYING.BSD;md5=42dd9555eb177f35150cf9aa240b61e5"
 
 inherit autotools-brokensep deploy
 
-PV = "0.7+git${SRCPV}"
-BRANCH = "opensbi-ast-v5_1_0-branch"
+PV = "1.0+git${SRCPV}"
+BRANCH = "opensbi-ast-v5_2_0-branch"
 
 SRC_URI = "git://${LOCAL_SRC}/opensbi;protocol=file;branch=${BRANCH} \
           "
 
-SRCREV = "374fb296114031f1ecbf671ebdf80031f0a404f5"
+SRCREV = "09f1b972d9606d0f93362d9016e1fa77d9c66771"
 S = "${WORKDIR}/git"
 
 EXTRA_OEMAKE += "PLATFORM=${RISCV_SBI_PLAT} I=${D} INSTALL_LIB_PATH=lib FW_PIC=n"
@@ -22,12 +22,9 @@ do_install:append() {
 	find ${D}
 	rm -r ${D}/include
 	rm -r ${D}/lib
-	rm -r ${D}/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/payloads
 }
 
 do_deploy () {
-	install -m 755 ${D}/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_payload.* ${DEPLOYDIR}/
-	install -m 755 ${D}/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_jump.* ${DEPLOYDIR}/
 	install -m 755 ${D}/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_dynamic.* ${DEPLOYDIR}/
 }
 
