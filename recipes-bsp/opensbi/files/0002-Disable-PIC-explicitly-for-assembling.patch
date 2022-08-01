@@ -1,0 +1,30 @@
+From 981ea2fdc3045bd0be6ed02e274dc0794aeac76b Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Mon, 1 Aug 2022 09:54:17 +0800
+Subject: [PATCH] Disable PIC explicitly for assembling
+
+For some toolchain, this patch is needed if the fw_dynamic load
+address is not equal to link address. However we've added an u-boot
+patch that prevents fw_dynamic relocation by loading it to 0x0
+rather than 0x1000000.
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Makefile b/Makefile
+index cebb78e..18f7a8d 100644
+--- a/Makefile
++++ b/Makefile
+@@ -215,6 +215,7 @@ ASFLAGS		+=	-mcmodel=$(PLATFORM_RISCV_CODE_MODEL)
+ ASFLAGS		+=	$(GENFLAGS)
+ ASFLAGS		+=	$(platform-asflags-y)
+ ASFLAGS		+=	$(firmware-asflags-y)
++ASFLAGS		+=	-fno-pic
+ 
+ ARFLAGS		=	rcs
+ 
+-- 
+2.34.1
+
