@@ -12,22 +12,37 @@ repos:
   meta-andes:
     path: /work/meta-andes
 
+  linux-5.4:
+    path: /work/linux-5.4
+    layers:
+        linux-5.4: excluded
+
+  opensbi:
+    path: /work/opensbi
+    layers:
+        opensbi: excluded
+
+  u-boot:
+    path: /work/u-boot
+    layers:
+        u-boot: excluded
+
   openembedded-core:
     url: https://github.com/openembedded/openembedded-core.git
-    refspec: 44b1970c40e9d73f6e63fb10cdc55837a26f5921
+    refspec: dunfell
     layers:
       meta:
         
   bitbake:
     url: https://github.com/openembedded/bitbake.git
-    refspec: c0348de8121c3a842bf44906f7e2f79e93f7275b
+    refspec: 2020-04.12-dunfell
     path: openembedded-core/bitbake
     layers:
         bitbake: excluded
 
   meta-openembedded:
     url: https://git.openembedded.org/meta-openembedded
-    refspec: 7889158dcd187546fc5e99fd81d0779cad3e8d17
+    refspec: dunfell
     layers:
       meta-oe:
       meta-networking:
@@ -35,7 +50,7 @@ repos:
 
   meta-riscv:
     url: https://github.com/riscv/meta-riscv
-    refspec: 6f039004c2fa2be041c73d6ff711c86ae139faca
+    refspec: dunfell
 
 bblayers_conf_header:
   meta-andes: |
@@ -46,22 +61,18 @@ local_conf_header:
     PACKAGE_CLASSES = "package_rpm"
     SDKMACHINE = "x86_64"
     # Use 'haveged' instead 'rng-tools' due to 'SIGSEGV' error during start 'rngd'
-    PACKAGE_EXCLUDE:append = "rng-tools"
-    IMAGE_INSTALL:append = "haveged"
+    PACKAGE_EXCLUDE:append = " rng-tools"
+    IMAGE_INSTALL:append = " haveged"
     IMAGE_FEATURES += " \
-        ssh-server-openssh \
+        ssh-server-dropbear \
         debug-tweaks \
+        package-management \
     "
   meta-andes: |
     MACHINE ?= "ae350-ax45mp"
-    IMAGE_FEATURES:append = " debug-tweaks"
-    EXTRA_IMAGE_FEATURES:append = " ssh-server-dropbear"
-    EXTRA_IMAGE_FEATURES:append = " package-management"
     PACKAGECONFIG:append:pn-qemu-native = " sdl"
     PACKAGECONFIG:append:pn-nativesdk-qemu = " sdl"
     USER_CLASSES ?= "buildstats buildhistory buildstats-summary image-prelink"
-
-    CORE_IMAGE_EXTRA_INSTALL += "htop vim tmux"
 
     require conf/distro/include/no-static-libs.inc
     require conf/distro/include/yocto-uninative.inc
@@ -72,11 +83,10 @@ local_conf_header:
     DISTRO_FEATURES:append = " largefile opengl ptest multiarch wayland pam systemd "
     DISTRO_FEATURES_BACKFILL_CONSIDERED += "sysvinit"
     VIRTUAL-RUNTIME_init_manager = "systemd"
-    HOSTTOOLS_NONFATAL:append = " ssh bc dtc"
 
     DISTRO_NAME = "AndeSight"
-    DISTRO_VERSION = "2021.11"
-    DISTRO_CODENAME = "ast-v5.1.0"
+    DISTRO_VERSION = "2022.08"
+    DISTRO_CODENAME = "ast-v5.2.0"
   diskmon: |
     BB_DISKMON_DIRS = "\
         STOPTASKS,${TMPDIR},1G,100K \

@@ -7,15 +7,29 @@ machine: ae350-ax45mp
 
 target:
   - core-image-minimal
-  - core-image-full-cmdline
 
 repos:
   meta-andes:
     path: /work/meta-andes
 
+  linux-5.4:
+    path: /work/linux-5.4
+    layers:
+        linux-5.4: excluded
+
+  opensbi:
+    path: /work/opensbi
+    layers:
+        opensbi: excluded
+
+  u-boot:
+    path: /work/u-boot
+    layers:
+        u-boot: excluded
+
   meta-riscv:
     url: https://github.com/riscv/meta-riscv
-    refspec: 6f039004c2fa2be041c73d6ff711c86ae139faca
+    refspec: dunfell
 
   poky:
     url: https://git.yoctoproject.org/git/poky
@@ -44,13 +58,13 @@ local_conf_header:
     PACKAGE_CLASSES = "package_rpm"
     SDKMACHINE = "x86_64"
     # Use 'haveged' instead 'rng-tools' due to 'SIGSEGV' error during start 'rngd'
-    PACKAGE_EXCLUDE:append = "rng-tools"
-    IMAGE_INSTALL:append = "haveged"
+    PACKAGE_EXCLUDE:append = " rng-tools"
+    IMAGE_INSTALL:append = " haveged"
     IMAGE_FEATURES += " \
-        ssh-server-openssh \
+        ssh-server-dropbear \
         debug-tweaks \
+        package-management \
     "
-    HOSTTOOLS:append = " bc"
   diskmon: |
     BB_DISKMON_DIRS = "\
         STOPTASKS,${TMPDIR},1G,100K \

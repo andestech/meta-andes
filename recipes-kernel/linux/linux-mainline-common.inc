@@ -16,7 +16,7 @@ KBUILD_DEFCONFIG_qemuriscv32 = "rv32_defconfig"
 KBUILD_DEFCONFIG_qemuriscv64 = "defconfig"
 KBUILD_DEFCONFIG_freedom-u540 = "defconfig"
 
-COMPATIBLE_MACHINE = "(qemuriscv32|qemuriscv64|freedom-u540|ae350-ax45mp)"
+COMPATIBLE_MACHINE = "(qemuriscv32|qemuriscv64|ae350-ax45mp)"
 
 KERNEL_DEVICETREE_freedom-u540 = "sifive/${RISCV_SBI_FDT}"
 

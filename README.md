@@ -1,73 +1,77 @@
-# Andes OpenEmbedded Layer
+# Andes OpenEmbedded/Yocto Layer
 
-This is a BSP layer depends on:
-
-```
-URI: git@github.com:openembedded/openembedded-core.git
-branch: dunfell
-
-URI: git@github.com:openembedded/meta-openembedded.git
-branch: dunfell
-
-URI: git@github.com:riscv/meta-riscv.git
-branch: dunfell
-```
+This layer provides `ae350-ax45mp` machine configuration and recipes for building the bootable disk image with AndeSight Linux packages.
 
 ## Building SD card image with kas-container
 
+[kas-container](https://kas.readthedocs.io/en/3.0.2/userguide.html) can setup an out-of-box yocto development environment based on Debian docker image, make sure docker has been installed on your host machine before carrying out the following steps.
+
 ```
 $ mkdir riscv-andes && cd riscv-andes
-$ git clone https://github.com/andestech/meta-andes.git -b dunfell
-$ wget https://raw.githubusercontent.com/siemens/kas/master/kas-container
+$ git clone https://github.com/andestech/meta-andes.git -b ast-v5_2_0-branch
+$ wget https://raw.githubusercontent.com/siemens/kas/3.0.2/kas-container
 $ chmod a+x ./kas-container
+```
+
+OpenSBI, U-boot and Linux source code from AndeSight 5.2.0 packages should be placed along with the meta-andes folder.
+
+```
+$ tree
+./
+|-- meta-andes/
+|-- opensbi/
+|-- u-boot/
+`-- linux-5.4/
+```
+
+Build nodistro:
+
+```
 $ ./kas-container build meta-andes/ae350-ax45mp.yml
 ```
 
-The generated SD card image will be located in the **build/tmp-glibc/deploy/images/<MACHINE>** directory.
-
-## Running `bitbake` commands in kas shell
+Build poky distro:
 
 ```
-$ ./kas-container shell meta-andes/ae350-ax45mp.yml
-...
-builder@0d38e0a5f8c7:/build$ # bitbake command goes here
+$ ./kas-container build meta-andes/ae350-ax45mp_poky.yml
 ```
 
-Some commonly used bitbake commands:
-* `bitbake-layers show-layers`
-* `bitbake <PACKAGE> -c listtasks`
-* `bitbake <IMAGE> -c populate_sdk`
+### Build results
 
-> See the [kas](https://kas.readthedocs.io/en/latest/userguide.html) documents for more details.
+The generated SD card image will be located in the **build/tmp-glibc/deploy/images/<MACHINE>** directory (or **build/tmp/deploy/images/<MACHINE>** for poky distro).
+
+* core-image-minimal-ae350-ax45mp.wic.gz
+* fitImage
+* ae350_ax45mp.dtb
+* boot.scr.uimg
+* uEnv.txt
+* u-boot-spl.bin
+* u-boot.itb
 
 ## Flashing Image to SD Card
 
 Use Linux `dd` command to flash the image.
 
 ```
-$ gunzip -c <IMAGE>.wic.gz | sudo dd of=/dev/sdX bs=4M iflag=fullblock oflag=direct conv=fsync status=progress
+$ gunzip -c <IMAGE>.wic.gz | sudo dd of=/dev/sdX bs=4M iflag=fullblock oflag=direct conv=fsync status=progress && sync
 ```
 
 On Windows and macOS, [belenaEther](https://www.balena.io/etcher/) provides GUI to flash the image.
 
 <img src="https://i.imgur.com/W7YZc8j.png" width="450px" />
 
-Insert SD card and access serial console with baud `38400/8-N-1`, then reset the board, should boot Linux from mmc.
+Insert SD card and access serial console with baud `38400/8-N-1`, then reset the board, it should boot from MMC and loads `fw_dynamic.bin` and `u-boot.bin` from `u-boot.itb` located at first partition.
 
-## Generating Cross Toolchain
+## (Optional.) Flashing U-boot SPL
 
-Run `bitbake <IMAGE> -c populate_sdk` to generate the cross toolchain installer script under **build/tmp-glibc/deploy/sdk**.
-Once the cross toolchain has been extracted, gcc and gdb can be executed by `$CC` and `$GDB`.
+If you need to update the SPL, the first partition holds XIP mode SPL (u-boot-spl.bin) that can be burned on flash by using the `sf` command shown below in U-boot prompt or [SPI_Burn tool](https://github.com/andestech/Andes-Development-Kit).
 
-> * `$CC`: C Compiler
-> * `$CFLAGS`: C flags
-> * `$CXX`: C++ compiler
-> * `$LD`: Linker
-> * `$AS`: Assembler
-> * `$GDB`: GNU Debugger
-> * `$OBJDUMP`: objdump
->
-> Check more environment variables from `environment-setup-riscv64-oe-linux` file
+```
+RISC-V # fatload mmc 0:1 0x600000 u-boot-spl.bin
+RISC-V # sf probe 0:0 50000000 0
+RISC-V # sf erase 0x0 0x10000
+RISC-V # sf write 0x600000 0x0 0x10000
+```
 
 ### Reset the board via GDB
 
@@ -75,11 +79,11 @@ Set `<TARGET_IP>` to the ICEman host IP address.
 
 ```
 $ $GDB -ex "target remote <TARGET_IP>:<PORT>" \
-     -ex "set confirm off" \
-     -ex "set pagination off" \
-     -ex "monitor reset halt" \
-     -ex "set \$ra=0" \
-     -ex "set \$sp=0" \
-     -ex "flushregs" \
-     -ex "c"
+       -ex "set confirm off" \
+       -ex "set pagination off" \
+       -ex "monitor reset halt" \
+       -ex "set \$ra=0" \
+       -ex "set \$sp=0" \
+       -ex "flushregs" \
+       -ex "c"
 ```

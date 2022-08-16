@@ -5,19 +5,18 @@ LIC_FILES_CHKSUM = "file://COPYING.BSD;md5=42dd9555eb177f35150cf9aa240b61e5"
 
 inherit autotools-brokensep deploy
 
-PV = "0.9+git${SRCPV}"
+PV = "1.0+git${SRCPV}"
 
-BRANCH = "master"
-SRCREV="234ed8e427f4d92903123199f6590d144e0d9351"
-
-SRC_URI = "git://github.com/riscv-software-src/opensbi.git;branch=${BRANCH} \
+BRANCH = "opensbi-ast-v5_2_0-branch"
+SRCREV = "1924dbf4ce8670cde452a59a8a7efec944af162a"
+SRC_URI = "git:///work/opensbi;protocol=file;branch=${BRANCH} \
            file://0001-Disable-PIC-explicitly-for-assembling.patch \
-           file://0002-Enable-cache-for-opensbi-jump-mode.patch \
+           file://0002-sbi-riscv_locks.c-memory-barrior-for-AMO-instruction.patch \
           "
 
 S = "${WORKDIR}/git"
 
-EXTRA_OEMAKE += "PLATFORM=${RISCV_SBI_PLAT} I=${D} INSTALL_LIB_PATH=lib FW_PIC=n"
+EXTRA_OEMAKE += "PLATFORM=${RISCV_SBI_PLAT} I=${D} INSTALL_LIB_PATH=lib"
 
 do_install:append() {
 	# In the future these might be required as a dependency for other packages.
@@ -25,22 +24,17 @@ do_install:append() {
 	find ${D}
 	rm -r ${D}/include
 	rm -r ${D}/lib
-	rm -r ${D}/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/payloads
 }
 
 do_deploy () {
-	install -m 755 ${D}/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_payload.* ${DEPLOYDIR}/
-	install -m 755 ${D}/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_jump.* ${DEPLOYDIR}/
 	install -m 755 ${D}/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_dynamic.* ${DEPLOYDIR}/
 }
 
 addtask deploy before do_build after do_install
 
-FILES:${PN} += "/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_jump.*"
-FILES:${PN} += "/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_payload.*"
 FILES:${PN} += "/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_dynamic.*"
 
 COMPATIBLE_HOST = "(riscv64|riscv32).*"
 INHIBIT_PACKAGE_STRIP = "1"
 
-SECURITY_CFLAGS = ""
+INSANE_SKIP:${PN}:ae350-ax45mp += "ldflags"
