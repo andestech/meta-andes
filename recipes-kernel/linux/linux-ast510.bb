@@ -11,6 +11,7 @@ BRANCH = "RISCV-Linux-5.4-ast-v5_1_0-branch"
 SRC_URI = "git://github.com/${FORK}/linux.git;protocol=https;branch=${BRANCH} \
            file://0001-riscv-dts-add-andes-folder.patch \
            file://linux.cfg \
+           file://rtc-support.cfg \
           "
 
 LINUX_VERSION ?= "v5.4.147"
