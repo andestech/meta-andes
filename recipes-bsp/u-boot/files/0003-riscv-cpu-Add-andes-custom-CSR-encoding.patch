@@ -1,0 +1,107 @@
+From be3d0ea260ef5e23695612be76be24972a9a28d6 Mon Sep 17 00:00:00 2001
+From: Kas User <kas@example.com>
+Date: Thu, 1 Sep 2022 06:23:31 +0000
+Subject: [PATCH] riscv: cpu: Add andes custom CSR encoding
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ arch/riscv/cpu/ax25/cache.c | 22 +++++++++++-----------
+ arch/riscv/cpu/start.S      |  3 ---
+ 2 files changed, 11 insertions(+), 14 deletions(-)
+
+diff --git a/arch/riscv/cpu/ax25/cache.c b/arch/riscv/cpu/ax25/cache.c
+index 12e048f3ba..f3eb584b39 100644
+--- a/arch/riscv/cpu/ax25/cache.c
++++ b/arch/riscv/cpu/ax25/cache.c
+@@ -16,7 +16,7 @@
+ #include <asm/sbi.h>
+ #include <linux/log2.h>
+ 
+-/* mcache_ctl register*/
++/* 0x7ca register*/
+ #define MCACHE_CTL_IC_EN	(1UL << 0)
+ #define MCACHE_CTL_DC_EN	(1UL << 1)
+ 
+@@ -96,9 +96,9 @@ void icache_enable(void)
+ #if CONFIG_IS_ENABLED(RISCV_MMODE) /* CONFIG_IS_ENABLED(RISCV_MMODE) */
+ #if !CONFIG_IS_ENABLED(SYS_ICACHE_OFF)
+ 	asm volatile (
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"ori t0, t1, 0x1\n\t"
+-		"csrw mcache_ctl, t0\n\t"
++		"csrw 0x7ca, t0\n\t"
+ 	);
+ #endif
+ #else /* CONFIG_IS_ENABLED(RISCV_MMODE) */
+@@ -112,9 +112,9 @@ void icache_disable(void)
+ #if !CONFIG_IS_ENABLED(SYS_ICACHE_OFF)
+ 	asm volatile (
+ 		"fence.i\n\t"
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"andi t0, t1, ~0x1\n\t"
+-		"csrw mcache_ctl, t0\n\t"
++		"csrw 0x7ca, t0\n\t"
+ 	);
+ #endif
+ #else /* CONFIG_IS_ENABLED(RISCV_MMODE) */
+@@ -127,9 +127,9 @@ void dcache_enable(void)
+ #if CONFIG_IS_ENABLED(RISCV_MMODE) /* CONFIG_IS_ENABLED(RISCV_MMODE) */
+ #if !CONFIG_IS_ENABLED(SYS_DCACHE_OFF)
+ 	asm volatile (
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"ori t0, t1, 0x2\n\t"
+-		"csrw mcache_ctl, t0\n\t"
++		"csrw 0x7ca, t0\n\t"
+ 	);
+ #endif
+ #else /* CONFIG_IS_ENABLED(RISCV_MMODE) */
+@@ -148,9 +148,9 @@ void dcache_disable(void)
+ #if !CONFIG_IS_ENABLED(SYS_DCACHE_OFF)
+ 	csr_write(CCTL_REG_MCCTLCOMMAND_NUM, CCTL_L1D_WBINVAL_ALL);
+ 	asm volatile (
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"andi t0, t1, ~0x2\n\t"
+-		"csrw mcache_ctl, t0\n\t"
++		"csrw 0x7ca, t0\n\t"
+ 	);
+ #endif
+ #else /* CONFIG_IS_ENABLED(RISCV_MMODE) */
+@@ -168,7 +168,7 @@ int icache_status(void)
+ 
+ #if CONFIG_IS_ENABLED(RISCV_MMODE) /* CONFIG_IS_ENABLED(RISCV_MMODE) */
+ 	asm volatile (
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"andi	%0, t1, 0x01\n\t"
+ 		: "=r" (ret)
+ 		:
+@@ -188,7 +188,7 @@ int dcache_status(void)
+ #if CONFIG_IS_ENABLED(RISCV_MMODE) /* CONFIG_IS_ENABLED(RISCV_MMODE) */
+ #ifdef CONFIG_RISCV_NDS_CACHE
+ 	asm volatile (
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"andi	%0, t1, 0x02\n\t"
+ 		: "=r" (ret)
+ 		:
+diff --git a/arch/riscv/cpu/start.S b/arch/riscv/cpu/start.S
+index 5a49f92c2d..c654bde5a8 100644
+--- a/arch/riscv/cpu/start.S
++++ b/arch/riscv/cpu/start.S
+@@ -50,9 +50,6 @@ _start:
+ 	mv	tp, a0
+ 	mv	s1, a1
+ 
+-	la a0, _ITB_BASE_;
+-	csrrw x0, uitb, a0;
+-
+ 	/*
+ 	 * Set the global data pointer to a known value in case we get a very
+ 	 * early trap. The global data pointer will be set its actual value only
+-- 
+2.34.1
+

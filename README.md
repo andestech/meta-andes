@@ -1,108 +1,87 @@
-# Andes OpenEmbedded Layer
+# Andes OpenEmbedded/Yocto Layer
 
-This is a BSP layer depends on:
+This layer provides `ae350-ax45mp` machine configuration and recipes for building the bootable disk image with AndeSight Linux packages.
 
-```
-URI: git@github.com:openembedded/openembedded-core.git
-branch: dunfell
+## Building SD card image with kas-container
 
-URI: git@github.com:openembedded/meta-openembedded.git
-branch: dunfell
-
-URI: git@github.com:riscv/meta-riscv.git
-branch: dunfell
-```
-
-## Creating Workspace
+[kas-container](https://kas.readthedocs.io/en/3.0.2/userguide.html) can setup an out-of-box yocto development environment based on Debian docker image, please make sure docker has been installed on your host machine before carrying out the following steps.
 
 ```
-mkdir riscv-andes && cd riscv-andes
-repo init -u git://github.com/andestech/meta-andes -b ast-v5_1_0-branch -m tools/manifests/andes.xml
-repo sync
+$ mkdir riscv-andes && cd riscv-andes
+$ git clone https://github.com/andestech/meta-andes.git -b ast-v5_1_0-branch
+$ wget https://raw.githubusercontent.com/siemens/kas/3.0.2/kas-container
+$ chmod a+x ./kas-container
 ```
 
-Track the changes to the layers.
+AndeSight 5.1.0 provides OpenSBI, U-boot and Linux based on following version.
+
+* [OpenSBI v0.7](https://github.com/andestech/opensbi/tree/opensbi-ast-v5_1_0-branch)
+* [U-boot v2020.10](https://github.com/andestech/uboot/tree/ast-v5_1_0-branch)
+* [Linux 5.4.147](https://github.com/andestech/linux/tree/RISCV-Linux-5.4-ast-v5_1_0-branch)
+
+Build poky distro:
 
 ```
-repo start work --all
+$ ./kas-container build meta-andes/ae350-ax45mp_poky.yml
 ```
 
-This command is equivalent to `git checkout -b work` based on revisions specified in `meta-andes/tools/manifests/andes.xml`.
-
-## Initializing Build Directory
-
-Run `setup.sh`, a build directory will be created and add `meta-andes` layer automatically.
+Build nodistro:
 
 ```
-. ./meta-andes/setup.sh
+$ ./kas-container build meta-andes/ae350-ax45mp.yml
 ```
 
-Extract Linux and OpenSBI tarballs from AndeSight™ v5.1.0 packages to a local directory.
+### Build results
 
-```
-/path/to/source/code/
-	|- linux-5.4/
-	`- opensbi/
-```
+The generated SD card image will be located in the **build/tmp-glibc/deploy/images/<MACHINE>** directory (or **build/tmp/deploy/images/<MACHINE>** for poky distro).
 
-Export the path as environment variable `LOCAL_SRC`.
+* core-image-minimal-ae350-ax45mp.wic.gz
+* ae350_c4_64_d.dtb
+* boot.scr.uimg
+* fitImage
+* u-boot.itb
+* u-boot-spl.bin
+* u-boot.itb
+* uEnv.txt
 
-```
-export LOCAL_SRC="/path/to/source/code/"
-export BB_ENV_EXTRAWHITE="$BB_ENV_EXTRAWHITE LOCAL_SRC"
-```
 
-Start the build process, at least 80 GB of files will be generated, please prepare about 100 GB of hard disk space.
-
-```
-bitbake core-image-full-cmdline
-```
-
-> If BitBake consumes too much computing resources, `BB_NUMBER_THREADS` and `PARALLEL_MAKE` can be used to limit the number of parallel tasks. e.g. `PARALLEL_MAKE="-j 4" BB_NUMBER_THREADS=4 bitbake core-image-full-cmdline`
-> * `BB_NUMBER_THREADS`: Number of parallel BitBake tasks
-> * `PARALLEL_MAKE`: Number of parallel processes
-
-The resulting image and binaries reside in `$BUILDDIR/tmp-glibc/deploy/images/ae350-ax45mp`.
 
 ## Flashing Image to SD Card
 
 Use Linux `dd` command to flash the image.
 
 ```
-gunzip -c <IMAGE>.wic.gz | sudo dd of=/dev/sdX bs=4M iflag=fullblock oflag=direct conv=fsync status=progress
+$ gunzip -c <IMAGE>.wic.gz | sudo dd of=/dev/sdX bs=4M iflag=fullblock oflag=direct conv=fsync status=progress && sync
 ```
 
 On Windows and macOS, [belenaEther](https://www.balena.io/etcher/) provides GUI to flash the image.
 
 <img src="https://i.imgur.com/W7YZc8j.png" width="450px" />
 
-Insert SD card and reset the board and access serial console with baud `38400/8-N-1`, should boot Linux from mmc.
+Insert SD card and access serial console with baud `38400/8-N-1`, then reset the board, it should boot from MMC and loads `fw_dynamic.bin` and `u-boot.bin` from `u-boot.itb` located at first partition.
 
-## Generating Cross Toolchain
+## (Optional.) Flashing U-boot SPL
 
-Run `bitbake meta-toolchain` to generate the cross toolchain installer script under `$BUILDDIR/tmp-glibc/deploy/sdk`.
-Once the cross toolchain has been setup, gcc and gdb can be accessed by `$CC` and `$GDB`.
+If you need to update the SPL, the first partition holds XIP mode SPL (u-boot-spl.bin) that can be burned on flash by using the `sf` command shown below in U-boot prompt or [SPI_Burn tool](https://github.com/andestech/Andes-Development-Kit).
 
-> SDK environment variables. See `environment-setup-riscv64-oe-linux` file for more details.
-> * `$CC`: C Compiler
-> * `$CFLAGS`: C flags
-> * `$CXX`: C++ compiler
-> * `$LD`: Linker
-> * `$AS`: Assembler
-> * `$GDB`: GNU Debugger
-> * `$OBJDUMP`: objdump
+```
+RISC-V # fatload mmc 0:1 0x600000 u-boot-spl.bin
+RISC-V # sf probe 0:0 50000000 0
+RISC-V # sf erase 0x0 0x10000
+RISC-V # sf write 0x600000 0x0 0x10000
+```
 
 ### Reset the board via GDB
 
 Set `<TARGET_IP>` to the ICEman host IP address.
 
 ```
-$GDB -ex "target remote <TARGET_IP>:<PORT_NUMBER>" \
-     -ex "set confirm off" \
-     -ex "set pagination off" \
-     -ex "monitor reset halt" \
-     -ex "set \$ra=0" \
-     -ex "set \$sp=0" \
-     -ex "flushregs" \
-     -ex "c"
+$ $GDB -ex "target remote <TARGET_IP>:<PORT>" \
+       -ex "set confirm off" \
+       -ex "set pagination off" \
+       -ex "monitor reset halt" \
+       -ex "set \$ra=0" \
+       -ex "set \$sp=0" \
+       -ex "flushregs" \
+       -ex "c"
 ```

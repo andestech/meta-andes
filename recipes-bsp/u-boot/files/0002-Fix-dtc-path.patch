@@ -1,0 +1,72 @@
+From 64bbc6320d6c27434ba5b8dbc5a075b342122729 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Tue, 28 Jun 2022 14:27:51 +0800
+Subject: [PATCH] Fix dtc path
+
+Uboot should not use buildroot top directory as DTC path. It will cause
+itb build failure:
+
+    ./tools/mkimage -f auto -A riscv -T firmware -C none -O u-boot -a 0x01200000 -e 0x01200000 -p 0x0 -n "U-Boot 2020.10""-00809-gb1e93e0c2a for ax25-ae350 board" -E   -d u-bo
+  ot-nodtb.bin u-boot.img >/dev/null  && cat /dev/null
+    ./tools/mkimage -E -f u-boot.its -p 0x0 u-boot.itb >/dev/null  && cat /dev/null
+  sh: line 1: /home/peterlin/Labs/buildroot/scripts/dtc/dtc: No such file or directory
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ configs/ae350_rv32_spl_defconfig     | 1 -
+ configs/ae350_rv32_spl_xip_defconfig | 1 -
+ configs/ae350_rv64_spl_defconfig     | 1 -
+ configs/ae350_rv64_spl_xip_defconfig | 1 -
+ 4 files changed, 4 deletions(-)
+
+diff --git a/configs/ae350_rv32_spl_defconfig b/configs/ae350_rv32_spl_defconfig
+index 718e8b647c..b8c72f0a6b 100644
+--- a/configs/ae350_rv32_spl_defconfig
++++ b/configs/ae350_rv32_spl_defconfig
+@@ -38,7 +38,6 @@ CONFIG_SYS_NS16550=y
+ CONFIG_SPI=y
+ CONFIG_ATCSPI200_SPI=y
+ CONFIG_ATCPIT100_TIMER=y
+-CONFIG_MKIMAGE_DTC_PATH="${PWD}/scripts/dtc/dtc"
+ CONFIG_BOARD_LATE_INIT=y
+ CONFIG_V5L2_CACHE=y
+ CONFIG_SPL_CACHE=y
+diff --git a/configs/ae350_rv32_spl_xip_defconfig b/configs/ae350_rv32_spl_xip_defconfig
+index d0f5220f07..386cac2875 100644
+--- a/configs/ae350_rv32_spl_xip_defconfig
++++ b/configs/ae350_rv32_spl_xip_defconfig
+@@ -40,7 +40,6 @@ CONFIG_SYS_NS16550=y
+ CONFIG_SPI=y
+ CONFIG_ATCSPI200_SPI=y
+ CONFIG_ATCPIT100_TIMER=y
+-CONFIG_MKIMAGE_DTC_PATH="${PWD}/scripts/dtc/dtc"
+ CONFIG_BOARD_LATE_INIT=y
+ CONFIG_V5L2_CACHE=y
+ CONFIG_SPL_CACHE=y
+diff --git a/configs/ae350_rv64_spl_defconfig b/configs/ae350_rv64_spl_defconfig
+index 61b95ce84d..72c403eeb4 100644
+--- a/configs/ae350_rv64_spl_defconfig
++++ b/configs/ae350_rv64_spl_defconfig
+@@ -39,7 +39,6 @@ CONFIG_SYS_NS16550=y
+ CONFIG_SPI=y
+ CONFIG_ATCSPI200_SPI=y
+ CONFIG_ATCPIT100_TIMER=y
+-CONFIG_MKIMAGE_DTC_PATH="${PWD}/scripts/dtc/dtc"
+ CONFIG_BOARD_LATE_INIT=y
+ CONFIG_V5L2_CACHE=y
+ CONFIG_SPL_CACHE=y
+diff --git a/configs/ae350_rv64_spl_xip_defconfig b/configs/ae350_rv64_spl_xip_defconfig
+index 0d9b7ec1cc..fb2a047462 100644
+--- a/configs/ae350_rv64_spl_xip_defconfig
++++ b/configs/ae350_rv64_spl_xip_defconfig
+@@ -41,7 +41,6 @@ CONFIG_SYS_NS16550=y
+ CONFIG_SPI=y
+ CONFIG_ATCSPI200_SPI=y
+ CONFIG_ATCPIT100_TIMER=y
+-CONFIG_MKIMAGE_DTC_PATH="${PWD}/scripts/dtc/dtc"
+ CONFIG_BOARD_LATE_INIT=y
+ CONFIG_V5L2_CACHE=y
+ CONFIG_SPL_CACHE=y
+-- 
+2.34.1
+

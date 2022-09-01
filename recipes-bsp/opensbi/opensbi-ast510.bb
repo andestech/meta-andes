@@ -6,12 +6,15 @@ LIC_FILES_CHKSUM = "file://COPYING.BSD;md5=42dd9555eb177f35150cf9aa240b61e5"
 inherit autotools-brokensep deploy
 
 PV = "0.7+git${SRCPV}"
-BRANCH = "opensbi-ast-v5_1_0-branch"
 
-SRC_URI = "git://${LOCAL_SRC}/opensbi;protocol=file;branch=${BRANCH} \
+FORK = "andestech"
+BRANCH = "opensbi-ast-v5_1_0-branch"
+SRCREV = "79eadf38c5e41a3ebe006eba317bd392cbaa666d"
+SRC_URI = "git://github.com/${FORK}/opensbi.git;protocol=https;branch=${BRANCH} \
+           file://0001-Add-fno-stack-protector-to-avoid-linking-errors.patch \
+           file://0002-Add-fno-pie-no-pie-to-disable-PIC.patch \
           "
 
-SRCREV = "374fb296114031f1ecbf671ebdf80031f0a404f5"
 S = "${WORKDIR}/git"
 
 EXTRA_OEMAKE += "PLATFORM=${RISCV_SBI_PLAT} I=${D} INSTALL_LIB_PATH=lib FW_PIC=n"
@@ -40,4 +43,4 @@ FILES:${PN} += "/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_dynamic.*"
 COMPATIBLE_HOST = "(riscv64|riscv32).*"
 INHIBIT_PACKAGE_STRIP = "1"
 
-SECURITY_CFLAGS = ""
+INSANE_SKIP:${PN}:ae350-ax45mp += "ldflags"
