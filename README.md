@@ -4,7 +4,7 @@ This layer provides `ae350-ax45mp` machine configuration and recipes for buildin
 
 ## Building SD card image with kas-container
 
-[kas-container](https://kas.readthedocs.io/en/3.0.2/userguide.html) can setup an out-of-box yocto development environment based on Debian docker image, please make sure docker has been installed on your host machine before carrying out the following steps.
+[kas-container](https://kas.readthedocs.io/en/3.0.2/userguide.html) is used to set up an out of the box Yocto development environment based on the Debian docker image; before proceeding, make sure you have Docker installed on your host machine.
 
 ```
 $ mkdir riscv-andes && cd riscv-andes
