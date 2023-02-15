@@ -4,7 +4,7 @@ This layer provides `ae350-ax45mp` machine configuration and recipes for buildin
 
 ## Building SD card image with kas-container
 
-[kas-container](https://kas.readthedocs.io/en/3.0.2/userguide.html) can setup an out-of-box yocto development environment based on Debian docker image, make sure docker has been installed on your host machine before carrying out the following steps.
+[kas-container](https://kas.readthedocs.io/en/3.0.2/userguide.html) is used to set up an out of the box Yocto development environment based on the Debian docker image; before proceeding, make sure you have Docker installed on your host machine.
 
 ```
 $ mkdir riscv-andes && cd riscv-andes
@@ -13,15 +13,16 @@ $ wget https://raw.githubusercontent.com/siemens/kas/3.0.2/kas-container
 $ chmod a+x ./kas-container
 ```
 
-OpenSBI, U-boot and Linux source code from AndeSight 5.2.0 packages should be placed along with the meta-andes folder.
+AndeSight 5.2.0 provides OpenSBI, U-boot and Linux based on the following version.
+
+* [OpenSBI v1.0](https://github.com/andestech/opensbi/tree/opensbi-ast-v5_2_0-branch)
+* [U-boot v2022.04](https://github.com/andestech/uboot/tree/ast-v5_2_0-branch)
+* [Linux 5.4.220](https://github.com/andestech/linux/tree/RISCV-Linux-5.4-ast-v5_2_0-branch)
+
+Build poky distro:
 
 ```
-$ tree
-./
-|-- meta-andes/
-|-- opensbi/
-|-- u-boot/
-`-- linux-5.4/
+$ ./kas-container build meta-andes/ae350-ax45mp_poky.yml
 ```
 
 Build nodistro:
@@ -30,19 +31,13 @@ Build nodistro:
 $ ./kas-container build meta-andes/ae350-ax45mp.yml
 ```
 
-Build poky distro:
-
-```
-$ ./kas-container build meta-andes/ae350-ax45mp_poky.yml
-```
-
 ### Build results
 
 The generated SD card image will be located in the **build/tmp-glibc/deploy/images/<MACHINE>** directory (or **build/tmp/deploy/images/<MACHINE>** for poky distro).
 
 * core-image-minimal-ae350-ax45mp.wic.gz
 * fitImage
-* ae350_ax45mp.dtb
+* ae350_c4_64_d.dtb
 * boot.scr.uimg
 * uEnv.txt
 * u-boot-spl.bin
