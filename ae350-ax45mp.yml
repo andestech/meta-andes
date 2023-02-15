@@ -12,37 +12,22 @@ repos:
   meta-andes:
     path: /work/meta-andes
 
-  linux-5.4:
-    path: /work/linux-5.4
-    layers:
-        linux-5.4: excluded
-
-  opensbi:
-    path: /work/opensbi
-    layers:
-        opensbi: excluded
-
-  u-boot:
-    path: /work/u-boot
-    layers:
-        u-boot: excluded
-
   openembedded-core:
     url: https://github.com/openembedded/openembedded-core.git
-    refspec: dunfell
+    refspec: cb64ace13db85e143d99627c8803fbb13ba18617 # kirkstone
     layers:
       meta:
         
   bitbake:
     url: https://github.com/openembedded/bitbake.git
-    refspec: 2020-04.12-dunfell
+    refspec: c212b0f3b542efa19f15782421196b7f4b64b0b9 # 2.0
     path: openembedded-core/bitbake
     layers:
         bitbake: excluded
 
   meta-openembedded:
     url: https://git.openembedded.org/meta-openembedded
-    refspec: dunfell
+    refspec: 278ec081a64e6a7679d6def550101158126cd935 # kirkstone
     layers:
       meta-oe:
       meta-networking:
@@ -50,7 +35,7 @@ repos:
 
   meta-riscv:
     url: https://github.com/riscv/meta-riscv
-    refspec: dunfell
+    refspec: 75faf63282239614c6bf9ae29714a5d7c324fd56 # kirkstone
 
 bblayers_conf_header:
   meta-andes: |

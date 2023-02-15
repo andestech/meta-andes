@@ -12,28 +12,13 @@ repos:
   meta-andes:
     path: /work/meta-andes
 
-  linux-5.4:
-    path: /work/linux-5.4
-    layers:
-        linux-5.4: excluded
-
-  opensbi:
-    path: /work/opensbi
-    layers:
-        opensbi: excluded
-
-  u-boot:
-    path: /work/u-boot
-    layers:
-        u-boot: excluded
-
   meta-riscv:
     url: https://github.com/riscv/meta-riscv
-    refspec: dunfell
+    refspec: 75faf63282239614c6bf9ae29714a5d7c324fd56 # kirkstone
 
   poky:
     url: https://git.yoctoproject.org/git/poky
-    refspec: dunfell
+    refspec: 86e9630511321530ba6f19ebedbaebad1a89a89f # kirkstone
     layers:
       meta:
       meta-poky:
@@ -41,7 +26,7 @@ repos:
 
   meta-openembedded:
     url: https://git.openembedded.org/meta-openembedded
-    refspec: dunfell
+    refspec: 278ec081a64e6a7679d6def550101158126cd935 # kirkstone
     layers:
       meta-oe:
       meta-networking:
