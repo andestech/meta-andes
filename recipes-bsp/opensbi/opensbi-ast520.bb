@@ -10,8 +10,6 @@ PV = "1.0+git${SRCPV}"
 BRANCH = "opensbi-ast-v5_2_0-branch"
 SRCREV = "1924dbf4ce8670cde452a59a8a7efec944af162a"
 SRC_URI = "git:///work/opensbi;protocol=file;branch=${BRANCH} \
-           file://0001-Disable-PIC-explicitly-for-assembling.patch \
-           file://0002-sbi-riscv_locks.c-memory-barrior-for-AMO-instruction.patch \
           "
 
 S = "${WORKDIR}/git"
