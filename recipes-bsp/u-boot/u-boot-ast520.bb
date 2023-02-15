@@ -5,10 +5,12 @@ LIC_FILES_CHKSUM = "file://Licenses/README;md5=5a7450c57ffe5ae63fd732446b988025"
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 DEPENDS:append = " bc-native u-boot-tools-native python3-setuptools-native"
 
-SRCREV = "f06aae7a25901a6a2d6815fa98dab12910ebfc90"
+FORK = "andestech"
+SRCREV = "961862e072cc01fe46908a5d55901286847ac8f6"
 BRANCH = "ast-v5_2_0-branch"
 SRC_URI = " \
-    git:///work/u-boot;protocol=file;branch=${BRANCH} \
+    git://github.com/${FORK}/uboot.git;protocol=https;branch=${BRANCH} \
+    file://0001-spl-opensbi-convert-scratch-options-to-config.patch \
     file://mmc-support.cfg \
     file://opensbi-options.cfg \
     file://tftp-mmc-boot.txt \
