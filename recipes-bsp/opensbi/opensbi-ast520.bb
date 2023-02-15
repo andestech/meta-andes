@@ -7,9 +7,10 @@ inherit autotools-brokensep deploy
 
 PV = "1.0+git${SRCPV}"
 
+FORK = "andestech"
 BRANCH = "opensbi-ast-v5_2_0-branch"
-SRCREV = "1924dbf4ce8670cde452a59a8a7efec944af162a"
-SRC_URI = "git:///work/opensbi;protocol=file;branch=${BRANCH} \
+SRCREV = "3e46fc7b075c2a57568600ccf6cd04d31e8918df"
+SRC_URI = "git://github.com/${FORK}/opensbi.git;protocol=https;branch=${BRANCH} \
           "
 
 S = "${WORKDIR}/git"
