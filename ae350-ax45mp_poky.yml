@@ -39,7 +39,7 @@ bblayers_conf_header:
     BBFILES ?= ""
 local_conf_header:
   standard: |
-    CONF_VERSION = "1"
+    CONF_VERSION = "2"
     PACKAGE_CLASSES = "package_rpm"
     SDKMACHINE = "x86_64"
     # Use 'haveged' instead 'rng-tools' due to 'SIGSEGV' error during start 'rngd'
