@@ -2,6 +2,7 @@ SUMMARY = "RISC-V Open Source Supervisor Binary Interface (OpenSBI)"
 DESCRIPTION = "OpenSBI aims to provide an open-source and extensible implementation of the RISC-V SBI specification for a platform specific firmware (M-mode) and a general purpose OS, hypervisor or bootloader (S-mode or HS-mode). OpenSBI implementation can be easily extended by RISC-V platform or System-on-Chip vendors to fit a particular hadware configuration."
 LICENSE = "BSD-2-Clause"
 LIC_FILES_CHKSUM = "file://COPYING.BSD;md5=42dd9555eb177f35150cf9aa240b61e5"
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 inherit autotools-brokensep deploy
 
@@ -11,6 +12,7 @@ FORK = "andestech"
 BRANCH = "opensbi-ast-v5_2_0-branch"
 SRCREV = "3e46fc7b075c2a57568600ccf6cd04d31e8918df"
 SRC_URI = "git://github.com/${FORK}/opensbi.git;protocol=https;branch=${BRANCH} \
+           file://0001-force-flush-pipeline-for-outstanding-memory-access.patch \
           "
 
 S = "${WORKDIR}/git"
