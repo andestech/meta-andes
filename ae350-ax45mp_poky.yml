@@ -14,11 +14,11 @@ repos:
 
   meta-riscv:
     url: https://github.com/riscv/meta-riscv
-    refspec: 75faf63282239614c6bf9ae29714a5d7c324fd56 # kirkstone
+    refspec: 6f039004c2fa2be041c73d6ff711c86ae139faca # dunfell
 
   poky:
     url: https://git.yoctoproject.org/git/poky
-    refspec: 86e9630511321530ba6f19ebedbaebad1a89a89f # kirkstone
+    refspec: aec83663aadc871354b441eef0a3a41eb3780b13 # dunfell
     layers:
       meta:
       meta-poky:
@@ -26,7 +26,7 @@ repos:
 
   meta-openembedded:
     url: https://git.openembedded.org/meta-openembedded
-    refspec: 278ec081a64e6a7679d6def550101158126cd935 # kirkstone
+    refspec: e707e9b7cf5c62bff4fee029965a87b22dd4ccba # dunfell
     layers:
       meta-oe:
       meta-networking:
@@ -39,7 +39,7 @@ bblayers_conf_header:
     BBFILES ?= ""
 local_conf_header:
   standard: |
-    CONF_VERSION = "2"
+    CONF_VERSION = "1"
     PACKAGE_CLASSES = "package_rpm"
     SDKMACHINE = "x86_64"
     # Use 'haveged' instead 'rng-tools' due to 'SIGSEGV' error during start 'rngd'

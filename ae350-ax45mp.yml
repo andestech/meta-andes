@@ -14,20 +14,20 @@ repos:
 
   openembedded-core:
     url: https://github.com/openembedded/openembedded-core.git
-    refspec: cb64ace13db85e143d99627c8803fbb13ba18617 # kirkstone
+    refspec: daaee6fcb0d201f041678af433d8e1cd6f924d09 # dunfell
     layers:
       meta:
         
   bitbake:
     url: https://github.com/openembedded/bitbake.git
-    refspec: c212b0f3b542efa19f15782421196b7f4b64b0b9 # 2.0
+    refspec: c527976e28165de9606497c48d834872fe68372e # 1.46
     path: openembedded-core/bitbake
     layers:
         bitbake: excluded
 
   meta-openembedded:
     url: https://git.openembedded.org/meta-openembedded
-    refspec: 278ec081a64e6a7679d6def550101158126cd935 # kirkstone
+    refspec: e707e9b7cf5c62bff4fee029965a87b22dd4ccba # dunfell
     layers:
       meta-oe:
       meta-networking:
@@ -35,14 +35,14 @@ repos:
 
   meta-riscv:
     url: https://github.com/riscv/meta-riscv
-    refspec: 75faf63282239614c6bf9ae29714a5d7c324fd56 # kirkstone
+    refspec: 6f039004c2fa2be041c73d6ff711c86ae139faca # dunfell
 
 bblayers_conf_header:
   meta-andes: |
     LOCAL_CONF_VERSION = "7"
 local_conf_header:
   standard: |
-    CONF_VERSION = "2"
+    CONF_VERSION = "1"
     PACKAGE_CLASSES = "package_rpm"
     SDKMACHINE = "x86_64"
     # Use 'haveged' instead 'rng-tools' due to 'SIGSEGV' error during start 'rngd'
