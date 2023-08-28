@@ -1,0 +1,31 @@
+From 778a2d457dbe2bbadb63693a20c7ead471f041a3 Mon Sep 17 00:00:00 2001
+From: Mayuresh Chitale <mchitale@ventanamicro.com>
+Date: Mon, 14 Aug 2023 10:09:59 +0530
+Subject: [PATCH] Makefile: Force GNU hashing
+
+The Yocto QA step verifies that binaries and DSOs use DT_GNU_HASH rather than
+DT_HASH. If the linker is called directly, then we need to make sure to pass in
+the hashing style.
+
+Signed-off-by: Jeff Law <jlaw@ventanamicro.com>
+Signed-off-by: Mayuresh Chitale <mchitale@ventanamicro.com>
+---
+ Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 57839a4..ff3560d 100644
+--- a/Makefile
++++ b/Makefile
+@@ -161,7 +161,7 @@ ifeq ($(LD_IS_LLD),y)
+ RELAX_FLAG	=	-mno-relax
+ USE_LD_FLAG	=	-fuse-ld=lld
+ else
+-USE_LD_FLAG	=	-fuse-ld=bfd
++USE_LD_FLAG	=	-fuse-ld=bfd -Wl,--hash-style=gnu
+ endif
+ 
+ # Check whether the linker supports creating PIEs
+-- 
+2.34.1
+

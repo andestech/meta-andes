@@ -1,0 +1,26 @@
+header:
+  version: 14
+
+repos:
+  meta-riscv:
+    url: https://github.com/riscv/meta-riscv
+    path: layers/meta-riscv
+    commit: d6166341e85205871c45099211582a1f2321ea8c # master
+
+  poky:
+    url: https://git.yoctoproject.org/git/poky
+    path: layers/poky
+    commit: 61a59d00a0484fb3c0c64ca8eaa3a24c7f23fd24 # nanbield
+    layers:
+      meta:
+      meta-poky:
+      meta-yocto-bsp:
+
+  meta-openembedded:
+    url: https://git.openembedded.org/meta-openembedded
+    path: layers/meta-openembedded
+    commit: 2da6e1b0e43a8993fd422fee3f83940100b59f4c # nanbield
+    layers:
+      meta-oe:
+      meta-networking:
+      meta-python:

@@ -1,0 +1,32 @@
+From a9fa9f21654ea99dcaca1040f2d22a7c31db6f1b Mon Sep 17 00:00:00 2001
+From: Kas User <kas@example.com>
+Date: Sat, 23 Dec 2023 15:53:42 +0000
+Subject: [PATCH] Assume UTF-8 locale is not supported
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ src/btop.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/btop.cpp b/src/btop.cpp
+index 252f2a9..7fc6445 100644
+--- a/src/btop.cpp
++++ b/src/btop.cpp
+@@ -158,8 +158,6 @@ void argumentParser(const int& argc, char **argv) {
+ 				exit(1);
+ 			}
+ 		}
+-		else if (argument == "--utf-force")
+-			Global::utf_force = true;
+ 		else if (argument == "--debug")
+ 			Global::debug = true;
+ 		else {
+@@ -827,6 +825,8 @@ int main(int argc, char **argv) {
+ 
+ 	//? Call argument parser if launched with arguments
+ 	if (argc > 1) argumentParser(argc, argv);
++	// assume UTF-8 locale not support
++	Global::utf_force = true;
+ 
+ 	//? Setup paths for config, log and user themes
+ 	for (const auto& env : {"XDG_CONFIG_HOME", "HOME"}) {

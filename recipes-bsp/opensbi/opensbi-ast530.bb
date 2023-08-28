@@ -6,13 +6,13 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 inherit autotools-brokensep deploy
 
-PV = "1.0+git${SRCPV}"
+PV = "1.2+git${SRCPV}"
 
 FORK = "andestech"
-BRANCH = "opensbi-ast-v5_2_0-branch"
-SRCREV = "3e46fc7b075c2a57568600ccf6cd04d31e8918df"
+BRANCH = "ast-v5_3_0-branch"
+SRCREV = "6005a1b252ac0d7aa4f8d9cfd4d35b076b9dad8c"
 SRC_URI = "git://github.com/${FORK}/opensbi.git;protocol=https;branch=${BRANCH} \
-           file://0001-force-flush-pipeline-for-outstanding-memory-access.patch \
+           file://0001-Makefile-Force-GNU-hashing.patch \
           "
 
 S = "${WORKDIR}/git"
@@ -34,8 +34,3 @@ do_deploy () {
 addtask deploy before do_build after do_install
 
 FILES:${PN} += "/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_dynamic.*"
-
-COMPATIBLE_HOST = "(riscv64|riscv32).*"
-INHIBIT_PACKAGE_STRIP = "1"
-
-INSANE_SKIP:${PN}:ae350-ax45mp += "ldflags"
