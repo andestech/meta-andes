@@ -1,0 +1,57 @@
+From 7322f96aaf1c1fd645f385898cf4e8a027907866 Mon Sep 17 00:00:00 2001
+From: Simon Glass <sjg@chromium.org>
+Date: Thu, 12 Jan 2023 16:48:54 -0700
+Subject: [PATCH] vbe: Allow probing the VBE bootmeth to fail in OS fixup
+
+This device is created when there are no bootmeths defined in the device
+tree. But it cannot be probed without a device tree node.
+
+For now, ignore a probe failure.
+
+Signed-off-by: Simon Glass <sjg@chromium.org>
+Reported-by: Karsten Merker <merker@debian.org>
+Suggested-by: Heinrich Schuchardt <xypron.glpk@gmx.de>
+Fixes: a56f663f0707 ("vbe: Add info about the VBE device to the fwupd node")
+Tested-by: Vagrant Cascadian <vagrant@debian.org>
+Tested-by: Karsten Merker <merker@debian.org>
+---
+ boot/vbe_simple_os.c | 16 ++++++++++++----
+ 1 file changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/boot/vbe_simple_os.c b/boot/vbe_simple_os.c
+index b2041a95a3..8c641ec07e 100644
+--- a/boot/vbe_simple_os.c
++++ b/boot/vbe_simple_os.c
+@@ -72,6 +72,18 @@ static int bootmeth_vbe_simple_ft_fixup(void *ctx, struct event *event)
+ 		chosen = oftree_path(tree, "/chosen");
+ 		if (!ofnode_valid(chosen))
+ 			continue;
++
++		ret = device_probe(dev);
++		if (ret) {
++			/*
++			 * This should become an error when VBE is updated to
++			 * only bind this device when a node exists
++			 */
++			log_debug("VBE device '%s' failed to probe (err=%d)",
++				  dev->name, ret);
++			return 0;
++		}
++
+ 		ret = ofnode_add_subnode(chosen, "fwupd", &node);
+ 		if (ret && ret != -EEXIST)
+ 			return log_msg_ret("fwu", ret);
+@@ -80,10 +92,6 @@ static int bootmeth_vbe_simple_ft_fixup(void *ctx, struct event *event)
+ 		if (ret && ret != -EEXIST)
+ 			return log_msg_ret("dev", ret);
+ 
+-		ret = device_probe(dev);
+-		if (ret)
+-			return log_msg_ret("probe", ret);
+-
+ 		/* Copy over the vbe properties for fwupd */
+ 		log_debug("Fixing up: %s\n", dev->name);
+ 		ret = ofnode_copy_props(dev_ofnode(dev), subnode);
+-- 
+2.34.1
+

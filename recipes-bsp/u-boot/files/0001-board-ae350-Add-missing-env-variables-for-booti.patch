@@ -1,0 +1,46 @@
+From 889ab11af1d50454ba4274c7742da889ba8d9cfc Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Tue, 4 Jul 2023 19:13:21 +0800
+Subject: [PATCH] board: ae350: Add missing env variables for booti
+
+The 'booti' command is unable to boot Image.gz due to the absence
+of required environment variables 'kernel_comp_addr_r' and
+'kernel_comp_size'.
+
+This commit adds these variables and reorganizes the memory layout
+to prevent any overlap between binaries and files.
+
+Upstream commit: 12f66e2197c
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+Reviewed-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+---
+ include/configs/ae350.h | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/include/configs/ae350.h b/include/configs/ae350.h
+index 8012bedefe..778ab220d9 100644
+--- a/include/configs/ae350.h
++++ b/include/configs/ae350.h
+@@ -90,11 +90,15 @@
+ #include <config_distro_bootcmd.h>
+ 
+ #define CONFIG_EXTRA_ENV_SETTINGS	\
++				"fdt_high=0xffffffffffffffff\0" \
++				"initrd_high=0xffffffffffffffff\0" \
+ 				"kernel_addr_r=0x00600000\0" \
+-				"pxefile_addr_r=0x01f00000\0" \
+-				"scriptaddr=0x01f00000\0" \
+-				"fdt_addr_r=0x04600000\0" \
+-				"ramdisk_addr_r=0x04800000\0" \
++				"kernel_comp_addr_r=0x04600000\0" \
++				"kernel_comp_size=0x04000000\0" \
++				"pxefile_addr_r=0x08600000\0" \
++				"scriptaddr=0x08700000\0" \
++				"fdt_addr_r=0x08800000\0" \
++				"ramdisk_addr_r=0x08900000\0" \
+ 				BOOTENV
+ 
+ #endif /* __CONFIG_H */
+-- 
+2.34.1
+
