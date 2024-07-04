@@ -1,0 +1,134 @@
+From 8d5caf1b51040702cbd35e9173ea5d597865f133 Mon Sep 17 00:00:00 2001
+From: Leo Yu-Chi Liang <ycliang@andestech.com>
+Date: Fri, 19 Aug 2022 14:53:34 +0800
+Subject: [PATCH 16/34] riscv: Increase CONFIG_SYS_INIT_SP_ADDR (#36)
+
+Increase CONFIG_SYS_INIT_SP_ADDR and re-arrange other
+memory map. It can help to enlarge Kernel image size
+for booting.
+
+Signed-off-by: Rick Chen <rick@andestech.com>
+
+Co-authored-by: Rick Chen <rick@andestech.com>
+Reviewed-on: http://gitea.andestech.com:3000/RD-SW/u-boot.official/pulls/36
+---
+ configs/ae350_rv32_fastboot_defconfig     | 6 +++---
+ configs/ae350_rv32_fastboot_xip_defconfig | 4 ++--
+ configs/ae350_rv64_fastboot_defconfig     | 6 +++---
+ configs/ae350_rv64_fastboot_xip_defconfig | 4 ++--
+ include/configs/andes45-ae350.h           | 4 ++--
+ 5 files changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/configs/ae350_rv32_fastboot_defconfig b/configs/ae350_rv32_fastboot_defconfig
+index 4c96a94576..0638c15760 100644
+--- a/configs/ae350_rv32_fastboot_defconfig
++++ b/configs/ae350_rv32_fastboot_defconfig
+@@ -1,10 +1,10 @@
+ CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x01800000
++CONFIG_SYS_TEXT_BASE=0x1800000
+ CONFIG_SYS_MALLOC_LEN=0x80000
+ CONFIG_NR_DRAM_BANKS=2
+ CONFIG_ENV_SECT_SIZE=0x1000
+ CONFIG_DEFAULT_DEVICE_TREE="ae350_32"
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x1800000
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x2000000
+ CONFIG_SPL=y
+ CONFIG_TARGET_ANDES45_AE350=y
+ CONFIG_RISCV_SMODE=y
+@@ -13,7 +13,7 @@ CONFIG_SPL_LOAD_FIT_CONFIG="binman_d.dtsi"
+ CONFIG_DISTRO_DEFAULTS=y
+ CONFIG_SYS_LOAD_ADDR=0x100000
+ CONFIG_FIT=y
+-CONFIG_SPL_LOAD_FIT_ADDRESS=0x06000000
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x10000000
+ CONFIG_BOOTDELAY=3
+ CONFIG_MISC_INIT_R=y
+ CONFIG_SPL_BOARD_INIT=y
+diff --git a/configs/ae350_rv32_fastboot_xip_defconfig b/configs/ae350_rv32_fastboot_xip_defconfig
+index f7a7502c92..0133a1e4d3 100644
+--- a/configs/ae350_rv32_fastboot_xip_defconfig
++++ b/configs/ae350_rv32_fastboot_xip_defconfig
+@@ -1,11 +1,11 @@
+ CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x01200000
++CONFIG_SYS_TEXT_BASE=0x1800000
+ CONFIG_SYS_MALLOC_LEN=0x80000
+ CONFIG_NR_DRAM_BANKS=2
+ CONFIG_ENV_SECT_SIZE=0x1000
+ CONFIG_DEFAULT_DEVICE_TREE="ae350_32"
+ CONFIG_SPL_TEXT_BASE=0x80000000
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x1800000
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x2000000
+ CONFIG_SPL=y
+ CONFIG_TARGET_ANDES45_AE350=y
+ CONFIG_RISCV_SMODE=y
+diff --git a/configs/ae350_rv64_fastboot_defconfig b/configs/ae350_rv64_fastboot_defconfig
+index 3f0a9e16b7..a0495ade95 100644
+--- a/configs/ae350_rv64_fastboot_defconfig
++++ b/configs/ae350_rv64_fastboot_defconfig
+@@ -1,10 +1,10 @@
+ CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x01200000
++CONFIG_SYS_TEXT_BASE=0x1800000
+ CONFIG_SYS_MALLOC_LEN=0x80000
+ CONFIG_NR_DRAM_BANKS=2
+ CONFIG_ENV_SECT_SIZE=0x1000
+ CONFIG_DEFAULT_DEVICE_TREE="ae350_64"
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x1800000
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x2000000
+ CONFIG_SPL=y
+ CONFIG_TARGET_ANDES45_AE350=y
+ CONFIG_ARCH_RV64I=y
+@@ -14,7 +14,7 @@ CONFIG_SPL_LOAD_FIT_CONFIG="binman_d.dtsi"
+ CONFIG_DISTRO_DEFAULTS=y
+ CONFIG_SYS_LOAD_ADDR=0x100000
+ CONFIG_FIT=y
+-CONFIG_SPL_LOAD_FIT_ADDRESS=0x06000000
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x10000000
+ CONFIG_BOOTDELAY=3
+ CONFIG_MISC_INIT_R=y
+ CONFIG_SPL_BOARD_INIT=y
+diff --git a/configs/ae350_rv64_fastboot_xip_defconfig b/configs/ae350_rv64_fastboot_xip_defconfig
+index 67fcf880f4..b34e3c0630 100644
+--- a/configs/ae350_rv64_fastboot_xip_defconfig
++++ b/configs/ae350_rv64_fastboot_xip_defconfig
+@@ -1,11 +1,11 @@
+ CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x01200000
++CONFIG_SYS_TEXT_BASE=0x1800000
+ CONFIG_SYS_MALLOC_LEN=0x80000
+ CONFIG_NR_DRAM_BANKS=2
+ CONFIG_ENV_SECT_SIZE=0x1000
+ CONFIG_DEFAULT_DEVICE_TREE="ae350_64"
+ CONFIG_SPL_TEXT_BASE=0x80000000
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x1800000
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x2000000
+ CONFIG_SPL=y
+ CONFIG_TARGET_ANDES45_AE350=y
+ CONFIG_ARCH_RV64I=y
+diff --git a/include/configs/andes45-ae350.h b/include/configs/andes45-ae350.h
+index 7b23a9795e..79cacf3b33 100644
+--- a/include/configs/andes45-ae350.h
++++ b/include/configs/andes45-ae350.h
+@@ -11,7 +11,7 @@
+ 
+ #ifdef CONFIG_SPL
+ #define CONFIG_SPL_MAX_SIZE		0x00100000
+-#define CONFIG_SPL_BSS_START_ADDR	0x04000000
++#define CONFIG_SPL_BSS_START_ADDR	0x00400000
+ #define CONFIG_SPL_BSS_MAX_SIZE		0x00100000
+ 
+ #ifdef CONFIG_SPL_MMC
+@@ -78,7 +78,7 @@
+ #define CONFIG_SYS_NS16550_CLK		19660800
+ 
+ /* Init Stack Pointer */
+-#define CONFIG_SYS_INIT_SP_ADDR		(CONFIG_SYS_SDRAM_BASE + 0x4000000 - \
++#define CONFIG_SYS_INIT_SP_ADDR		(CONFIG_SYS_SDRAM_BASE + 0x10000000 - \
+ 					GENERATED_GBL_DATA_SIZE)
+ 
+ /* use CFI framework */
+-- 
+2.34.1
+

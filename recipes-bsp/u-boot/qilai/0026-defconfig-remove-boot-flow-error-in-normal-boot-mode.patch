@@ -1,0 +1,60 @@
+From 242f41345e8d1421f8fd3a31d39b5cc91d0ca8c3 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Mon, 21 Aug 2023 11:46:49 +0800
+Subject: [PATCH 26/34] defconfig: remove boot flow error in normal boot mode
+
+remove EFI loader and FTMAC100 driver
+---
+ configs/qilai_ax45_spl_defconfig     | 2 +-
+ configs/qilai_ax45_spl_xip_defconfig | 2 +-
+ configs/qilai_invecas_spl_defconfig  | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/configs/qilai_ax45_spl_defconfig b/configs/qilai_ax45_spl_defconfig
+index b2592dd54c..6278bbad39 100644
+--- a/configs/qilai_ax45_spl_defconfig
++++ b/configs/qilai_ax45_spl_defconfig
+@@ -38,9 +38,9 @@ CONFIG_FLASH_CFI_DRIVER=y
+ CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
+ CONFIG_SYS_FLASH_CFI=y
+ CONFIG_SPI_FLASH_MACRONIX=y
+-CONFIG_FTMAC100=y
+ CONFIG_BAUDRATE=38400
+ CONFIG_SYS_NS16550=y
+ CONFIG_SPI=y
+ CONFIG_ATCSPI200_SPI=y
+ # CONFIG_BINMAN_FDT is not set
++CONFIG_EFI_LOADER=n
+diff --git a/configs/qilai_ax45_spl_xip_defconfig b/configs/qilai_ax45_spl_xip_defconfig
+index 1f421bd7fc..e4e6515643 100644
+--- a/configs/qilai_ax45_spl_xip_defconfig
++++ b/configs/qilai_ax45_spl_xip_defconfig
+@@ -41,9 +41,9 @@ CONFIG_FLASH_CFI_DRIVER=y
+ CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
+ CONFIG_SYS_FLASH_CFI=y
+ CONFIG_SPI_FLASH_MACRONIX=y
+-CONFIG_FTMAC100=y
+ CONFIG_BAUDRATE=38400
+ CONFIG_SYS_NS16550=y
+ CONFIG_SPI=y
+ CONFIG_ATCSPI200_SPI=y
+ # CONFIG_BINMAN_FDT is not set
++CONFIG_EFI_LOADER=n
+diff --git a/configs/qilai_invecas_spl_defconfig b/configs/qilai_invecas_spl_defconfig
+index f61f3c17e1..83fb2e2cc2 100644
+--- a/configs/qilai_invecas_spl_defconfig
++++ b/configs/qilai_invecas_spl_defconfig
+@@ -38,9 +38,9 @@ CONFIG_FLASH_CFI_DRIVER=y
+ CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
+ CONFIG_SYS_FLASH_CFI=y
+ CONFIG_SPI_FLASH_MACRONIX=y
+-CONFIG_FTMAC100=y
+ CONFIG_BAUDRATE=38400
+ CONFIG_SYS_NS16550=y
+ CONFIG_SPI=y
+ CONFIG_ATCSPI200_SPI=y
+ # CONFIG_BINMAN_FDT is not set
++CONFIG_EFI_LOADER=n
+-- 
+2.34.1
+

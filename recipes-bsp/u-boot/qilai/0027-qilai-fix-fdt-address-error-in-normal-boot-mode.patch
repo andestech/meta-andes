@@ -1,0 +1,39 @@
+From 8eae1db639c11f4a2e2fcda57fb70ee74a379ca9 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Mon, 21 Aug 2023 13:08:52 +0800
+Subject: [PATCH 27/34] qilai: fix fdt address error in normal boot mode
+
+---
+ include/configs/andes45-qilai-invecas.h | 2 +-
+ include/configs/andes45-qilai.h         | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/include/configs/andes45-qilai-invecas.h b/include/configs/andes45-qilai-invecas.h
+index 074aed6bac..5e9babf1db 100644
+--- a/include/configs/andes45-qilai-invecas.h
++++ b/include/configs/andes45-qilai-invecas.h
+@@ -133,7 +133,7 @@
+ 				"kernel_addr_r=0x400600000\0" \
+ 				"pxefile_addr_r=0x401f00000\0" \
+ 				"scriptaddr=0x401f00000\0" \
+-				"fdt_addr_r=0x404600000\0" \
++				"fdt_addr_r=0x420000000\0" \
+ 				"ramdisk_addr_r=0x404800000\0" \
+ 				BOOTENV
+ 
+diff --git a/include/configs/andes45-qilai.h b/include/configs/andes45-qilai.h
+index f999531457..3b76159b89 100644
+--- a/include/configs/andes45-qilai.h
++++ b/include/configs/andes45-qilai.h
+@@ -133,7 +133,7 @@
+ 				"kernel_addr_r=0x400600000\0" \
+ 				"pxefile_addr_r=0x401f00000\0" \
+ 				"scriptaddr=0x401f00000\0" \
+-				"fdt_addr_r=0x404600000\0" \
++				"fdt_addr_r=0x420000000\0" \
+ 				"ramdisk_addr_r=0x404800000\0" \
+ 				BOOTENV
+ 
+-- 
+2.34.1
+

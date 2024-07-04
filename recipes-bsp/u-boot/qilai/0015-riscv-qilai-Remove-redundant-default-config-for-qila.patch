@@ -1,0 +1,388 @@
+From e2a9e2aa176e7ef76c4b7d44caa580b0e6807667 Mon Sep 17 00:00:00 2001
+From: Leo Yu-Chi Liang <ycliang@andestech.com>
+Date: Mon, 25 Jul 2022 14:34:51 +0800
+Subject: [PATCH 15/34] riscv: qilai: Remove redundant default config for qilai
+
+Signed-off-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+---
+ arch/riscv/dts/Makefile         |   2 +-
+ arch/riscv/dts/qilai_32.dts     | 301 --------------------------------
+ configs/qilai_a45_spl_defconfig |  45 -----
+ 3 files changed, 1 insertion(+), 347 deletions(-)
+ delete mode 100644 arch/riscv/dts/qilai_32.dts
+ delete mode 100644 configs/qilai_a45_spl_defconfig
+
+diff --git a/arch/riscv/dts/Makefile b/arch/riscv/dts/Makefile
+index fbbcd08bbd..672f368721 100644
+--- a/arch/riscv/dts/Makefile
++++ b/arch/riscv/dts/Makefile
+@@ -2,7 +2,7 @@
+ 
+ dtb-$(CONFIG_TARGET_ANDES25_AE350) += ae350_32.dtb ae350_64.dtb
+ dtb-$(CONFIG_TARGET_ANDES45_AE350) += ae350_32.dtb ae350_64.dtb
+-dtb-$(CONFIG_TARGET_ANDES45_QILAI) += qilai_32.dtb qilai_64.dtb
++dtb-$(CONFIG_TARGET_ANDES45_QILAI) += qilai_64.dtb
+ dtb-$(CONFIG_TARGET_MICROCHIP_ICICLE) += microchip-mpfs-icicle-kit.dtb
+ dtb-$(CONFIG_TARGET_QEMU_VIRT) += qemu-virt32.dtb qemu-virt64.dtb
+ dtb-$(CONFIG_TARGET_OPENPITON_RISCV64) += openpiton-riscv64.dtb
+diff --git a/arch/riscv/dts/qilai_32.dts b/arch/riscv/dts/qilai_32.dts
+deleted file mode 100644
+index 1b36847a6c..0000000000
+--- a/arch/riscv/dts/qilai_32.dts
++++ /dev/null
+@@ -1,301 +0,0 @@
+-// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+-
+-/dts-v1/;
+-
+-#include "binman.dtsi"
+-
+-/ {
+-	#address-cells = <0x2>;
+-	#size-cells = <0x2>;
+-	compatible = "andestech,a45";
+-	model = "andestech,a45";
+-
+-	aliases {
+-		uart0 = &serial0;
+-		spi0 = &spi;
+-		i2c0 = &i2c;
+-	};
+-
+-	chosen {
+-		bootargs = "console=ttyS0,38400n8 earlycon=sbi debug loglevel=7";
+-		stdout-path = "uart0:38400n8";
+-	};
+-
+-	cpus {
+-		#address-cells = <0x1>;
+-		#size-cells = <0x0>;
+-		timebase-frequency = <0x3938700>;
+-
+-		CPU0: cpu@0 {
+-			device_type = "cpu";
+-			reg = <0x0>;
+-			status = "okay";
+-			compatible = "riscv";
+-			riscv,isa = "rv32imafdc";
+-			riscv,priv-major = <0x1>;
+-			riscv,priv-minor = <0xa>;
+-			mmu-type = "riscv,sv32";
+-			clock-frequency = <0x3938700>;
+-			i-cache-size = <0x8000>;
+-			i-cache-line-size = <0x20>;
+-			d-cache-size = <0x8000>;
+-			d-cache-line-size = <0x20>;
+-			next-level-cache = <&L2>;
+-
+-			CPU0_intc: interrupt-controller {
+-				#interrupt-cells = <0x1>;
+-				interrupt-controller;
+-				compatible = "riscv,cpu-intc";
+-			};
+-		};
+-
+-		CPU1: cpu@1 {
+-			device_type = "cpu";
+-			reg = <0x1>;
+-			status = "okay";
+-			compatible = "riscv";
+-			riscv,isa = "rv32imafdc";
+-			riscv,priv-major = <0x1>;
+-			riscv,priv-minor = <0xa>;
+-			mmu-type = "riscv,sv32";
+-			clock-frequency = <0x3938700>;
+-			i-cache-size = <0x8000>;
+-			i-cache-line-size = <0x20>;
+-			d-cache-size = <0x8000>;
+-			d-cache-line-size = <0x20>;
+-			next-level-cache = <&L2>;
+-
+-			CPU1_intc: interrupt-controller {
+-				#interrupt-cells = <0x1>;
+-				interrupt-controller;
+-				compatible = "riscv,cpu-intc";
+-			};
+-		};
+-
+-		CPU2: cpu@2 {
+-			device_type = "cpu";
+-			reg = <0x2>;
+-			status = "okay";
+-			compatible = "riscv";
+-			riscv,isa = "rv32imafdc";
+-			riscv,priv-major = <0x1>;
+-			riscv,priv-minor = <0xa>;
+-			mmu-type = "riscv,sv32";
+-			clock-frequency = <0x3938700>;
+-			i-cache-size = <0x8000>;
+-			i-cache-line-size = <0x20>;
+-			d-cache-size = <0x8000>;
+-			d-cache-line-size = <0x20>;
+-			next-level-cache = <&L2>;
+-
+-			CPU2_intc: interrupt-controller {
+-				#interrupt-cells = <0x1>;
+-				interrupt-controller;
+-				compatible = "riscv,cpu-intc";
+-			};
+-		};
+-
+-		CPU3: cpu@3 {
+-			device_type = "cpu";
+-			reg = <0x3>;
+-			status = "okay";
+-			compatible = "riscv";
+-			riscv,isa = "rv32imafdc";
+-			riscv,priv-major = <0x1>;
+-			riscv,priv-minor = <0xa>;
+-			mmu-type = "riscv,sv32";
+-			clock-frequency = <0x3938700>;
+-			i-cache-size = <0x8000>;
+-			i-cache-line-size = <0x20>;
+-			d-cache-size = <0x8000>;
+-			d-cache-line-size = <0x20>;
+-			next-level-cache = <&L2>;
+-
+-			CPU3_intc: interrupt-controller {
+-				#interrupt-cells = <0x1>;
+-				interrupt-controller;
+-				compatible = "riscv,cpu-intc";
+-			};
+-		};
+-	};
+-
+-	L2: l2-cache@200000 {
+-		compatible = "cache";
+-		cache-level = <0x2>;
+-		cache-size = <0x40000>;
+-		reg = <0x0 0x00200000 0x0 0x100000>;
+-		andes,inst-prefetch = <0x3>;
+-		andes,data-prefetch = <0x3>;
+-		andes,tag-ram-ctl = <0x0 0x0>;
+-		andes,data-ram-ctl = <0x0 0x0>;
+-	};
+-
+-	memory@400000000 {
+-		device_type = "memory";
+-		reg = <0x04 0x00000000 0x0 0x40000000>;
+-	};
+-
+-	soc {
+-		#address-cells = <0x2>;
+-		#size-cells = <0x2>;
+-		compatible = "andestech,riscv-ae350-soc", "simple-bus";
+-		ranges;
+-
+-		plic0: interrupt-controller@2000000 {
+-			compatible = "riscv,plic0";
+-			#address-cells = <0x2>;
+-			#interrupt-cells = <0x2>;
+-			interrupt-controller;
+-			reg = <0x0 0x02000000 0x0 0x2000000>;
+-			riscv,ndev = <0x47>;
+-			interrupts-extended = <&CPU0_intc 11 &CPU0_intc 9
+-				&CPU1_intc 11 &CPU1_intc 9
+-				&CPU2_intc 11 &CPU2_intc 9
+-				&CPU3_intc 11 &CPU3_intc 9>;
+-		};
+-
+-		plic1: interrupt-controller@400000 {
+-			compatible = "riscv,plic1";
+-			#address-cells = <0x2>;
+-			#interrupt-cells = <0x2>;
+-			interrupt-controller;
+-			reg = <0x0 0x00400000 0x0 0x400000>;
+-			riscv,ndev = <0x1>;
+-			interrupts-extended = <&CPU0_intc 3
+-				&CPU1_intc 3
+-				&CPU2_intc 3
+-				&CPU3_intc 3>;
+-		};
+-
+-		plmt0@100000 {
+-			compatible = "riscv,plmt0";
+-			reg = <0x0 0x00100000 0x0 0x100000>;
+-			interrupts-extended = <&CPU0_intc 7
+-				&CPU1_intc 7
+-				&CPU2_intc 7
+-				&CPU3_intc 7>;
+-		};
+-	};
+-
+-	spiclk: virt_100mhz {
+-		#clock-cells = <0x0>;
+-		compatible = "fixed-clock";
+-		clock-frequency = <0x5f5e100>;
+-	};
+-
+-	smu@30100000 {
+-		compatible = "andestech,atcsmu";
+-		reg = <0x0 0x30100000 0x0 0x100000>;
+-	};
+-
+-	wdt@30500000 {
+-		compatible = "andestech,atcwdt200";
+-		interrupts = <0x0 0x4>;
+-		reg = <0x0 0x30500000 0x0 0x100000>;
+-		clock-frequency = <0xe4e1c0>;
+-		interrupt-parent = <&plic0>;
+-	};
+-
+-	timer0: timer@30400000 {
+-		compatible = "andestech,atcpit100";
+-		reg = <0x0 0x30400000 0x0 0x100000>;
+-		clock-frequency = <0x3938700>;
+-		interrupts = <0x3 0x4>;
+-		interrupt-parent = <&plic0>;
+-	};
+-
+-	serial0: serial@30300000 {
+-		compatible = "andestech,uart16550", "ns16550a";
+-		reg = <0x0 0x30300000 0x0 0x1000>;
+-		interrupts = <0x9 0x4>;
+-		clock-frequency = <0x12c0000>;
+-		reg-shift = <0x2>;
+-		reg-offset = <0x20>;
+-		no-loopback-test = <0x1>;
+-		interrupt-parent = <&plic0>;
+-	};
+-
+-	gpio@30700000 {
+-		compatible = "andestech,atcgpio100";
+-		reg = <0x0 0x30700000 0x0 0x100000>;
+-		interrupts = <0x7 0x4>;
+-		interrupt-parent = <&plic0>;
+-	};
+-
+-	rtc@30600000 {
+-		compatible = "andestech,atcrtc100";
+-		reg = <0x0 0x30600000 0x0 0x100000>;
+-		interrupts = <0x1 0x4 0x2 0x4>;
+-		interrupt-parent = <&plic0>;
+-		wakeup-source;
+-	};
+-
+-	mmc0: mmc@30c00000 {
+-		compatible = "andestech,atfsdc010";
+-		max-frequency = <0x5f5e100>;
+-		clock-freq-min-max = <0x61a80 0x5f5e100>;
+-		fifo-depth = <0x10>;
+-		reg = <0x0 0x30c00000 0x0 0x1000>;
+-		interrupts = <0x12 0x4>;
+-		cap-sd-highspeed;
+-		interrupt-parent = <&plic0>;
+-		dma-coherent;
+-	};
+-
+-	dma0: dma@30a00000 {
+-		compatible = "andestech,atcdmac300";
+-		reg = <0x0 0x30a00000 0x0 0x100000>;
+-		interrupts = <0xa 0x4 0x40 0x4 0x41 0x4 0x42 0x4 0x43 0x4 0x44 0x4 0x45 0x4 0x46 0x4 0x47 0x4>;
+-		dma-channels = <0x8>;
+-		interrupt-parent = <&plic0>;
+-		dma-coherent;
+-	};
+-
+-	pmu {
+-		device_type = "pmu";
+-		compatible = "riscv,andes-pmu";
+-	};
+-
+-	nor@0,0 {
+-		compatible = "cfi-flash";
+-		reg = <0x0 0x88000000 0x0 0x1000>;
+-		bank-width = <0x2>;
+-		device-width = <0x1>;
+-	};
+-
+-	spi: spi@30900000 {
+-		compatible = "andestech,atcspi200";
+-		reg = <0x0 0x30900000 0x0 0x100000>;
+-		#address-cells = <0x1>;
+-		#size-cells = <0x0>;
+-		num-cs = <0x1>;
+-		clocks = <&spiclk>;
+-		interrupts = <0x4 0x4>;
+-		interrupt-parent = <&plic0>;
+-
+-		flash@0 {
+-			compatible = "mx25u1635e", "jedec,spi-nor";
+-			spi-max-frequency = <0x2faf080>;
+-			reg = <0x0>;
+-			spi-cpol;
+-			spi-cpha;
+-		};
+-	};
+-
+-	pwm@30400000 {
+-		compatible = "andestech,atcpit100-pwm";
+-		reg = <0x0 0x30400000 0x0 0x100000>;
+-		clock-frequency = <0x3938700>;
+-		interrupts = <0x3 0x4>;
+-		interrupt-parent = <&plic0>;
+-		pwm-cells = <0x2>;
+-	};
+-
+-	i2c: i2c@30800000 {
+-		compatible = "andestech,atciic100";
+-		reg = <0x0 0x30800000 0x0 0x100000>;
+-		interrupts = <0x6 0x4>;
+-		interrupt-parent = <&plic0>;
+-	};
+-
+-};
+diff --git a/configs/qilai_a45_spl_defconfig b/configs/qilai_a45_spl_defconfig
+deleted file mode 100644
+index e54b58fb3e..0000000000
+--- a/configs/qilai_a45_spl_defconfig
++++ /dev/null
+@@ -1,45 +0,0 @@
+-CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x401200000
+-CONFIG_SYS_MALLOC_LEN=0x800000
+-CONFIG_NR_DRAM_BANKS=2
+-CONFIG_ENV_SECT_SIZE=0x1000
+-CONFIG_DEFAULT_DEVICE_TREE="qilai_32"
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
+-CONFIG_SPL=y
+-CONFIG_TARGET_ANDES45_QILAI=y
+-CONFIG_RISCV_SMODE=y
+-CONFIG_DISTRO_DEFAULTS=y
+-CONFIG_SYS_LOAD_ADDR=0x100000
+-CONFIG_FIT=y
+-CONFIG_SPL_LOAD_FIT_CONFIG="binman.dtsi"
+-CONFIG_SPL_LOAD_FIT_ADDRESS=0x400200000
+-CONFIG_BOOTDELAY=3
+-CONFIG_MISC_INIT_R=y
+-CONFIG_SPL_CACHE=y
+-CONFIG_SYS_PROMPT="RISC-V # "
+-CONFIG_CMD_IMLS=y
+-CONFIG_CMD_MMC=y
+-CONFIG_CMD_SF_TEST=y
+-# CONFIG_CMD_SETEXPR is not set
+-CONFIG_BOOTP_PREFER_SERVERIP=y
+-CONFIG_CMD_CACHE=y
+-CONFIG_OF_BOARD=y
+-CONFIG_ENV_OVERWRITE=y
+-CONFIG_ENV_IS_IN_SPI_FLASH=y
+-CONFIG_BOOTP_SEND_HOSTNAME=y
+-CONFIG_NET_RANDOM_ETHADDR=y
+-CONFIG_V5L2_CACHE=y
+-CONFIG_MMC=y
+-CONFIG_FTSDC010=y
+-CONFIG_FTSDC010_SDIO=y
+-# CONFIG_MTD_NOR_FLASH is not set
+-CONFIG_FLASH_CFI_DRIVER=y
+-CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
+-CONFIG_SYS_FLASH_CFI=y
+-CONFIG_SPI_FLASH_MACRONIX=y
+-CONFIG_FTMAC100=y
+-CONFIG_BAUDRATE=38400
+-CONFIG_SYS_NS16550=y
+-CONFIG_SPI=y
+-CONFIG_ATCSPI200_SPI=y
+-# CONFIG_BINMAN_FDT is not set
+-- 
+2.34.1
+

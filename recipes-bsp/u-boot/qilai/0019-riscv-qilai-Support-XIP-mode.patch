@@ -1,0 +1,122 @@
+From 3aaf70fbcf19facf3950057f4343f6d9e613661b Mon Sep 17 00:00:00 2001
+From: Rick Chen <rick@andestech.com>
+Date: Mon, 7 Nov 2022 15:34:11 +0800
+Subject: [PATCH 19/34] riscv: qilai: Support XIP mode
+
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ arch/riscv/Kconfig                   |  7 ++++
+ arch/riscv/Makefile                  |  3 ++
+ arch/riscv/config.mk                 |  7 +++-
+ configs/qilai_ax45_spl_xip_defconfig | 49 ++++++++++++++++++++++++++++
+ 4 files changed, 65 insertions(+), 1 deletion(-)
+ create mode 100644 configs/qilai_ax45_spl_xip_defconfig
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 8c3fb69bd0..4aed0594bf 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -122,6 +122,13 @@ config CMODEL_MEDANY
+ 
+ endchoice
+ 
++config SPL_CMODEL_LARGE
++	bool "Large model"
++	default n
++	help
++	  U-Boot and its statically defined symbols exceed 4 GiB
++	  address range.
++
+ choice
+ 	prompt "Run Mode"
+ 	default RISCV_MMODE
+diff --git a/arch/riscv/Makefile b/arch/riscv/Makefile
+index 0b80eb8d86..58f55b26b8 100644
+--- a/arch/riscv/Makefile
++++ b/arch/riscv/Makefile
+@@ -24,6 +24,9 @@ ifeq ($(CONFIG_CMODEL_MEDANY),y)
+ 	CMODEL = medany
+ endif
+ 
++ifeq ($(CONFIG_$(SPL_)CMODEL_LARGE),y)
++	CMODEL = large
++endif
+ ARCH_FLAGS = -march=$(ARCH_BASE)$(ARCH_A)$(ARCH_C) -mabi=$(ABI) \
+ 	     -mcmodel=$(CMODEL)
+ 
+diff --git a/arch/riscv/config.mk b/arch/riscv/config.mk
+index 1ebce5bd67..2bf0872626 100644
+--- a/arch/riscv/config.mk
++++ b/arch/riscv/config.mk
+@@ -25,7 +25,12 @@ endif
+ 
+ CONFIG_STANDALONE_LOAD_ADDR ?= 0x00000000
+ 
+-PLATFORM_CPPFLAGS	+= -ffixed-gp -fpic
++PLATFORM_CPPFLAGS	+= -ffixed-gp
++ifeq ($(CONFIG_$(SPL_)CMODEL_LARGE),y)
++PLATFORM_CPPFLAGS       += -fno-pic -mcmodel=large
++else
++PLATFORM_CPPFLAGS	+= -fpic
++endif
+ PLATFORM_RELFLAGS	+= -fno-common -gdwarf-2 -ffunction-sections \
+ 			   -fdata-sections
+ LDFLAGS_u-boot		+= --gc-sections -static -pie
+diff --git a/configs/qilai_ax45_spl_xip_defconfig b/configs/qilai_ax45_spl_xip_defconfig
+new file mode 100644
+index 0000000000..1f421bd7fc
+--- /dev/null
++++ b/configs/qilai_ax45_spl_xip_defconfig
+@@ -0,0 +1,49 @@
++CONFIG_RISCV=y
++CONFIG_SYS_TEXT_BASE=0x401200000
++CONFIG_SYS_MALLOC_LEN=0x800000
++CONFIG_NR_DRAM_BANKS=2
++CONFIG_ENV_SECT_SIZE=0x1000
++CONFIG_DEFAULT_DEVICE_TREE="qilai_64"
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
++CONFIG_SPL_TEXT_BASE=0x8000000
++CONFIG_SPL=y
++CONFIG_TARGET_ANDES45_QILAI=y
++CONFIG_ARCH_RV64I=y
++CONFIG_RISCV_SMODE=y
++CONFIG_DISTRO_DEFAULTS=y
++CONFIG_SYS_LOAD_ADDR=0x400100000
++CONFIG_FIT=y
++CONFIG_SPL_LOAD_FIT_CONFIG="binman.dtsi"
++CONFIG_XIP=y
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x8010000
++CONFIG_SPL_OPENSBI_LOAD_ADDR=0x400000000
++CONFIG_BOOTDELAY=3
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
++CONFIG_SPL_CMODEL_LARGE=y
++CONFIG_SYS_PROMPT="RISC-V # "
++CONFIG_CMD_IMLS=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_SF_TEST=y
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_BOOTP_PREFER_SERVERIP=y
++CONFIG_CMD_CACHE=y
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_SPI_FLASH=y
++CONFIG_BOOTP_SEND_HOSTNAME=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
++CONFIG_MMC=y
++CONFIG_FTSDC010=y
++CONFIG_FTSDC010_SDIO=y
++# CONFIG_MTD_NOR_FLASH is not set
++CONFIG_FLASH_CFI_DRIVER=y
++CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
++CONFIG_SYS_FLASH_CFI=y
++CONFIG_SPI_FLASH_MACRONIX=y
++CONFIG_FTMAC100=y
++CONFIG_BAUDRATE=38400
++CONFIG_SYS_NS16550=y
++CONFIG_SPI=y
++CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+-- 
+2.34.1
+

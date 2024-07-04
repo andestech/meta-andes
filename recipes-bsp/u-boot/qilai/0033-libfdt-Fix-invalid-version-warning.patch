@@ -1,0 +1,34 @@
+From d38c5b5aecf605e987acdaca8176923a4265945e Mon Sep 17 00:00:00 2001
+From: Michal Suchanek <msuchanek@suse.de>
+Date: Thu, 13 Oct 2022 22:39:51 +0200
+Subject: [PATCH 33/34] libfdt: Fix invalid version warning
+
+python does not like the u-boot- prefix in the version, drop it.
+
+/usr/lib/python3.10/site-packages/setuptools/dist.py:544: UserWarning:
+The version specified ('u-boot-2022.10') is an invalid version, this may
+not work as expected with newer versions of setuptools, pip, and PyPI.
+Please see PEP 440 for more details.
+
+Signed-off-by: Michal Suchanek <msuchanek@suse.de>
+Reviewed-by: Simon Glass <sjg@chromium.org>
+---
+ scripts/dtc/pylibfdt/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/dtc/pylibfdt/Makefile b/scripts/dtc/pylibfdt/Makefile
+index 493995e303..a7579f0c5f 100644
+--- a/scripts/dtc/pylibfdt/Makefile
++++ b/scripts/dtc/pylibfdt/Makefile
+@@ -17,7 +17,7 @@ quiet_cmd_pymod = PYMOD   $@
+       cmd_pymod = unset CROSS_COMPILE; unset CFLAGS; \
+ 		CC="$(HOSTCC)" LDSHARED="$(HOSTCC) -shared " \
+ 		LDFLAGS="$(HOSTLDFLAGS)" \
+-		VERSION="u-boot-$(UBOOTVERSION)" \
++		VERSION="$(UBOOTVERSION)" \
+ 		CPPFLAGS="$(HOSTCFLAGS) -I$(LIBFDT_srcdir)" OBJDIR=$(obj) \
+ 		SOURCES="$(PYLIBFDT_srcs)" \
+ 		SWIG_OPTS="-I$(LIBFDT_srcdir) -I$(LIBFDT_srcdir)/.." \
+-- 
+2.34.1
+

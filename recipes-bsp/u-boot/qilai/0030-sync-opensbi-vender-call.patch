@@ -1,0 +1,26 @@
+From 9b874321745be4f7ddc9d4768d7af40f1bb3306d Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Wed, 6 Mar 2024 21:11:15 +0800
+Subject: [PATCH 30/34] sync opensbi vender call
+
+---
+ arch/riscv/include/asm/sbi.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/riscv/include/asm/sbi.h b/arch/riscv/include/asm/sbi.h
+index e6e97db055..37f181275c 100644
+--- a/arch/riscv/include/asm/sbi.h
++++ b/arch/riscv/include/asm/sbi.h
+@@ -115,7 +115,8 @@ enum sbi_ext_andes_fid {
+ 	SBI_EXT_ANDES_FREE_PMA,
+ 	SBI_EXT_ANDES_PROBE_PMA,
+ 	SBI_EXT_ANDES_DCACHE_WBINVAL_ALL,
+-	SBI_EXT_ANDES_OPENAMP_IDX,
++        SBI_EXT_ANDES_HPM,
++        SBI_EXT_ANDES_OPENAMP_IDX,
+ 	SBI_EXT_ANDES_OPENAMP_SEND_IPI,
+ };
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,58 @@
+From c109035ba03e09cdd28bd4e0897b3b7f677a603d Mon Sep 17 00:00:00 2001
+From: Dylan Jhong <dylan@andestech.com>
+Date: Fri, 22 Jul 2022 14:46:19 +0800
+Subject: [PATCH 13/34] riscv: Adjust OpenSBI load address to 0x0
+
+After OpenSBI enables FW_PIC=y, the OpenSBI will not do self relocation at runtime.
+In order to keep the same memory layout as usual, we will load OpenSBI directly
+to 0x0 in u-boot-spl.
+
+Signed-off-by: Dylan Jhong <dylan@andestech.com>
+---
+ board/AndesTech/ae350/Kconfig | 4 ++--
+ board/AndesTech/qilai/Kconfig | 4 +---
+ 2 files changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/board/AndesTech/ae350/Kconfig b/board/AndesTech/ae350/Kconfig
+index f067afcc6e..e8575d63ec 100644
+--- a/board/AndesTech/ae350/Kconfig
++++ b/board/AndesTech/ae350/Kconfig
+@@ -22,7 +22,7 @@ config SPL_TEXT_BASE
+ 	default 0x800000
+ 
+ config SPL_OPENSBI_LOAD_ADDR
+-	default 0x01000000
++	default 0x00000000
+ 
+ config BOARD_SPECIFIC_OPTIONS # dummy
+ 	def_bool y
+@@ -61,7 +61,7 @@ config SPL_TEXT_BASE
+ 	default 0x800000
+ 
+ config SPL_OPENSBI_LOAD_ADDR
+-	default 0x01000000
++	default 0x00000000
+ 
+ config BOARD_SPECIFIC_OPTIONS # dummy
+ 	def_bool y
+diff --git a/board/AndesTech/qilai/Kconfig b/board/AndesTech/qilai/Kconfig
+index c4ad66ea89..5233e815c2 100644
+--- a/board/AndesTech/qilai/Kconfig
++++ b/board/AndesTech/qilai/Kconfig
+@@ -19,12 +19,10 @@ config ENV_OFFSET
+ 	default 0x140000 if ENV_IS_IN_SPI_FLASH
+ 
+ config SPL_TEXT_BASE
+-	default 0x402000000 if (SPL_LOAD_FIT_PAYLOAD || SPL_LOAD_FIT_JUMP)  && RISCV
+ 	default 0x400800000
+ 
+ config SPL_OPENSBI_LOAD_ADDR
+-	default 0x400000000 if (SPL_LOAD_FIT_PAYLOAD || SPL_LOAD_FIT_JUMP)  && RISCV
+-	default 0x401000000
++	default 0x400000000
+ 
+ config BOARD_SPECIFIC_OPTIONS # dummy
+ 	def_bool y
+-- 
+2.34.1
+

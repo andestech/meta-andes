@@ -1,0 +1,127 @@
+From b0c78fd55071329594a89e7423ef27d2a5e75bb1 Mon Sep 17 00:00:00 2001
+From: Leo Yu-Chi Liang <ycliang@andestech.com>
+Date: Thu, 26 May 2022 10:21:09 +0800
+Subject: [PATCH 05/34] Add support for Andes 8-core bitmap and L2 v1 memory
+ map
+
+This patch set includes the following patches:
+
+	0be94c0c0a riscv: andes_plic.c: Add support for 8 core bitmap
+	c809ebd581 drivers: cache-v5l2.c: Support L2 v1 memory map
+	1f0ce24fd9 riscv: L2C: Refine status base address
+
+Signed-off-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ arch/riscv/lib/andes_plic.c |  9 +++++----
+ drivers/cache/cache-v5l2.c  | 34 ++++++++++++++++++++++++++--------
+ 2 files changed, 31 insertions(+), 12 deletions(-)
+
+diff --git a/arch/riscv/lib/andes_plic.c b/arch/riscv/lib/andes_plic.c
+index b0d2d46b4d..e4b4401c44 100644
+--- a/arch/riscv/lib/andes_plic.c
++++ b/arch/riscv/lib/andes_plic.c
+@@ -29,19 +29,20 @@
+ /* priority register */
+ #define PRIORITY_REG(base)	((ulong)(base) + PLICSW_PRIORITY_BASE)
+ 
+-#define ENABLE_HART_IPI         (0x80808080)
+-#define SEND_IPI_TO_HART(hart)  (0x80 >> (hart))
++#define ENABLE_HART_IPI         (0x01010101)
++#define SEND_IPI_TO_HART(hart)  (0x1 << (hart))
+ #define PLICSW_PRIORITY_BASE        0x4
+ #define PLICSW_INTERRUPT_PER_HART   0x8
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+-static int enable_ipi(int hart)
++int enable_ipi(int hart)
+ {
+ 	unsigned int en;
+ 
+-	en = ENABLE_HART_IPI >> hart;
++	en = ENABLE_HART_IPI << hart;
+ 	writel(en, (void __iomem *)ENABLE_REG(gd->arch.plic, hart));
++	writel(en, (void __iomem *)ENABLE_REG((gd->arch.plic) + 0x4, hart));
+ 
+ 	return 0;
+ }
+diff --git a/drivers/cache/cache-v5l2.c b/drivers/cache/cache-v5l2.c
+index 2cfc805ea0..715f134bbb 100644
+--- a/drivers/cache/cache-v5l2.c
++++ b/drivers/cache/cache-v5l2.c
+@@ -34,6 +34,14 @@ struct l2cache {
+ 	volatile u64	cctl_status;
+ };
+ 
++/* Configuration register */
++#define MEM_MAP_OFF	20
++#define MEM_MAP_MSK	BIT(MEM_MAP_OFF)
++/* offset of v0 memory map */
++u32 cmd_offset = 0x10;
++u32 stat_offset = 0x0;
++u32 stat_bit_offset = 0x4;
++
+ /* Control Register */
+ #define L2_ENABLE	0x1
+ /* prefetch */
+@@ -53,14 +61,15 @@ struct l2cache {
+ #define DRAMICTL_MSK	BIT(DRAMICTL_OFF)
+ 
+ /* CCTL Command Register */
+-#define CCTL_CMD_REG(base, hart)	((ulong)(base) + 0x40 + (hart) * 0x10)
++#define CCTL_CMD_REG(base, hart)	((ulong)(base) + 0x40 + (hart) * (cmd_offset))
+ #define L2_WBINVAL_ALL	0x12
+ 
+ /* CCTL Status Register */
+-#define CCTL_STATUS_MSK(hart)		(0xf << ((hart) * 4))
+-#define CCTL_STATUS_IDLE(hart)		(0 << ((hart) * 4))
+-#define CCTL_STATUS_PROCESS(hart)	(1 << ((hart) * 4))
+-#define CCTL_STATUS_ILLEGAL(hart)	(2 << ((hart) * 4))
++#define CCTL_STATUS_REG(base, hart)	((ulong)(base) + 0x80 + (hart) * (stat_offset))
++#define CCTL_STATUS_MSK(hart)		(0xf << ((hart) * (stat_bit_offset)))
++#define CCTL_STATUS_IDLE(hart)		(0 << ((hart) * (stat_bit_offset)))
++#define CCTL_STATUS_PROCESS(hart)	(1 << ((hart) * (stat_bit_offset)))
++#define CCTL_STATUS_ILLEGAL(hart)	(2 << ((hart) * (stat_bit_offset)))
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+@@ -89,12 +98,13 @@ static int v5l2_wbinval(struct udevice *dev)
+ 	volatile struct l2cache *regs = plat->regs;
+ 	u8 hart = gd->arch.boot_hart;
+ 	void __iomem *cctlcmd = (void __iomem *)CCTL_CMD_REG(regs, hart);
++	void __iomem *cctlstat = (void __iomem *)CCTL_STATUS_REG(regs, hart);
+ 
+ 	if ((regs) && (readl(&regs->control) & L2_ENABLE)) {
+ 		writel(L2_WBINVAL_ALL, cctlcmd);
+ 
+-		while ((readl(&regs->cctl_status) & CCTL_STATUS_MSK(hart))) {
+-			if ((readl(&regs->cctl_status) & CCTL_STATUS_ILLEGAL(hart))) {
++		while (readl(cctlstat) & CCTL_STATUS_MSK(hart)) {
++			if (readl(cctlstat) & CCTL_STATUS_ILLEGAL(hart)) {
+ 				printf("L2 flush illegal! hanging...");
+ 				hang();
+ 			}
+@@ -148,10 +158,18 @@ static int v5l2_probe(struct udevice *dev)
+ {
+ 	struct v5l2_plat *plat = dev_get_plat(dev);
+ 	struct l2cache *regs = plat->regs;
+-	u32 ctl_val;
++	u32 cfg_val, ctl_val;
+ 
++	cfg_val = readl(&regs->configure);
+ 	ctl_val = readl(&regs->control);
+ 
++	/* If true, v1 memory map */
++	if (cfg_val & MEM_MAP_MSK) {
++		cmd_offset = 0x1000;
++		stat_offset = 0x1000;
++		stat_bit_offset = 0x0;
++	}
++
+ 	if (!(ctl_val & L2_ENABLE))
+ 		ctl_val |= L2_ENABLE;
+ 
+-- 
+2.34.1
+

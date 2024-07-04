@@ -1,0 +1,40 @@
+From b4affe7d795b14de2db74aa709d020bdca583833 Mon Sep 17 00:00:00 2001
+From: Rick Chen <rick@andestech.com>
+Date: Thu, 10 Nov 2022 15:08:29 +0800
+Subject: [PATCH 21/34] riscv: qilai: Correct SYS_FDT_BASE
+
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ include/configs/andes45-qilai-invecas.h | 2 +-
+ include/configs/andes45-qilai.h         | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/include/configs/andes45-qilai-invecas.h b/include/configs/andes45-qilai-invecas.h
+index 536255b51b..703dc7d157 100644
+--- a/include/configs/andes45-qilai-invecas.h
++++ b/include/configs/andes45-qilai-invecas.h
+@@ -56,7 +56,7 @@
+ #define CONFIG_SYS_NONCACHED_MEMORY	SZ_1M
+ 
+ /* DT blob (fdt) address */
+-#define CONFIG_SYS_FDT_BASE		0x4800f0000
++#define CONFIG_SYS_FDT_BASE		0x80f0000
+ 
+ /*
+  * Physical Memory Map
+diff --git a/include/configs/andes45-qilai.h b/include/configs/andes45-qilai.h
+index 8e58f32975..f5b58fc26c 100644
+--- a/include/configs/andes45-qilai.h
++++ b/include/configs/andes45-qilai.h
+@@ -56,7 +56,7 @@
+ #define CONFIG_SYS_NONCACHED_MEMORY	SZ_1M
+ 
+ /* DT blob (fdt) address */
+-#define CONFIG_SYS_FDT_BASE		0x4800f0000
++#define CONFIG_SYS_FDT_BASE		0x80f0000
+ 
+ /*
+  * Physical Memory Map
+-- 
+2.34.1
+

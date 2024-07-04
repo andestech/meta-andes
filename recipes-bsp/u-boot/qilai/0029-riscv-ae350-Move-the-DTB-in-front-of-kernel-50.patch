@@ -1,0 +1,154 @@
+From 1328e0add300ac991ec216afefa90a7172d38c4a Mon Sep 17 00:00:00 2001
+From: Dylan Dai-Rong Jhong <dylan@andestech.com>
+Date: Wed, 18 Jan 2023 11:40:39 +0800
+Subject: [PATCH 29/34] riscv: ae350: Move the DTB in front of kernel (#50)
+
+Originally, u-boot-spl will place DTB directly after the kernel,
+but the size of the kernel do not include the BSS section, which
+means u-boot-spl will place the DTB in the kernel BSS section
+causing the DTB to be cleared by kernel BSS initializtion.
+
+Moving DTB in front of the kernel can avoid the error.
+
+Signed-off-by: Dylan Jhong <dylan@andestech.com>
+Reviewed-by: Rick Chen <rick@andestech.com>
+Reviewed-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+Reviewed-on: http://gitea.andestech.com:3000/RD-SW/u-boot.official/pulls/50
+---
+ board/AndesTech/ae350/andes25-ae350.c | 25 +++++++++++++++++++++++++
+ board/AndesTech/ae350/andes45-ae350.c | 25 +++++++++++++++++++++++++
+ board/AndesTech/qilai/qilai-invecas.c | 25 +++++++++++++++++++++++++
+ 3 files changed, 75 insertions(+)
+
+diff --git a/board/AndesTech/ae350/andes25-ae350.c b/board/AndesTech/ae350/andes25-ae350.c
+index d598621d01..2c954b881d 100644
+--- a/board/AndesTech/ae350/andes25-ae350.c
++++ b/board/AndesTech/ae350/andes25-ae350.c
+@@ -21,6 +21,8 @@
+ #include <fdtdec.h>
+ #include <dm.h>
+ #include <spl.h>
++#include <mapmem.h>
++#include <hang.h>
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+@@ -42,6 +44,29 @@ int misc_init_r(void)
+ 	return (csr_marchid & mask64)? env_set("cpu", rv64cpu) : env_set("cpu", rv32cpu);
+ }
+ 
++#if CONFIG_IS_ENABLED(LOAD_FIT) || CONFIG_IS_ENABLED(LOAD_FIT_FULL)
++#define ANDES_SPL_FDT_ADDR	(CONFIG_SYS_TEXT_BASE - 0x100000)
++void spl_perform_fixups(struct spl_image_info *spl_image)
++{
++	/*
++	 * Originally, u-boot-spl will place DTB directly after the kernel,
++	 * but the size of the kernel did not include the BSS section, which
++	 * means u-boot-spl will place the DTB in the kernel BSS section
++	 * causing the DTB to be cleared by kernel BSS initializtion.
++	 * Moving DTB in front of the kernel can avoid the error.
++	 */
++	if (ANDES_SPL_FDT_ADDR < 0) {
++		printf("%s: CONFIG_SYS_TEXT_BASE needs to be larger than 0x100000\n",
++		       __func__);
++		hang();
++	}
++
++	memcpy((void *)ANDES_SPL_FDT_ADDR, spl_image->fdt_addr,
++	       fdt_totalsize(spl_image->fdt_addr));
++	spl_image->fdt_addr = map_sysmem(ANDES_SPL_FDT_ADDR, 0);
++}
++#endif
++
+ int board_init(void)
+ {
+ 	gd->bd->bi_boot_params = PHYS_SDRAM_0 + 0x400;
+diff --git a/board/AndesTech/ae350/andes45-ae350.c b/board/AndesTech/ae350/andes45-ae350.c
+index 5ea701ecdc..698f055954 100644
+--- a/board/AndesTech/ae350/andes45-ae350.c
++++ b/board/AndesTech/ae350/andes45-ae350.c
+@@ -21,6 +21,8 @@
+ #include <fdtdec.h>
+ #include <dm.h>
+ #include <spl.h>
++#include <mapmem.h>
++#include <hang.h>
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+@@ -41,6 +43,29 @@ int misc_init_r(void)
+ 	return (csr_marchid & mask64)? env_set("cpu", "ax45") : env_set("cpu", "a45");
+ }
+ 
++#if CONFIG_IS_ENABLED(LOAD_FIT) || CONFIG_IS_ENABLED(LOAD_FIT_FULL)
++#define ANDES_SPL_FDT_ADDR	(CONFIG_SYS_TEXT_BASE - 0x100000)
++void spl_perform_fixups(struct spl_image_info *spl_image)
++{
++	/*
++	 * Originally, u-boot-spl will place DTB directly after the kernel,
++	 * but the size of the kernel did not include the BSS section, which
++	 * means u-boot-spl will place the DTB in the kernel BSS section
++	 * causing the DTB to be cleared by kernel BSS initializtion.
++	 * Moving DTB in front of the kernel can avoid the error.
++	 */
++	if (ANDES_SPL_FDT_ADDR < 0) {
++		printf("%s: CONFIG_SYS_TEXT_BASE needs to be larger than 0x100000\n",
++		       __func__);
++		hang();
++	}
++
++	memcpy((void *)ANDES_SPL_FDT_ADDR, spl_image->fdt_addr,
++	       fdt_totalsize(spl_image->fdt_addr));
++	spl_image->fdt_addr = map_sysmem(ANDES_SPL_FDT_ADDR, 0);
++}
++#endif
++
+ int board_init(void)
+ {
+ 	gd->bd->bi_boot_params = PHYS_SDRAM_0 + 0x400;
+diff --git a/board/AndesTech/qilai/qilai-invecas.c b/board/AndesTech/qilai/qilai-invecas.c
+index ddb5948b41..350929bb8a 100644
+--- a/board/AndesTech/qilai/qilai-invecas.c
++++ b/board/AndesTech/qilai/qilai-invecas.c
+@@ -21,6 +21,8 @@
+ #include <fdtdec.h>
+ #include <dm.h>
+ #include <spl.h>
++#include <mapmem.h>
++#include <hang.h>
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+@@ -41,6 +43,29 @@ int misc_init_r(void)
+ 	return (csr_marchid & mask64)? env_set("cpu", "ax45") : env_set("cpu", "a45");
+ }
+ 
++#if CONFIG_IS_ENABLED(LOAD_FIT) || CONFIG_IS_ENABLED(LOAD_FIT_FULL)
++#define ANDES_SPL_FDT_ADDR	(CONFIG_SYS_TEXT_BASE - 0x100000)
++void spl_perform_fixups(struct spl_image_info *spl_image)
++{
++	/*
++	 * Originally, u-boot-spl will place DTB directly after the kernel,
++	 * but the size of the kernel did not include the BSS section, which
++	 * means u-boot-spl will place the DTB in the kernel BSS section
++	 * causing the DTB to be cleared by kernel BSS initializtion.
++	 * Moving DTB in front of the kernel can avoid the error.
++	 */
++	if (ANDES_SPL_FDT_ADDR < 0) {
++		printf("%s: CONFIG_TEXT_BASE needs to be larger than 0x100000\n",
++		       __func__);
++		hang();
++	}
++
++	memcpy((void *)ANDES_SPL_FDT_ADDR, spl_image->fdt_addr,
++	       fdt_totalsize(spl_image->fdt_addr));
++	spl_image->fdt_addr = map_sysmem(ANDES_SPL_FDT_ADDR, 0);
++}
++#endif
++
+ int board_init(void)
+ {
+ 	gd->bd->bi_boot_params = PHYS_SDRAM_0 + 0x400;
+-- 
+2.34.1
+

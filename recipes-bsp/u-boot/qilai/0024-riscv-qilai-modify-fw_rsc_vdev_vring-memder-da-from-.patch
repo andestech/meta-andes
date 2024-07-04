@@ -1,0 +1,40 @@
+From 6719cb78297e231530c3609edb74c35bd5396992 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Wed, 18 Jan 2023 11:43:12 +0800
+Subject: [PATCH 24/34] riscv: qilai: modify fw_rsc_vdev_vring memder da from
+ u32 to u64
+
+---
+ drivers/remoteproc/rproc-uclass.c | 2 +-
+ include/remoteproc.h              | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/remoteproc/rproc-uclass.c b/drivers/remoteproc/rproc-uclass.c
+index 50bcc9030e..313490aea0 100644
+--- a/drivers/remoteproc/rproc-uclass.c
++++ b/drivers/remoteproc/rproc-uclass.c
+@@ -663,7 +663,7 @@ static int alloc_vring(struct udevice *dev, struct fw_rsc_vdev *rsc, int i)
+ 	int order;
+ 	void *pa;
+ 
+-	debug("vdev rsc: vring%d: da %x, qsz %d, align %d\n",
++	debug("vdev rsc: vring%d: da %16lx, qsz %d, align %d\n",
+ 	      i, vring->da, vring->num, vring->align);
+ 
+ 	/*
+diff --git a/include/remoteproc.h b/include/remoteproc.h
+index f48054de6b..9baabe410e 100644
+--- a/include/remoteproc.h
++++ b/include/remoteproc.h
+@@ -196,7 +196,7 @@ struct fw_rsc_trace {
+  * dynamically allocation of the vring's device address is supported.
+  */
+ struct fw_rsc_vdev_vring {
+-	u32 da;
++	u64 da;
+ 	u32 align;
+ 	u32 num;
+ 	u32 notifyid;
+-- 
+2.34.1
+

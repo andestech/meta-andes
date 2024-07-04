@@ -1,0 +1,30 @@
+From e96a4bcc78f8281e642e17e9ec90a24ff494516f Mon Sep 17 00:00:00 2001
+From: Leo Yu-Chi Liang <ycliang@andestech.com>
+Date: Tue, 26 Jul 2022 16:08:20 +0800
+Subject: [PATCH 14/34] board: andes25-ae350: Add check before enabling L2
+ cache
+
+Enable L2 cache only when D cache is enabled.
+
+Signed-off-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+---
+ board/AndesTech/ae350/andes25-ae350.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/board/AndesTech/ae350/andes25-ae350.c b/board/AndesTech/ae350/andes25-ae350.c
+index d5611fbce7..d598621d01 100644
+--- a/board/AndesTech/ae350/andes25-ae350.c
++++ b/board/AndesTech/ae350/andes25-ae350.c
+@@ -121,7 +121,8 @@ int board_early_init_f(void)
+ #ifdef CONFIG_BOARD_EARLY_INIT_R
+ int board_early_init_r(void)
+ {
+-	enable_caches();
++	if (!CONFIG_IS_ENABLED(SYS_DCACHE_OFF))
++		enable_caches();
+ 
+ 	return 0;
+ }
+-- 
+2.34.1
+

@@ -1,0 +1,371 @@
+From 259d41079473849f4b387e1e7c1551166e369b92 Mon Sep 17 00:00:00 2001
+From: Leo Yu-Chi Liang <ycliang@andestech.com>
+Date: Mon, 25 Jul 2022 14:00:08 +0800
+Subject: [PATCH 07/34] riscv: ae350: Remove jump mode fast boot
+
+Signed-off-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+---
+ arch/riscv/Kconfig                        |  6 --
+ arch/riscv/dts/binman_j.dtsi              | 78 -----------------------
+ board/AndesTech/ae350/Kconfig             |  8 +--
+ configs/ae350_rv32_spl_jump_defconfig     | 46 -------------
+ configs/ae350_rv32_spl_xip_jump_defconfig | 48 --------------
+ configs/ae350_rv64_spl_jump_defconfig     | 47 --------------
+ configs/ae350_rv64_spl_xip_jump_defconfig | 49 --------------
+ 7 files changed, 4 insertions(+), 278 deletions(-)
+ delete mode 100644 arch/riscv/dts/binman_j.dtsi
+ delete mode 100644 configs/ae350_rv32_spl_jump_defconfig
+ delete mode 100644 configs/ae350_rv32_spl_xip_jump_defconfig
+ delete mode 100644 configs/ae350_rv64_spl_jump_defconfig
+ delete mode 100644 configs/ae350_rv64_spl_xip_jump_defconfig
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 5281f93c2c..666e743f1f 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -258,12 +258,6 @@ config SPL_LOAD_FIT_DYNAMIC
+ 	help
+ 	  Use fw_dynamic from the FIT image.
+ 
+-config SPL_LOAD_FIT_JUMP
+-	bool "Enable SPL (jump mode) applying linux from FIT"
+-	depends on SPL_LOAD_FIT
+-	help
+-	  Use fw_jump from the FIT image.
+-
+ config SPL_LOAD_FIT_PAYLOAD
+ 	bool "Enable SPL (payload mode) applying linux from FIT"
+ 	depends on SPL_LOAD_FIT
+diff --git a/arch/riscv/dts/binman_j.dtsi b/arch/riscv/dts/binman_j.dtsi
+deleted file mode 100644
+index 6cbdf1f08a..0000000000
+--- a/arch/riscv/dts/binman_j.dtsi
++++ /dev/null
+@@ -1,78 +0,0 @@
+-// SPDX-License-Identifier: GPL-2.0+
+-/*
+- * Copyright (C) 2021, Bin Meng <bmeng.cn@gmail.com>
+- */
+-
+-#include <config.h>
+-
+-/ {
+-	binman: binman {
+-		multiple-images;
+-	};
+-};
+-
+-&binman {
+-	itb {
+-		filename = "linux.itb";
+-
+-		fit {
+-			description = "Configuration to load OpenSBI before Linux";
+-			#address-cells = <1>;
+-			fit,fdt-list = "of-list";
+-
+-			images {
+-				linux {
+-					description = "Linux";
+-					type = "standalone";
+-					os = "Linux";
+-					arch = "riscv";
+-					compression = "none";
+-					load = <CONFIG_SYS_TEXT_BASE>;
+-
+-					linux_blob: blob-ext {
+-						filename = "Image";
+-					};
+-				};
+-
+-				opensbi {
+-					description = "OpenSBI fw_jump Firmware";
+-					type = "firmware";
+-					os = "opensbi";
+-					arch = "riscv";
+-					compression = "none";
+-					load = <CONFIG_SPL_OPENSBI_LOAD_ADDR>;
+-					entry = <CONFIG_SPL_OPENSBI_LOAD_ADDR>;
+-
+-					opensbi_blob: opensbi {
+-						filename = "fw_jump.bin";
+-					};
+-				};
+-
+-#ifndef CONFIG_OF_BOARD
+-				@fdt-SEQ {
+-					description = "NAME";
+-					type = "flat_dt";
+-					compression = "none";
+-				};
+-#endif
+-			};
+-
+-			configurations {
+-				default = "conf-1";
+-
+-#ifndef CONFIG_OF_BOARD
+-				@conf-SEQ {
+-#else
+-				conf-1 {
+-#endif
+-					description = "NAME";
+-					firmware = "opensbi";
+-					loadables = "linux";
+-#ifndef CONFIG_OF_BOARD
+-					fdt = "fdt-SEQ";
+-#endif
+-				};
+-			};
+-		};
+-	};
+-};
+diff --git a/board/AndesTech/ae350/Kconfig b/board/AndesTech/ae350/Kconfig
+index 232ba06f0e..8b5a2bda99 100644
+--- a/board/AndesTech/ae350/Kconfig
++++ b/board/AndesTech/ae350/Kconfig
+@@ -19,11 +19,11 @@ config ENV_OFFSET
+ 	default 0x140000 if ENV_IS_IN_SPI_FLASH
+ 
+ config SPL_TEXT_BASE
+-	default 0x02000000 if (SPL_LOAD_FIT_PAYLOAD || SPL_LOAD_FIT_JUMP)  && RISCV
++	default 0x02000000 if (SPL_LOAD_FIT_PAYLOAD)  && RISCV
+ 	default 0x800000
+ 
+ config SPL_OPENSBI_LOAD_ADDR
+-	default 0x00000000 if (SPL_LOAD_FIT_PAYLOAD || SPL_LOAD_FIT_JUMP)  && RISCV
++	default 0x00000000 if (SPL_LOAD_FIT_PAYLOAD)  && RISCV
+ 	default 0x01000000
+ 
+ config BOARD_SPECIFIC_OPTIONS # dummy
+@@ -60,11 +60,11 @@ config ENV_OFFSET
+ 	default 0x140000 if ENV_IS_IN_SPI_FLASH
+ 
+ config SPL_TEXT_BASE
+-	default 0x02000000 if (SPL_LOAD_FIT_PAYLOAD || SPL_LOAD_FIT_JUMP)  && RISCV
++	default 0x02000000 if (SPL_LOAD_FIT_PAYLOAD)  && RISCV
+ 	default 0x800000
+ 
+ config SPL_OPENSBI_LOAD_ADDR
+-	default 0x00000000 if (SPL_LOAD_FIT_PAYLOAD || SPL_LOAD_FIT_JUMP)  && RISCV
++	default 0x00000000 if (SPL_LOAD_FIT_PAYLOAD)  && RISCV
+ 	default 0x01000000
+ 
+ config BOARD_SPECIFIC_OPTIONS # dummy
+diff --git a/configs/ae350_rv32_spl_jump_defconfig b/configs/ae350_rv32_spl_jump_defconfig
+deleted file mode 100644
+index 4212100556..0000000000
+--- a/configs/ae350_rv32_spl_jump_defconfig
++++ /dev/null
+@@ -1,46 +0,0 @@
+-CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x0200000
+-CONFIG_SYS_MALLOC_LEN=0x80000
+-CONFIG_NR_DRAM_BANKS=2
+-CONFIG_ENV_SECT_SIZE=0x1000
+-CONFIG_DEFAULT_DEVICE_TREE="ae350_32"
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x1800000
+-CONFIG_SPL=y
+-CONFIG_TARGET_ANDES45_AE350=y
+-CONFIG_RISCV_SMODE=y
+-CONFIG_SPL_LOAD_FIT_JUMP=y
+-CONFIG_SPL_LOAD_FIT_CONFIG="binman_j.dtsi"
+-CONFIG_DISTRO_DEFAULTS=y
+-CONFIG_SYS_LOAD_ADDR=0x100000
+-CONFIG_FIT=y
+-CONFIG_SPL_LOAD_FIT_ADDRESS=0x06000000
+-CONFIG_BOOTDELAY=3
+-CONFIG_MISC_INIT_R=y
+-CONFIG_SPL_BOARD_INIT=y
+-CONFIG_SPL_CACHE=y
+-CONFIG_SYS_PROMPT="RISC-V # "
+-CONFIG_CMD_IMLS=y
+-CONFIG_CMD_MMC=y
+-CONFIG_CMD_SF_TEST=y
+-# CONFIG_CMD_SETEXPR is not set
+-CONFIG_BOOTP_PREFER_SERVERIP=y
+-CONFIG_CMD_CACHE=y
+-CONFIG_ENV_OVERWRITE=y
+-CONFIG_ENV_IS_IN_SPI_FLASH=y
+-CONFIG_BOOTP_SEND_HOSTNAME=y
+-CONFIG_NET_RANDOM_ETHADDR=y
+-CONFIG_V5L2_CACHE=y
+-CONFIG_MMC=y
+-CONFIG_FTSDC010=y
+-CONFIG_FTSDC010_SDIO=y
+-CONFIG_MTD_NOR_FLASH=y
+-CONFIG_FLASH_CFI_DRIVER=y
+-CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
+-CONFIG_SYS_FLASH_CFI=y
+-CONFIG_SPI_FLASH_MACRONIX=y
+-CONFIG_FTMAC100=y
+-CONFIG_BAUDRATE=38400
+-CONFIG_SYS_NS16550=y
+-CONFIG_SPI=y
+-CONFIG_ATCSPI200_SPI=y
+-# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/ae350_rv32_spl_xip_jump_defconfig b/configs/ae350_rv32_spl_xip_jump_defconfig
+deleted file mode 100644
+index 82104ccffe..0000000000
+--- a/configs/ae350_rv32_spl_xip_jump_defconfig
++++ /dev/null
+@@ -1,48 +0,0 @@
+-CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x0200000
+-CONFIG_SYS_MALLOC_LEN=0x80000
+-CONFIG_NR_DRAM_BANKS=2
+-CONFIG_ENV_SECT_SIZE=0x1000
+-CONFIG_DEFAULT_DEVICE_TREE="ae350_32"
+-CONFIG_SPL_TEXT_BASE=0x80000000
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x1800000
+-CONFIG_SPL=y
+-CONFIG_TARGET_ANDES45_AE350=y
+-CONFIG_RISCV_SMODE=y
+-CONFIG_SPL_LOAD_FIT_JUMP=y
+-CONFIG_SPL_LOAD_FIT_CONFIG="binman_j.dtsi"
+-CONFIG_XIP=y
+-CONFIG_DISTRO_DEFAULTS=y
+-CONFIG_SYS_LOAD_ADDR=0x100000
+-CONFIG_FIT=y
+-CONFIG_SPL_LOAD_FIT_ADDRESS=0x88600000
+-CONFIG_BOOTDELAY=3
+-CONFIG_MISC_INIT_R=y
+-CONFIG_SPL_BOARD_INIT=y
+-CONFIG_SPL_CACHE=y
+-CONFIG_SYS_PROMPT="RISC-V # "
+-CONFIG_CMD_IMLS=y
+-CONFIG_CMD_MMC=y
+-CONFIG_CMD_SF_TEST=y
+-# CONFIG_CMD_SETEXPR is not set
+-CONFIG_BOOTP_PREFER_SERVERIP=y
+-CONFIG_CMD_CACHE=y
+-CONFIG_ENV_OVERWRITE=y
+-CONFIG_ENV_IS_IN_SPI_FLASH=y
+-CONFIG_BOOTP_SEND_HOSTNAME=y
+-CONFIG_NET_RANDOM_ETHADDR=y
+-CONFIG_V5L2_CACHE=y
+-CONFIG_MMC=y
+-CONFIG_FTSDC010=y
+-CONFIG_FTSDC010_SDIO=y
+-CONFIG_MTD_NOR_FLASH=y
+-CONFIG_FLASH_CFI_DRIVER=y
+-CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
+-CONFIG_SYS_FLASH_CFI=y
+-CONFIG_SPI_FLASH_MACRONIX=y
+-CONFIG_FTMAC100=y
+-CONFIG_BAUDRATE=38400
+-CONFIG_SYS_NS16550=y
+-CONFIG_SPI=y
+-CONFIG_ATCSPI200_SPI=y
+-# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/ae350_rv64_spl_jump_defconfig b/configs/ae350_rv64_spl_jump_defconfig
+deleted file mode 100644
+index c9d5a2763f..0000000000
+--- a/configs/ae350_rv64_spl_jump_defconfig
++++ /dev/null
+@@ -1,47 +0,0 @@
+-CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x0200000
+-CONFIG_SYS_MALLOC_LEN=0x80000
+-CONFIG_NR_DRAM_BANKS=2
+-CONFIG_ENV_SECT_SIZE=0x1000
+-CONFIG_DEFAULT_DEVICE_TREE="ae350_64"
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x1800000
+-CONFIG_SPL=y
+-CONFIG_TARGET_ANDES45_AE350=y
+-CONFIG_ARCH_RV64I=y
+-CONFIG_RISCV_SMODE=y
+-CONFIG_SPL_LOAD_FIT_JUMP=y
+-CONFIG_SPL_LOAD_FIT_CONFIG="binman_j.dtsi"
+-CONFIG_DISTRO_DEFAULTS=y
+-CONFIG_SYS_LOAD_ADDR=0x100000
+-CONFIG_FIT=y
+-CONFIG_SPL_LOAD_FIT_ADDRESS=0x06000000
+-CONFIG_BOOTDELAY=3
+-CONFIG_MISC_INIT_R=y
+-CONFIG_SPL_BOARD_INIT=y
+-CONFIG_SPL_CACHE=y
+-CONFIG_SYS_PROMPT="RISC-V # "
+-CONFIG_CMD_IMLS=y
+-CONFIG_CMD_MMC=y
+-CONFIG_CMD_SF_TEST=y
+-# CONFIG_CMD_SETEXPR is not set
+-CONFIG_BOOTP_PREFER_SERVERIP=y
+-CONFIG_CMD_CACHE=y
+-CONFIG_ENV_OVERWRITE=y
+-CONFIG_ENV_IS_IN_SPI_FLASH=y
+-CONFIG_BOOTP_SEND_HOSTNAME=y
+-CONFIG_NET_RANDOM_ETHADDR=y
+-CONFIG_V5L2_CACHE=y
+-CONFIG_MMC=y
+-CONFIG_FTSDC010=y
+-CONFIG_FTSDC010_SDIO=y
+-CONFIG_MTD_NOR_FLASH=y
+-CONFIG_FLASH_CFI_DRIVER=y
+-CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
+-CONFIG_SYS_FLASH_CFI=y
+-CONFIG_SPI_FLASH_MACRONIX=y
+-CONFIG_FTMAC100=y
+-CONFIG_BAUDRATE=38400
+-CONFIG_SYS_NS16550=y
+-CONFIG_SPI=y
+-CONFIG_ATCSPI200_SPI=y
+-# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/ae350_rv64_spl_xip_jump_defconfig b/configs/ae350_rv64_spl_xip_jump_defconfig
+deleted file mode 100644
+index 22f4a13a8e..0000000000
+--- a/configs/ae350_rv64_spl_xip_jump_defconfig
++++ /dev/null
+@@ -1,49 +0,0 @@
+-CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x0200000
+-CONFIG_SYS_MALLOC_LEN=0x80000
+-CONFIG_NR_DRAM_BANKS=2
+-CONFIG_ENV_SECT_SIZE=0x1000
+-CONFIG_DEFAULT_DEVICE_TREE="ae350_64"
+-CONFIG_SPL_TEXT_BASE=0x80000000
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x1800000
+-CONFIG_SPL=y
+-CONFIG_TARGET_ANDES45_AE350=y
+-CONFIG_ARCH_RV64I=y
+-CONFIG_RISCV_SMODE=y
+-CONFIG_SPL_LOAD_FIT_JUMP=y
+-CONFIG_SPL_LOAD_FIT_CONFIG="binman_j.dtsi"
+-CONFIG_XIP=y
+-CONFIG_DISTRO_DEFAULTS=y
+-CONFIG_SYS_LOAD_ADDR=0x100000
+-CONFIG_FIT=y
+-CONFIG_SPL_LOAD_FIT_ADDRESS=0x88600000
+-CONFIG_BOOTDELAY=3
+-CONFIG_MISC_INIT_R=y
+-CONFIG_SPL_BOARD_INIT=y
+-CONFIG_SPL_CACHE=y
+-CONFIG_SYS_PROMPT="RISC-V # "
+-CONFIG_CMD_IMLS=y
+-CONFIG_CMD_MMC=y
+-CONFIG_CMD_SF_TEST=y
+-# CONFIG_CMD_SETEXPR is not set
+-CONFIG_BOOTP_PREFER_SERVERIP=y
+-CONFIG_CMD_CACHE=y
+-CONFIG_ENV_OVERWRITE=y
+-CONFIG_ENV_IS_IN_SPI_FLASH=y
+-CONFIG_BOOTP_SEND_HOSTNAME=y
+-CONFIG_NET_RANDOM_ETHADDR=y
+-CONFIG_V5L2_CACHE=y
+-CONFIG_MMC=y
+-CONFIG_FTSDC010=y
+-CONFIG_FTSDC010_SDIO=y
+-CONFIG_MTD_NOR_FLASH=y
+-CONFIG_FLASH_CFI_DRIVER=y
+-CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
+-CONFIG_SYS_FLASH_CFI=y
+-CONFIG_SPI_FLASH_MACRONIX=y
+-CONFIG_FTMAC100=y
+-CONFIG_BAUDRATE=38400
+-CONFIG_SYS_NS16550=y
+-CONFIG_SPI=y
+-CONFIG_ATCSPI200_SPI=y
+-# CONFIG_BINMAN_FDT is not set
+-- 
+2.34.1
+

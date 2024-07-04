@@ -1,0 +1,25 @@
+From ea8f86a507570fcbf3e337feffccf679b4faa157 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Wed, 18 Jan 2023 10:57:41 +0800
+Subject: [PATCH 23/34] riscv: qilai: add wfi for NX27V
+
+---
+ arch/riscv/cpu/andes45/cpu.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/riscv/cpu/andes45/cpu.c b/arch/riscv/cpu/andes45/cpu.c
+index 3bc77af012..f64541bbc2 100644
+--- a/arch/riscv/cpu/andes45/cpu.c
++++ b/arch/riscv/cpu/andes45/cpu.c
+@@ -109,7 +109,7 @@ void harts_early_init(void)
+         unsigned long long micm_cfg_val = csr_read(CSR_MDCM_CFG);
+ 
+ 		if(csr_read(CSR_MHARTID) == 4)
+-			while(1);
++			while(1) {asm ("wfi");}
+ 
+ 		mcache_ctl_val |= (V5_MCACHE_CTL_DC_COHEN_EN | V5_MCACHE_CTL_IC_EN | \
+ 			V5_MCACHE_CTL_DC_EN | V5_MCACHE_CTL_CCTL_SUEN | \
+-- 
+2.34.1
+

@@ -1,0 +1,466 @@
+From 54df250168432c7a72ad82d46be3353a60a2d287 Mon Sep 17 00:00:00 2001
+From: Rick Chen <rick@andestech.com>
+Date: Thu, 21 Apr 2022 10:42:12 +0800
+Subject: [PATCH 02/34] Add Andes specific SBI calls, driver patches and fixes
+
+This patch set includes the following patches:
+
+	MISC:
+	ee7614ee07 lib/andes_plic.c: Add priority ipi (#2)
+	5d93fa9e11 riscv: Enable openSBI banner print
+	03e98fa494 riscv: Fix XIP mode booting failure
+
+	SBI calls:
+	7982f27b1f riscv: provide missing base extension functions
+	d40faadd5b riscv: Add Andes specific SBI calls
+
+	L2C driver:
+	65bd52d056 Add comments for L2C ram cycle settings
+	19022c69c5 driver/cache: Add wbinval for cache driver
+
+	MMC driver:
+	6c85f48159 mmc: ftsdc010_mci: Support DTS of ftsdc010 driver for generic dma
+	8bf95f68ff Disable SD High-Speed capability
+
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ arch/riscv/cpu/start.S       |   2 +
+ arch/riscv/include/asm/sbi.h |  37 +++++++++++--
+ arch/riscv/lib/andes_plic.c  |  18 ++++++
+ arch/riscv/lib/sbi.c         | 103 +++++++++++++++++++++++++++++++++++
+ common/spl/spl_opensbi.c     |   1 -
+ drivers/cache/cache-uclass.c |  10 ++++
+ drivers/cache/cache-v5l2.c   |  50 ++++++++++++-----
+ drivers/mmc/ftsdc010_mci.c   |   7 +--
+ include/cache.h              |  16 ++++++
+ 9 files changed, 220 insertions(+), 24 deletions(-)
+
+diff --git a/arch/riscv/cpu/start.S b/arch/riscv/cpu/start.S
+index 76850ec9be..2ccda4f515 100644
+--- a/arch/riscv/cpu/start.S
++++ b/arch/riscv/cpu/start.S
+@@ -139,7 +139,9 @@ call_harts_early_init:
+ 	 * accesses gd).
+ 	 */
+ 	mv	gp, s0
++#if !CONFIG_IS_ENABLED(RISCV_SMODE)
+ 	bnez	tp, secondary_hart_loop
++#endif
+ #endif
+ 
+ 	jal	board_init_f_init_reserve
+diff --git a/arch/riscv/include/asm/sbi.h b/arch/riscv/include/asm/sbi.h
+index 590c6e5451..a71a0668cf 100644
+--- a/arch/riscv/include/asm/sbi.h
++++ b/arch/riscv/include/asm/sbi.h
+@@ -91,9 +91,30 @@ enum sbi_srst_reset_reason {
+ };
+ 
+ enum sbi_ext_andes_fid {
+-          SBI_EXT_ANDES_SET_PMA,
+-          SBI_EXT_ANDES_FREE_PMA,
+-          SBI_EXT_ANDES_PROBE_PMA,
++	SBI_EXT_ANDES_GET_MCACHE_CTL_STATUS = 0,
++	SBI_EXT_ANDES_GET_MMISC_CTL_STATUS,
++	SBI_EXT_ANDES_SET_MCACHE_CTL,
++	SBI_EXT_ANDES_SET_MMISC_CTL,
++	SBI_EXT_ANDES_ICACHE_OP,
++	SBI_EXT_ANDES_DCACHE_OP,
++	SBI_EXT_ANDES_L1CACHE_I_PREFETCH,
++	SBI_EXT_ANDES_L1CACHE_D_PREFETCH,
++	SBI_EXT_ANDES_NON_BLOCKING_LOAD_STORE,
++	SBI_EXT_ANDES_WRITE_AROUND,
++	SBI_EXT_ANDES_TRIGGER,
++	SBI_EXT_ANDES_SET_PFM,
++	SBI_EXT_ANDES_READ_POWERBRAKE,
++	SBI_EXT_ANDES_WRITE_POWERBRAKE,
++	SBI_EXT_ANDES_SUSPEND_PREPARE,
++	SBI_EXT_ANDES_SUSPEND_MEM,
++	SBI_EXT_ANDES_SET_SUSPEND_MODE,
++	SBI_EXT_ANDES_ENTER_SUSPEND_MODE,
++	SBI_EXT_ANDES_RESTART,
++	SBI_EXT_ANDES_SET_RESET_VEC,
++	SBI_EXT_ANDES_SET_PMA,
++	SBI_EXT_ANDES_FREE_PMA,
++	SBI_EXT_ANDES_PROBE_PMA,
++	SBI_EXT_ANDES_DCACHE_WBINVAL_ALL,
+ };
+ 
+ #ifdef CONFIG_SBI_V01
+@@ -162,9 +183,17 @@ long sbi_get_spec_version(void);
+ int sbi_get_impl_id(void);
+ int sbi_get_impl_version(long *version);
+ int sbi_probe_extension(int ext);
++int sbi_get_mvendorid(long *mvendorid);
++int sbi_get_marchid(long *marchid);
++int sbi_get_mimpid(long *mimpid);
+ void sbi_srst_reset(unsigned long type, unsigned long reason);
++long sbi_get_L1cache(void);
++void sbi_en_icache(void);
++void sbi_dis_icache(void);
++void sbi_en_dcache(void);
++void sbi_dis_dcache(void);
++void sbi_dcache_wbinval_all(void);
+ void sbi_set_pma(phys_addr_t offset, unsigned long vaddr, size_t size);
+ void sbi_free_pma(unsigned long vaddr);
+ long sbi_probe_pma(void);
+-
+ #endif
+diff --git a/arch/riscv/lib/andes_plic.c b/arch/riscv/lib/andes_plic.c
+index 5e113ee8c9..b0d2d46b4d 100644
+--- a/arch/riscv/lib/andes_plic.c
++++ b/arch/riscv/lib/andes_plic.c
+@@ -26,9 +26,13 @@
+ #define ENABLE_REG(base, hart)	((ulong)(base) + 0x2000 + (hart) * 0x80)
+ /* claim register */
+ #define CLAIM_REG(base, hart)	((ulong)(base) + 0x200004 + (hart) * 0x1000)
++/* priority register */
++#define PRIORITY_REG(base)	((ulong)(base) + PLICSW_PRIORITY_BASE)
+ 
+ #define ENABLE_HART_IPI         (0x80808080)
+ #define SEND_IPI_TO_HART(hart)  (0x80 >> (hart))
++#define PLICSW_PRIORITY_BASE        0x4
++#define PLICSW_INTERRUPT_PER_HART   0x8
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+@@ -42,9 +46,21 @@ static int enable_ipi(int hart)
+ 	return 0;
+ }
+ 
++static void init_priority_ipi(int hart_num)
++{
++    uint32_t *priority = (void *)PRIORITY_REG(gd->arch.plic);
++
++    for (int i = 0; i < hart_num * PLICSW_INTERRUPT_PER_HART; i++) {
++        writel(1, &priority[i]);
++    }
++
++    return;
++}
++
+ int riscv_init_ipi(void)
+ {
+ 	int ret;
++	int hart_num = 0;
+ 	long *base = syscon_get_first_range(RISCV_SYSCON_PLIC);
+ 	ofnode node;
+ 	struct udevice *dev;
+@@ -78,8 +94,10 @@ int riscv_init_ipi(void)
+ 		ret = ofnode_read_u32(node, "reg", &reg);
+ 		if (ret == 0)
+ 			enable_ipi(reg);
++		hart_num++;
+ 	}
+ 
++	init_priority_ipi(hart_num);
+ 	return 0;
+ }
+ 
+diff --git a/arch/riscv/lib/sbi.c b/arch/riscv/lib/sbi.c
+index b4ea32e3f0..4f5fc66fbb 100644
+--- a/arch/riscv/lib/sbi.c
++++ b/arch/riscv/lib/sbi.c
+@@ -127,6 +127,71 @@ int sbi_probe_extension(int extid)
+ 	return -ENOTSUPP;
+ }
+ 
++/**
++ * sbi_get_mvendorid() - get machine vendor ID
++ *
++ * @mimpid:	on return machine vendor ID
++ * Return:	0 on success
++ */
++int sbi_get_mvendorid(long *mvendorid)
++{
++	struct sbiret ret;
++
++	ret = sbi_ecall(SBI_EXT_BASE, SBI_EXT_BASE_GET_MVENDORID,
++			0, 0, 0, 0, 0, 0);
++	if (ret.error)
++		return -ENOTSUPP;
++
++	if (mvendorid)
++		*mvendorid = ret.value;
++
++	return 0;
++}
++
++/**
++ * sbi_get_marchid() - get machine architecture ID
++ *
++ * @mimpid:	on return machine architecture ID
++ * Return:	0 on success
++ */
++int sbi_get_marchid(long *marchid)
++{
++	struct sbiret ret;
++
++	ret = sbi_ecall(SBI_EXT_BASE, SBI_EXT_BASE_GET_MARCHID,
++			0, 0, 0, 0, 0, 0);
++
++	if (ret.error)
++		return -ENOTSUPP;
++
++	if (marchid)
++		*marchid = ret.value;
++
++	return 0;
++}
++
++/**
++ * sbi_get_mimpid() - get machine implementation ID
++ *
++ * @mimpid:	on return machine implementation ID
++ * Return:	0 on success
++ */
++int sbi_get_mimpid(long *mimpid)
++{
++	struct sbiret ret;
++
++	ret = sbi_ecall(SBI_EXT_BASE, SBI_EXT_BASE_GET_MIMPID,
++			0, 0, 0, 0, 0, 0);
++
++	if (ret.error)
++		return -ENOTSUPP;
++
++	if (mimpid)
++		*mimpid = ret.value;
++
++	return 0;
++}
++
+ /**
+  * sbi_srst_reset() - invoke system reset extension
+  *
+@@ -139,6 +204,44 @@ void sbi_srst_reset(unsigned long type, unsigned long reason)
+ 		  0, 0, 0, 0);
+ }
+ 
++long sbi_get_L1cache(void)
++{
++	struct sbiret ret;
++
++	ret = sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_GET_MCACHE_CTL_STATUS, 0, 0, 0, 0, 0, 0);
++
++	if (!ret.error)
++		if (ret.value)
++			return ret.value;
++
++	return -ENOTSUPP;
++}
++
++void sbi_en_icache(void)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_ICACHE_OP, 1, 0, 0, 0, 0, 0);
++}
++
++void sbi_dis_icache(void)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_ICACHE_OP, 0, 0, 0, 0, 0, 0);
++}
++
++void sbi_en_dcache(void)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_DCACHE_OP, 1, 0, 0, 0, 0, 0);
++}
++
++void sbi_dis_dcache(void)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_DCACHE_OP, 0, 0, 0, 0, 0, 0);
++}
++
++void sbi_dcache_wbinval_all(void)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_DCACHE_WBINVAL_ALL, 0, 0, 0, 0, 0, 0);
++}
++
+ long sbi_probe_pma(void)
+ {
+ 	struct sbiret ret;
+diff --git a/common/spl/spl_opensbi.c b/common/spl/spl_opensbi.c
+index 1c0abf8553..d5ce9f70f0 100644
+--- a/common/spl/spl_opensbi.c
++++ b/common/spl/spl_opensbi.c
+@@ -71,7 +71,6 @@ void spl_invoke_opensbi(struct spl_image_info *spl_image)
+ 	opensbi_info.version = FW_DYNAMIC_INFO_VERSION;
+ 	opensbi_info.next_addr = uboot_entry;
+ 	opensbi_info.next_mode = FW_DYNAMIC_INFO_NEXT_MODE_S;
+-	opensbi_info.options = SBI_SCRATCH_NO_BOOT_PRINTS;
+ 	opensbi_info.boot_hart = gd->arch.boot_hart;
+ 
+ 	opensbi_entry = (void (*)(ulong, ulong, ulong))spl_image->entry_point;
+diff --git a/drivers/cache/cache-uclass.c b/drivers/cache/cache-uclass.c
+index 0c13dbdb75..8336debf38 100644
+--- a/drivers/cache/cache-uclass.c
++++ b/drivers/cache/cache-uclass.c
+@@ -39,6 +39,16 @@ int cache_disable(struct udevice *dev)
+ 	return ops->disable(dev);
+ }
+ 
++int cache_wbinval(struct udevice *dev)
++{
++	struct cache_ops *ops = cache_get_ops(dev);
++
++	if (!ops->wbinval)
++		return -ENOSYS;
++
++	return ops->wbinval(dev);
++}
++
+ UCLASS_DRIVER(cache) = {
+ 	.id		= UCLASS_CACHE,
+ 	.name		= "cache",
+diff --git a/drivers/cache/cache-v5l2.c b/drivers/cache/cache-v5l2.c
+index bbdb76bd57..2cfc805ea0 100644
+--- a/drivers/cache/cache-v5l2.c
++++ b/drivers/cache/cache-v5l2.c
+@@ -83,7 +83,7 @@ static int v5l2_enable(struct udevice *dev)
+ 	return 0;
+ }
+ 
+-static int v5l2_disable(struct udevice *dev)
++static int v5l2_wbinval(struct udevice *dev)
+ {
+ 	struct v5l2_plat *plat = dev_get_plat(dev);
+ 	volatile struct l2cache *regs = plat->regs;
+@@ -99,12 +99,27 @@ static int v5l2_disable(struct udevice *dev)
+ 				hang();
+ 			}
+ 		}
+-		clrbits_le32(&regs->control, L2_ENABLE);
+ 	}
+ 
+ 	return 0;
+ }
+ 
++static int v5l2_disable(struct udevice *dev)
++{
++	struct v5l2_plat *plat = dev_get_plat(dev);
++	volatile struct l2cache *regs = plat->regs;
++	int ret = -ENXIO;
++
++	ret = v5l2_wbinval(dev);
++	if(ret)
++		return ret;
++
++	if ((regs) && (readl(&regs->control) & L2_ENABLE))
++		clrbits_le32(&regs->control, L2_ENABLE);
++
++	return 0;
++}
++
+ static int v5l2_of_to_plat(struct udevice *dev)
+ {
+ 	struct v5l2_plat *plat = dev_get_plat(dev);
+@@ -150,17 +165,23 @@ static int v5l2_probe(struct udevice *dev)
+ 		ctl_val |= (plat->dprefetch << DPREPETCH_OFF);
+ 	}
+ 
+-	if (plat->tram_ctl[0] != -EINVAL) {
+-		ctl_val &= ~(TRAMOCTL_MSK | TRAMICTL_MSK);
+-		ctl_val |= plat->tram_ctl[0] << TRAMOCTL_OFF;
+-		ctl_val |= plat->tram_ctl[1] << TRAMICTL_OFF;
+-	}
+-
+-	if (plat->dram_ctl[0] != -EINVAL) {
+-		ctl_val &= ~(DRAMOCTL_MSK | DRAMICTL_MSK);
+-		ctl_val |= plat->dram_ctl[0] << DRAMOCTL_OFF;
+-		ctl_val |= plat->dram_ctl[1] << DRAMICTL_OFF;
+-	}
++	/* ram cycle settings */
++	/*
++	 * **Do NOT** change RAM cycle settings for Andes' EVB, but once you
++	 * you have done the integration, please uncomment the following and
++	 * do the proper setting for your platform.
++	 */
++//	if (plat->tram_ctl[0] != -EINVAL) {
++//		ctl_val &= ~(TRAMOCTL_MSK | TRAMICTL_MSK);
++//		ctl_val |= plat->tram_ctl[0] << TRAMOCTL_OFF;
++//		ctl_val |= plat->tram_ctl[1] << TRAMICTL_OFF;
++//	}
++//
++//	if (plat->dram_ctl[0] != -EINVAL) {
++//		ctl_val &= ~(DRAMOCTL_MSK | DRAMICTL_MSK);
++//		ctl_val |= plat->dram_ctl[0] << DRAMOCTL_OFF;
++//		ctl_val |= plat->dram_ctl[1] << DRAMICTL_OFF;
++//	}
+ 
+ 	writel(ctl_val, &regs->control);
+ 
+@@ -168,13 +189,14 @@ static int v5l2_probe(struct udevice *dev)
+ }
+ 
+ static const struct udevice_id v5l2_cache_ids[] = {
+-	{ .compatible = "v5l2cache" },
++	{ .compatible = "cache" },
+ 	{}
+ };
+ 
+ static const struct cache_ops v5l2_cache_ops = {
+ 	.enable		= v5l2_enable,
+ 	.disable	= v5l2_disable,
++	.wbinval	= v5l2_wbinval,
+ };
+ 
+ U_BOOT_DRIVER(v5l2_cache) = {
+diff --git a/drivers/mmc/ftsdc010_mci.c b/drivers/mmc/ftsdc010_mci.c
+index 570d54cf9d..659a192fcd 100644
+--- a/drivers/mmc/ftsdc010_mci.c
++++ b/drivers/mmc/ftsdc010_mci.c
+@@ -438,10 +438,6 @@ static int ftsdc010_mmc_probe(struct udevice *dev)
+ 		return ret;
+ #endif
+ 
+-	if (dev_read_bool(dev, "cap-mmc-highspeed") || \
+-		  dev_read_bool(dev, "cap-sd-highspeed"))
+-		chip->caps |= MMC_MODE_HS | MMC_MODE_HS_52MHz;
+-
+ 	ftsdc_setup_cfg(&plat->cfg, dev->name, chip->buswidth, chip->caps,
+ 			priv->minmax[1] , priv->minmax[0]);
+ 	chip->mmc = &plat->mmc;
+@@ -459,7 +455,8 @@ int ftsdc010_mmc_bind(struct udevice *dev)
+ }
+ 
+ static const struct udevice_id ftsdc010_mmc_ids[] = {
+-	{ .compatible = "andestech,atfsdc010" },
++	{ .compatible = "andestech,atfsdc010"},
++	{ .compatible = "andestech,atfsdc010g" },
+ 	{ }
+ };
+ 
+diff --git a/include/cache.h b/include/cache.h
+index b12fec2591..4fb96cc6fa 100644
+--- a/include/cache.h
++++ b/include/cache.h
+@@ -40,6 +40,14 @@ struct cache_ops {
+ 	 * @return 0 if OK, -ve on error
+ 	 */
+ 	int (*disable)(struct udevice *dev);
++
++	/**
++	 * wbinval() - Flush and invalidate
++	 *
++	 * @dev:	Device to check (UCLASS_CACHE)
++	 * @return 0 if OK, -ve on error
++	 */
++	int (*wbinval)(struct udevice *dev);
+ };
+ 
+ #define cache_get_ops(dev)	((struct cache_ops *)(dev)->driver->ops)
+@@ -68,4 +76,12 @@ int cache_enable(struct udevice *dev);
+  * Return: 0 if OK, -ve on error
+  */
+ int cache_disable(struct udevice *dev);
++
++/**
++ * cache_wbinval() - Flush and invalidate cache
++ *
++ * @dev:	Device to check (UCLASS_CACHE)
++ * @return 0 if OK, -ve on error
++ */
++int cache_wbinval(struct udevice *dev);
+ #endif
+-- 
+2.34.1
+

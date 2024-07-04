@@ -1,0 +1,3189 @@
+From 4521ecfd8daba84d3a71483457c3e12e0453ccec Mon Sep 17 00:00:00 2001
+From: Leo Yu-Chi Liang <ycliang@andestech.com>
+Date: Thu, 21 Apr 2022 11:07:48 +0800
+Subject: [PATCH 03/34] Add new Andes board and CPU support
+
+This patch set includes the following patches:
+
+	Add new boards and CPU support:
+	7d1b526a92 riscv: ae350: Support HW build-in DTB
+	1ef0985a59 riscv: andes: Add check before enable data cache
+	9662b831fd riscv: Fix cache checking logic
+	05ff838414 riscv: Fix ae350_ax25-spl_defconfig compile error
+	38967cc244 board: enable L1 I-Cache in SPL for Andes 25 series
+	f3e46e3a8e riscv: Enable L2C for Andes 45 series
+	76affd733a riscv: Enable CCTL_SUEN
+	950827c12b riscv: ae350: Fix smc flash detection failure
+	66682712aa board: enable L2 cache in SPL for Andes 45 series
+	2870a2e487 board: Add support for QILAI board
+	361e82fe32 board: Rename ax25-ae350 to ae350
+	6133ccb991 riscv: Add Andes 45 series CPU support
+	48e8390046 riscv: Rename ax25 to andes25
+
+	Refactor cache initialization code:
+	f48f433b6b common/board_r: Remove initr_caches for RISC-V
+	558331093c riscv: Refactor cache manipulation for Andes CPU
+	656c4c1d16 riscv: Remove unneeded cache initialization code
+	1883f6c432 configs: Refactor default configs for Andes boards
+	4151dc73ec riscv: Remove redundant Kconfig "RISCV_NDS_CACHE"
+
+Signed-off-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ arch/riscv/Kconfig                            |  16 +-
+ arch/riscv/cpu/{ax25 => andes25}/Kconfig      |  10 -
+ arch/riscv/cpu/{ax25 => andes25}/Makefile     |   0
+ arch/riscv/cpu/{ax25 => andes25}/cache.c      | 118 ++++---
+ arch/riscv/cpu/andes25/cpu.c                  |  73 +++++
+ arch/riscv/cpu/{ax25 => andes25}/pma.c        |   0
+ arch/riscv/cpu/andes45/Kconfig                |  15 +
+ arch/riscv/cpu/andes45/Makefile               |   8 +
+ arch/riscv/cpu/andes45/cache.c                | 169 ++++++++++
+ arch/riscv/cpu/andes45/cpu.c                  |  96 ++++++
+ arch/riscv/cpu/andes45/pma.c                  |  70 ++++
+ arch/riscv/cpu/ax25/cpu.c                     |  71 -----
+ arch/riscv/cpu/start.S                        |   4 -
+ arch/riscv/dts/Makefile                       |   4 +-
+ arch/riscv/dts/qilai_32.dts                   | 301 ++++++++++++++++++
+ arch/riscv/dts/qilai_64.dts                   | 301 ++++++++++++++++++
+ arch/riscv/include/asm/csr.h                  |   1 +
+ board/AndesTech/ae350/Kconfig                 |  78 +++++
+ board/AndesTech/ae350/MAINTAINERS             |  18 ++
+ .../AndesTech/{ax25-ae350 => ae350}/Makefile  |   3 +-
+ .../ax25-ae350.c => ae350/andes25-ae350.c}    |  44 ++-
+ board/AndesTech/ae350/andes45-ae350.c         | 158 +++++++++
+ board/AndesTech/ax25-ae350/MAINTAINERS        |  13 -
+ board/AndesTech/{ax25-ae350 => qilai}/Kconfig |  14 +-
+ board/AndesTech/qilai/MAINTAINERS             |   9 +
+ board/AndesTech/qilai/Makefile                |   6 +
+ board/AndesTech/qilai/qilai.c                 | 116 +++++++
+ common/board_r.c                              |   4 +-
+ ..._spl_defconfig => ae350_a25_spl_defconfig} |   9 +-
+ ..._defconfig => ae350_a25_spl_xip_defconfig} |   9 +-
+ configs/ae350_a45_spl_defconfig               |  47 +++
+ configs/ae350_a45_spl_xip_defconfig           |  49 +++
+ ...spl_defconfig => ae350_ax25_spl_defconfig} |   9 +-
+ ...defconfig => ae350_ax25_spl_xip_defconfig} |   9 +-
+ configs/ae350_ax45_spl_defconfig              |  46 +++
+ configs/ae350_ax45_spl_xip_defconfig          |  48 +++
+ configs/ae350_rv32_defconfig                  |   6 +-
+ configs/ae350_rv32_xip_defconfig              |   6 +-
+ configs/ae350_rv64_defconfig                  |   6 +-
+ configs/ae350_rv64_xip_defconfig              |   6 +-
+ configs/qilai_a45_spl_defconfig               |  48 +++
+ configs/qilai_ax45_spl_defconfig              |  46 +++
+ .../{ax25-ae350.rst => andes25-ae350.rst}     |  16 +-
+ doc/board/AndesTech/index.rst                 |   2 +-
+ drivers/cache/Kconfig                         |   1 -
+ .../configs/{ax25-ae350.h => andes25-ae350.h} |   0
+ include/configs/andes45-ae350.h               | 135 ++++++++
+ include/configs/andes45-qilai.h               | 135 ++++++++
+ 48 files changed, 2135 insertions(+), 218 deletions(-)
+ rename arch/riscv/cpu/{ax25 => andes25}/Kconfig (69%)
+ rename arch/riscv/cpu/{ax25 => andes25}/Makefile (100%)
+ rename arch/riscv/cpu/{ax25 => andes25}/cache.c (58%)
+ create mode 100644 arch/riscv/cpu/andes25/cpu.c
+ rename arch/riscv/cpu/{ax25 => andes25}/pma.c (100%)
+ create mode 100644 arch/riscv/cpu/andes45/Kconfig
+ create mode 100644 arch/riscv/cpu/andes45/Makefile
+ create mode 100644 arch/riscv/cpu/andes45/cache.c
+ create mode 100644 arch/riscv/cpu/andes45/cpu.c
+ create mode 100644 arch/riscv/cpu/andes45/pma.c
+ delete mode 100644 arch/riscv/cpu/ax25/cpu.c
+ create mode 100644 arch/riscv/dts/qilai_32.dts
+ create mode 100644 arch/riscv/dts/qilai_64.dts
+ create mode 100644 board/AndesTech/ae350/Kconfig
+ create mode 100644 board/AndesTech/ae350/MAINTAINERS
+ rename board/AndesTech/{ax25-ae350 => ae350}/Makefile (58%)
+ rename board/AndesTech/{ax25-ae350/ax25-ae350.c => ae350/andes25-ae350.c} (72%)
+ create mode 100644 board/AndesTech/ae350/andes45-ae350.c
+ delete mode 100644 board/AndesTech/ax25-ae350/MAINTAINERS
+ rename board/AndesTech/{ax25-ae350 => qilai}/Kconfig (77%)
+ create mode 100644 board/AndesTech/qilai/MAINTAINERS
+ create mode 100644 board/AndesTech/qilai/Makefile
+ create mode 100644 board/AndesTech/qilai/qilai.c
+ rename configs/{ae350_rv32_spl_defconfig => ae350_a25_spl_defconfig} (84%)
+ rename configs/{ae350_rv32_spl_xip_defconfig => ae350_a25_spl_xip_defconfig} (85%)
+ create mode 100644 configs/ae350_a45_spl_defconfig
+ create mode 100644 configs/ae350_a45_spl_xip_defconfig
+ rename configs/{ae350_rv64_spl_defconfig => ae350_ax25_spl_defconfig} (84%)
+ rename configs/{ae350_rv64_spl_xip_defconfig => ae350_ax25_spl_xip_defconfig} (85%)
+ create mode 100644 configs/ae350_ax45_spl_defconfig
+ create mode 100644 configs/ae350_ax45_spl_xip_defconfig
+ create mode 100644 configs/qilai_a45_spl_defconfig
+ create mode 100644 configs/qilai_ax45_spl_defconfig
+ rename doc/board/AndesTech/{ax25-ae350.rst => andes25-ae350.rst} (98%)
+ rename include/configs/{ax25-ae350.h => andes25-ae350.h} (100%)
+ create mode 100644 include/configs/andes45-ae350.h
+ create mode 100644 include/configs/andes45-qilai.h
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 1108d321fd..4eed3b43ce 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -8,8 +8,14 @@ choice
+ 	prompt "Target select"
+ 	optional
+ 
+-config TARGET_AX25_AE350
+-	bool "Support ax25-ae350"
++config TARGET_ANDES45_QILAI
++	bool "Support andes45-qilai"
++
++config TARGET_ANDES25_AE350
++	bool "Support andes25-ae350"
++
++config TARGET_ANDES45_AE350
++	bool "Support andes45-ae350"
+ 
+ config TARGET_MICROCHIP_ICICLE
+ 	bool "Support Microchip PolarFire-SoC Icicle Board"
+@@ -58,7 +64,8 @@ config SPL_SYS_DCACHE_OFF
+ 	  Do not enable data cache in SPL.
+ 
+ # board-specific options below
+-source "board/AndesTech/ax25-ae350/Kconfig"
++source "board/AndesTech/ae350/Kconfig"
++source "board/AndesTech/qilai/Kconfig"
+ source "board/emulation/qemu-riscv/Kconfig"
+ source "board/microchip/mpfs_icicle/Kconfig"
+ source "board/sifive/unleashed/Kconfig"
+@@ -67,7 +74,8 @@ source "board/openpiton/riscv64/Kconfig"
+ source "board/sipeed/maix/Kconfig"
+ 
+ # platform-specific options below
+-source "arch/riscv/cpu/ax25/Kconfig"
++source "arch/riscv/cpu/andes25/Kconfig"
++source "arch/riscv/cpu/andes45/Kconfig"
+ source "arch/riscv/cpu/fu540/Kconfig"
+ source "arch/riscv/cpu/fu740/Kconfig"
+ source "arch/riscv/cpu/generic/Kconfig"
+diff --git a/arch/riscv/cpu/ax25/Kconfig b/arch/riscv/cpu/andes25/Kconfig
+similarity index 69%
+rename from arch/riscv/cpu/ax25/Kconfig
+rename to arch/riscv/cpu/andes25/Kconfig
+index db11995a49..4151341580 100644
+--- a/arch/riscv/cpu/ax25/Kconfig
++++ b/arch/riscv/cpu/andes25/Kconfig
+@@ -13,13 +13,3 @@ config RISCV_NDS
+ 	help
+ 	  Run U-Boot on AndeStar V5 platforms and use some specific features
+ 	  which are provided by Andes Technology AndeStar V5 families.
+-
+-if RISCV_NDS
+-
+-config RISCV_NDS_CACHE
+-	bool "AndeStar V5 families specific cache support"
+-	depends on RISCV_MMODE || SPL_RISCV_MMODE
+-	help
+-	  Provide Andes Technology AndeStar V5 families specific cache support.
+-
+-endif
+diff --git a/arch/riscv/cpu/ax25/Makefile b/arch/riscv/cpu/andes25/Makefile
+similarity index 100%
+rename from arch/riscv/cpu/ax25/Makefile
+rename to arch/riscv/cpu/andes25/Makefile
+diff --git a/arch/riscv/cpu/ax25/cache.c b/arch/riscv/cpu/andes25/cache.c
+similarity index 58%
+rename from arch/riscv/cpu/ax25/cache.c
+rename to arch/riscv/cpu/andes25/cache.c
+index 35f23c748d..690a223ba8 100644
+--- a/arch/riscv/cpu/ax25/cache.c
++++ b/arch/riscv/cpu/andes25/cache.c
+@@ -4,55 +4,61 @@
+  * Rick Chen, Andes Technology Corporation <rick@andestech.com>
+  */
+ 
++#include <asm/cache.h>
++#include <asm/csr.h>
++#include <asm/encoding.h>
++#include <asm/sbi.h>
++#include <cache.h>
+ #include <common.h>
+ #include <cpu_func.h>
+ #include <dm.h>
+-#include <asm/cache.h>
+ #include <dm/uclass-internal.h>
+-#include <cache.h>
+-#include <asm/csr.h>
++#include <malloc.h>
+ 
+-#ifdef CONFIG_RISCV_NDS_CACHE
+-#if CONFIG_IS_ENABLED(RISCV_MMODE)
+-/* mcctlcommand */
+-#define CCTL_REG_MCCTLCOMMAND_NUM	0x7cc
++#define MCACHE_CTL	0x7ca
++#define MCACHE_CTL_IC_EN	(1UL << 0)
++#define MCACHE_CTL_DC_EN	(1UL << 1)
+ 
+-/* D-cache operation */
++#define CCTL_REG_MCCTLCOMMAND_NUM	0x7cc
+ #define CCTL_L1D_WBINVAL_ALL	6
+-#endif
+-#endif
+ 
+-#ifdef CONFIG_V5L2_CACHE
+-static void _cache_enable(void)
++void enable_caches(void)
+ {
+-	struct udevice *dev = NULL;
+-
+-	uclass_find_first_device(UCLASS_CACHE, &dev);
+-
+-	if (dev)
+-		cache_enable(dev);
++	struct udevice *dev;
++	int ret;
++
++	ret = uclass_get_device_by_driver(UCLASS_CACHE,
++					  DM_DRIVER_GET(v5l2_cache),
++					  &dev);
++	if (ret) {
++		log_debug("Cannot enable v5l2 cache\n");
++	} else {
++		ret = cache_enable(dev);
++		if (ret)
++			log_debug("v5l2 cache enable failed\n");
++	}
+ }
+ 
+-static void _cache_disable(void)
++static void cache_ops(int (*ops)(struct udevice *dev))
+ {
+ 	struct udevice *dev = NULL;
+ 
+ 	uclass_find_first_device(UCLASS_CACHE, &dev);
+ 
+ 	if (dev)
+-		cache_disable(dev);
++		ops(dev);
+ }
+-#endif
+ 
+ void flush_dcache_all(void)
+ {
+-#if !CONFIG_IS_ENABLED(SYS_ICACHE_OFF)
+-#ifdef CONFIG_RISCV_NDS_CACHE
+ #if CONFIG_IS_ENABLED(RISCV_MMODE)
+ 	csr_write(CCTL_REG_MCCTLCOMMAND_NUM, CCTL_L1D_WBINVAL_ALL);
++#else
++	if(dcache_status())
++		sbi_dcache_wbinval_all();
+ #endif
+-#endif
+-#endif
++
++	cache_ops(cache_wbinval);
+ }
+ 
+ void flush_dcache_range(unsigned long start, unsigned long end)
+@@ -67,86 +73,76 @@ void invalidate_dcache_range(unsigned long start, unsigned long end)
+ 
+ void icache_enable(void)
+ {
+-#if !CONFIG_IS_ENABLED(SYS_ICACHE_OFF)
+-#ifdef CONFIG_RISCV_NDS_CACHE
+ #if CONFIG_IS_ENABLED(RISCV_MMODE)
+ 	asm volatile (
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"ori t0, t1, 0x1\n\t"
+-		"csrw mcache_ctl, t0\n\t"
++		"csrw 0x7ca, t0\n\t"
+ 	);
+-#endif
+-#endif
++#else
++	sbi_en_icache();
+ #endif
+ }
+ 
+ void icache_disable(void)
+ {
+-#if !CONFIG_IS_ENABLED(SYS_ICACHE_OFF)
+-#ifdef CONFIG_RISCV_NDS_CACHE
+ #if CONFIG_IS_ENABLED(RISCV_MMODE)
+ 	asm volatile (
+ 		"fence.i\n\t"
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"andi t0, t1, ~0x1\n\t"
+-		"csrw mcache_ctl, t0\n\t"
++		"csrw 0x7ca, t0\n\t"
+ 	);
+-#endif
+-#endif
++#else
++	sbi_dis_icache();
+ #endif
+ }
+ 
+ void dcache_enable(void)
+ {
+-#if !CONFIG_IS_ENABLED(SYS_DCACHE_OFF)
+-#ifdef CONFIG_RISCV_NDS_CACHE
+ #if CONFIG_IS_ENABLED(RISCV_MMODE)
+ 	asm volatile (
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"ori t0, t1, 0x2\n\t"
+-		"csrw mcache_ctl, t0\n\t"
++		"csrw 0x7ca, t0\n\t"
+ 	);
++#else
++	if (!(sbi_get_L1cache()& MCACHE_CTL_DC_EN))
++		sbi_en_dcache();
+ #endif
+-#ifdef CONFIG_V5L2_CACHE
+-	_cache_enable();
+-#endif
+-#endif
+-#endif
++	cache_ops(cache_enable);
+ }
+ 
+ void dcache_disable(void)
+ {
+-#if !CONFIG_IS_ENABLED(SYS_DCACHE_OFF)
+-#ifdef CONFIG_RISCV_NDS_CACHE
+ #if CONFIG_IS_ENABLED(RISCV_MMODE)
+ 	csr_write(CCTL_REG_MCCTLCOMMAND_NUM, CCTL_L1D_WBINVAL_ALL);
+ 	asm volatile (
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"andi t0, t1, ~0x2\n\t"
+-		"csrw mcache_ctl, t0\n\t"
++		"csrw 0x7ca, t0\n\t"
+ 	);
++#else
++	sbi_dis_dcache();
+ #endif
+-#ifdef CONFIG_V5L2_CACHE
+-	_cache_disable();
+-#endif
+-#endif
+-#endif
++
++	cache_ops(cache_disable);
+ }
+ 
+ int icache_status(void)
+ {
+ 	int ret = 0;
+ 
+-#ifdef CONFIG_RISCV_NDS_CACHE
+ #if CONFIG_IS_ENABLED(RISCV_MMODE)
+ 	asm volatile (
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"andi	%0, t1, 0x01\n\t"
+ 		: "=r" (ret)
+ 		:
+ 		: "memory"
+ 	);
+-#endif
++#else
++	ret = (sbi_get_L1cache()& MCACHE_CTL_IC_EN);
+ #endif
+ 
+ 	return ret;
+@@ -156,16 +152,16 @@ int dcache_status(void)
+ {
+ 	int ret = 0;
+ 
+-#ifdef CONFIG_RISCV_NDS_CACHE
+ #if CONFIG_IS_ENABLED(RISCV_MMODE)
+ 	asm volatile (
+-		"csrr t1, mcache_ctl\n\t"
++		"csrr t1, 0x7ca\n\t"
+ 		"andi	%0, t1, 0x02\n\t"
+ 		: "=r" (ret)
+ 		:
+ 		: "memory"
+ 	);
+-#endif
++#else
++	ret = (sbi_get_L1cache()& MCACHE_CTL_DC_EN);
+ #endif
+ 
+ 	return ret;
+diff --git a/arch/riscv/cpu/andes25/cpu.c b/arch/riscv/cpu/andes25/cpu.c
+new file mode 100644
+index 0000000000..65838345b3
+--- /dev/null
++++ b/arch/riscv/cpu/andes25/cpu.c
+@@ -0,0 +1,73 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (C) 2017 Andes Technology Corporation
++ * Rick Chen, Andes Technology Corporation <rick@andestech.com>
++ */
++
++/* CPU specific code */
++#include <common.h>
++#include <cpu_func.h>
++#include <irq_func.h>
++#include <asm/cache.h>
++#include <asm/csr.h>
++
++#define CSR_MCACHE_CTL							0x7ca
++#define CSR_MMISC_CTL							0x7d0
++#define V5_MCACHE_CTL_IC_EN_OFFSET		0
++#define V5_MCACHE_CTL_DC_EN_OFFSET		1
++#define V5_MCACHE_CTL_CCTL_SUEN_OFFSET  8
++
++#define V5_MCACHE_CTL_IC_EN			BIT(V5_MCACHE_CTL_IC_EN_OFFSET)
++#define V5_MCACHE_CTL_DC_EN			BIT(V5_MCACHE_CTL_DC_EN_OFFSET)
++#define V5_MCACHE_CTL_CCTL_SUEN	BIT(V5_MCACHE_CTL_CCTL_SUEN_OFFSET)
++
++/* MMISC control register */
++#define V5_MMISC_CTL_NON_BLOCKING_OFFSET		8
++#define V5_MMISC_CTL_NON_BLOCKING_EN			BIT(V5_MMISC_CTL_NON_BLOCKING_OFFSET)
++
++/*
++ * cleanup_before_linux() is called just before we call linux
++ * it prepares the processor for linux
++ *
++ * we disable interrupt and caches.
++ */
++int cleanup_before_linux(void)
++{
++	disable_interrupts();
++
++	invalidate_icache_all();
++	if(!icache_status())
++		icache_enable();
++
++	if(!dcache_status())
++		dcache_enable();
++
++	enable_caches();
++
++	return 0;
++}
++
++void harts_early_init(void)
++{
++	if (CONFIG_IS_ENABLED(RISCV_MMODE)) {
++        unsigned long long mmisc_ctl_val = csr_read(CSR_MMISC_CTL);
++		unsigned long long mcache_ctl_val = csr_read(CSR_MCACHE_CTL);
++
++		if (!(mcache_ctl_val & V5_MCACHE_CTL_CCTL_SUEN))
++			mcache_ctl_val |= V5_MCACHE_CTL_CCTL_SUEN;
++		if (!(mcache_ctl_val & V5_MCACHE_CTL_IC_EN))
++			mcache_ctl_val |= V5_MCACHE_CTL_IC_EN;
++
++		if (!CONFIG_IS_ENABLED(SYS_DCACHE_OFF)) {
++			if (!(mcache_ctl_val & V5_MCACHE_CTL_DC_EN))
++				mcache_ctl_val |= V5_MCACHE_CTL_DC_EN;
++		}
++
++		csr_write(CSR_MCACHE_CTL, mcache_ctl_val);
++
++		if (!(mmisc_ctl_val & V5_MMISC_CTL_NON_BLOCKING_EN))
++			mmisc_ctl_val |= V5_MMISC_CTL_NON_BLOCKING_EN;
++
++		csr_write(CSR_MMISC_CTL, mmisc_ctl_val);
++	}
++}
+diff --git a/arch/riscv/cpu/ax25/pma.c b/arch/riscv/cpu/andes25/pma.c
+similarity index 100%
+rename from arch/riscv/cpu/ax25/pma.c
+rename to arch/riscv/cpu/andes25/pma.c
+diff --git a/arch/riscv/cpu/andes45/Kconfig b/arch/riscv/cpu/andes45/Kconfig
+new file mode 100644
+index 0000000000..d6fe66eca0
+--- /dev/null
++++ b/arch/riscv/cpu/andes45/Kconfig
+@@ -0,0 +1,15 @@
++config RISCV_NDS
++	bool
++	select ARCH_EARLY_INIT_R
++	imply CPU
++	imply CPU_RISCV
++	imply RISCV_TIMER if (RISCV_SMODE || SPL_RISCV_SMODE)
++	imply ANDES_PLIC if (RISCV_MMODE || SPL_RISCV_MMODE)
++	imply ANDES_PLMT if (RISCV_MMODE || SPL_RISCV_MMODE)
++	imply ANDES_PMA if (RISCV_MMODE || SPL_RISCV_MMODE)
++	imply SPL_CPU_SUPPORT
++	imply SPL_OPENSBI
++	imply SPL_LOAD_FIT
++	help
++	  Run U-Boot on AndeStar V5 platforms and use some specific features
++	  which are provided by Andes Technology AndeStar V5 families.
+diff --git a/arch/riscv/cpu/andes45/Makefile b/arch/riscv/cpu/andes45/Makefile
+new file mode 100644
+index 0000000000..78e37a4404
+--- /dev/null
++++ b/arch/riscv/cpu/andes45/Makefile
+@@ -0,0 +1,8 @@
++# SPDX-License-Identifier: GPL-2.0+
++#
++# Copyright (C) 2022 Andes Technology Corporation
++# Rick Chen, Andes Technology Corporation <rick@andestech.com>
++
++obj-y	:= cpu.o
++obj-y	+= cache.o
++obj-$(CONFIG_ANDES_PMA)	+= pma.o
+diff --git a/arch/riscv/cpu/andes45/cache.c b/arch/riscv/cpu/andes45/cache.c
+new file mode 100644
+index 0000000000..d42f5066d2
+--- /dev/null
++++ b/arch/riscv/cpu/andes45/cache.c
+@@ -0,0 +1,169 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (C) 2017 Andes Technology Corporation
++ * Rick Chen, Andes Technology Corporation <rick@andestech.com>
++ */
++
++#include <asm/encoding.h>
++#include <asm/csr.h>
++#include <asm/sbi.h>
++#include <cache.h>
++#include <common.h>
++#include <cpu_func.h>
++#include <dm.h>
++#include <dm/uclass-internal.h>
++#include <malloc.h>
++#include <linux/log2.h>
++
++#define MCACHE_CTL	0x7ca
++#define MCACHE_CTL_IC_EN	(1UL << 0)
++#define MCACHE_CTL_DC_EN	(1UL << 1)
++
++#define CCTL_REG_MCCTLCOMMAND_NUM	0x7cc
++
++#define CCTL_L1D_WBINVAL_ALL	6
++
++void enable_caches(void)
++{
++	struct udevice *dev;
++	int ret;
++
++	ret = uclass_get_device_by_driver(UCLASS_CACHE,
++					  DM_DRIVER_GET(v5l2_cache),
++					  &dev);
++	if (ret) {
++		log_debug("Cannot enable v5l2 cache");
++	} else {
++		ret = cache_enable(dev);
++		if (ret)
++			log_debug("v5l2 cache enable failed");
++	}
++}
++
++static void cache_ops(int (*ops)(struct udevice *dev))
++{
++	struct udevice *dev = NULL;
++
++	uclass_find_first_device(UCLASS_CACHE, &dev);
++
++	if (dev)
++		ops(dev);
++}
++
++
++void flush_dcache_all(void)
++{
++#if CONFIG_IS_ENABLED(RISCV_MMODE)
++	csr_write(CCTL_REG_MCCTLCOMMAND_NUM, CCTL_L1D_WBINVAL_ALL);
++#else
++	if(dcache_status())
++		sbi_dcache_wbinval_all();
++#endif
++
++	cache_ops(cache_wbinval);
++}
++
++void flush_dcache_range(unsigned long start, unsigned long end)
++{
++	flush_dcache_all();
++}
++
++void invalidate_dcache_range(unsigned long start, unsigned long end)
++{
++	flush_dcache_all();
++}
++
++void icache_enable(void)
++{
++#if CONFIG_IS_ENABLED(RISCV_MMODE)
++	asm volatile (
++		"csrr t1, 0x7ca\n\t"
++		"ori t0, t1, 0x1\n\t"
++		"csrw 0x7ca, t0\n\t"
++	);
++#else
++	sbi_en_icache();
++#endif
++}
++
++void icache_disable(void)
++{
++#if CONFIG_IS_ENABLED(RISCV_MMODE)
++	asm volatile (
++		"fence.i\n\t"
++		"csrr t1, 0x7ca\n\t"
++		"andi t0, t1, ~0x1\n\t"
++		"csrw 0x7ca, t0\n\t"
++	);
++#else
++	sbi_dis_icache();
++#endif
++}
++
++void dcache_enable(void)
++{
++#if CONFIG_IS_ENABLED(RISCV_MMODE)
++	asm volatile (
++		"csrr t1, 0x7ca\n\t"
++		"ori t0, t1, 0x2\n\t"
++		"csrw 0x7ca, t0\n\t"
++	);
++#else
++	if (!(sbi_get_L1cache()& MCACHE_CTL_DC_EN))
++		sbi_en_dcache();
++#endif
++	cache_ops(cache_enable);
++}
++
++void dcache_disable(void)
++{
++#if CONFIG_IS_ENABLED(RISCV_MMODE)
++	csr_write(CCTL_REG_MCCTLCOMMAND_NUM, CCTL_L1D_WBINVAL_ALL);
++	asm volatile (
++		"csrr t1, 0x7ca\n\t"
++		"andi t0, t1, ~0x2\n\t"
++		"csrw 0x7ca, t0\n\t"
++	);
++#else
++	sbi_dis_dcache();
++#endif
++	cache_ops(cache_disable);
++}
++
++int icache_status(void)
++{
++	int ret = 0;
++
++#if CONFIG_IS_ENABLED(RISCV_MMODE)
++	asm volatile (
++		"csrr t1, 0x7ca\n\t"
++		"andi	%0, t1, 0x01\n\t"
++		: "=r" (ret)
++		:
++		: "memory"
++	);
++#else
++	ret = (sbi_get_L1cache()& MCACHE_CTL_IC_EN);
++#endif
++
++	return ret;
++}
++
++int dcache_status(void)
++{
++	int ret = 0;
++
++#if CONFIG_IS_ENABLED(RISCV_MMODE)
++	asm volatile (
++		"csrr t1, 0x7ca\n\t"
++		"andi	%0, t1, 0x02\n\t"
++		: "=r" (ret)
++		:
++		: "memory"
++	);
++#else
++	ret = (sbi_get_L1cache()& MCACHE_CTL_DC_EN);
++#endif
++
++	return ret;
++}
+diff --git a/arch/riscv/cpu/andes45/cpu.c b/arch/riscv/cpu/andes45/cpu.c
+new file mode 100644
+index 0000000000..51dbde2946
+--- /dev/null
++++ b/arch/riscv/cpu/andes45/cpu.c
+@@ -0,0 +1,96 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (C) 2017 Andes Technology Corporation
++ * Rick Chen, Andes Technology Corporation <rick@andestech.com>
++ */
++
++/* CPU specific code */
++#include <common.h>
++#include <cpu_func.h>
++#include <irq_func.h>
++#include <asm/cache.h>
++#include <asm/csr.h>
++
++#define CSR_MCACHE_CTL							0x7ca
++#define CSR_MMISC_CTL							0x7d0
++
++/* MMISC control register */
++#define V5_MMISC_CTL_NON_BLOCKING_OFFSET		8
++#define V5_MMISC_CTL_NON_BLOCKING_EN			BIT(V5_MMISC_CTL_NON_BLOCKING_OFFSET)
++
++/* MCACHE control register */
++#define V5_MCACHE_CTL_IC_EN_OFFSET				0
++#define V5_MCACHE_CTL_DC_EN_OFFSET				1
++#define V5_MCACHE_CTL_CCTL_SUEN_OFFSET			8
++#define V5_MCACHE_CTL_L1I_PREFETCH_OFFSET		9
++#define V5_MCACHE_CTL_L1D_PREFETCH_OFFSET		10
++#define V5_MCACHE_CTL_DC_WAROUND_OFFSET_1		13
++#define V5_MCACHE_CTL_DC_WAROUND_OFFSET_2		14
++#define V5_MCACHE_CTL_L2C_WAROUND_OFFSET_1		15
++#define V5_MCACHE_CTL_L2C_WAROUND_OFFSET_2		16
++#define V5_MCACHE_CTL_DC_COHEN_OFFSET			19
++#define V5_MCACHE_CTL_DC_COHSTA_OFFSET			20
++
++#define V5_MCACHE_CTL_IC_EN						BIT(V5_MCACHE_CTL_IC_EN_OFFSET)
++#define V5_MCACHE_CTL_DC_EN						BIT(V5_MCACHE_CTL_DC_EN_OFFSET)
++#define V5_MCACHE_CTL_CCTL_SUEN					BIT(V5_MCACHE_CTL_CCTL_SUEN_OFFSET)
++#define V5_MCACHE_CTL_L1I_PREFETCH_EN			BIT(V5_MCACHE_CTL_L1I_PREFETCH_OFFSET)
++#define V5_MCACHE_CTL_L1D_PREFETCH_EN			BIT(V5_MCACHE_CTL_L1D_PREFETCH_OFFSET)
++#define V5_MCACHE_CTL_DC_WAROUND_1_EN			BIT(V5_MCACHE_CTL_DC_WAROUND_OFFSET_1)
++#define V5_MCACHE_CTL_DC_WAROUND_2_EN			BIT(V5_MCACHE_CTL_DC_WAROUND_OFFSET_2)
++#define V5_MCACHE_CTL_L2C_WAROUND_1_EN			BIT(V5_MCACHE_CTL_L2C_WAROUND_OFFSET_1)
++#define V5_MCACHE_CTL_L2C_WAROUND_2_EN			BIT(V5_MCACHE_CTL_L2C_WAROUND_OFFSET_2)
++#define V5_MCACHE_CTL_DC_COHEN_EN				BIT(V5_MCACHE_CTL_DC_COHEN_OFFSET)
++#define V5_MCACHE_CTL_DC_COHSTA_EN				BIT(V5_MCACHE_CTL_DC_COHSTA_OFFSET)
++
++/*
++ * cleanup_before_linux() is called just before we call linux
++ * it prepares the processor for linux
++ *
++ * we disable interrupt and caches.
++ */
++int cleanup_before_linux(void)
++{
++	disable_interrupts();
++
++	invalidate_icache_all();
++	if(!icache_status())
++		icache_enable();
++
++	if(!dcache_status())
++		dcache_enable();
++
++	return 0;
++}
++
++void harts_early_init(void)
++{
++	if (CONFIG_IS_ENABLED(RISCV_MMODE)) {
++        unsigned long long mcache_ctl_val = csr_read(CSR_MCACHE_CTL);
++        unsigned long long mmisc_ctl_val = csr_read(CSR_MMISC_CTL);
++
++		mcache_ctl_val |= (V5_MCACHE_CTL_DC_COHEN_EN | V5_MCACHE_CTL_IC_EN | \
++							V5_MCACHE_CTL_DC_EN | V5_MCACHE_CTL_CCTL_SUEN | \
++							V5_MCACHE_CTL_L1I_PREFETCH_EN | V5_MCACHE_CTL_L1D_PREFETCH_EN | \
++							V5_MCACHE_CTL_DC_WAROUND_1_EN | V5_MCACHE_CTL_L2C_WAROUND_1_EN);
++
++		csr_write(CSR_MCACHE_CTL, mcache_ctl_val);
++
++		/*
++         * Check DC_COHEN_EN, if cannot write to mcache_ctl,
++         * we assume this bitmap not support L2 CM
++         */
++        mcache_ctl_val = csr_read(CSR_MCACHE_CTL);
++        if ((mcache_ctl_val & V5_MCACHE_CTL_DC_COHEN_EN)) {
++
++			/* Wait for DC_COHSTA bit be set */
++			while (!(mcache_ctl_val & V5_MCACHE_CTL_DC_COHSTA_EN))
++				mcache_ctl_val = csr_read(CSR_MCACHE_CTL);
++		}
++
++		if (!(mmisc_ctl_val & V5_MMISC_CTL_NON_BLOCKING_EN))
++			mmisc_ctl_val |= V5_MMISC_CTL_NON_BLOCKING_EN;
++
++		csr_write(CSR_MMISC_CTL, mmisc_ctl_val);
++	}
++}
+diff --git a/arch/riscv/cpu/andes45/pma.c b/arch/riscv/cpu/andes45/pma.c
+new file mode 100644
+index 0000000000..3a4fdcb07f
+--- /dev/null
++++ b/arch/riscv/cpu/andes45/pma.c
+@@ -0,0 +1,70 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (C) 2017 Andes Technology Corporation
++ * Rick Chen, Andes Technology Corporation <rick@andestech.com>
++ */
++
++#include <asm/csr.h>
++#include <asm/encoding.h>
++#include <asm/sbi.h>
++#include <common.h>
++#include <cpu_func.h>
++#include <malloc.h>
++#include <linux/log2.h>
++
++#define DPMA			(_AC(0x1, UL) << 30)
++int pma_set(unsigned long addr, unsigned int size);
++
++
++#ifdef CONFIG_SYS_NONCACHED_MEMORY
++/*
++ * Reserve one MMU section worth of address space below the malloc() area that
++ * will be mapped uncached.
++ */
++static unsigned long noncached_start = 0;
++static unsigned long noncached_end = 0;
++static unsigned long noncached_next = 0;
++
++int noncached_init(void)
++{
++	phys_addr_t start, end;
++	size_t size;
++
++#if !CONFIG_IS_ENABLED(RISCV_SMODE)
++	if (!(csr_read(CSR_MMSCCFG) & DPMA))
++#else
++
++	if (!sbi_probe_pma())
++#endif
++		return -ENXIO;
++	end = ALIGN(mem_malloc_start, MMU_SECTION_SIZE) - MMU_SECTION_SIZE;
++	size = ALIGN(CONFIG_SYS_NONCACHED_MEMORY, MMU_SECTION_SIZE);
++	start = end - size;
++	debug("mapping memory %pa-%pa non-cached\n", &start, &end);
++
++	noncached_start = start;
++	noncached_end = end;
++	noncached_next = start;
++
++	return 0;
++}
++
++phys_addr_t noncached_alloc(size_t size, size_t align)
++{
++	phys_addr_t next = ALIGN(noncached_next, align);
++	size = __roundup_pow_of_two(size);
++
++	if (next >= noncached_end || (noncached_end - next) < size)
++		return 0;
++
++	debug("allocated %zu bytes of uncached memory @%pa\n", size, &next);
++#if !CONFIG_IS_ENABLED(RISCV_SMODE)
++	pma_set(next, size);
++#else
++	sbi_set_pma(next, next, 0x100);
++#endif
++	noncached_next = next + size;
++
++	return next;
++}
++#endif /* CONFIG_SYS_NONCACHED_MEMORY */
+diff --git a/arch/riscv/cpu/ax25/cpu.c b/arch/riscv/cpu/ax25/cpu.c
+deleted file mode 100644
+index c4c2de2ef0..0000000000
+--- a/arch/riscv/cpu/ax25/cpu.c
++++ /dev/null
+@@ -1,71 +0,0 @@
+-// SPDX-License-Identifier: GPL-2.0+
+-/*
+- * Copyright (C) 2017 Andes Technology Corporation
+- * Rick Chen, Andes Technology Corporation <rick@andestech.com>
+- */
+-
+-/* CPU specific code */
+-#include <common.h>
+-#include <cpu_func.h>
+-#include <irq_func.h>
+-#include <asm/cache.h>
+-#include <asm/csr.h>
+-
+-#define CSR_MCACHE_CTL	0x7ca
+-#define CSR_MMISC_CTL	0x7d0
+-#define CSR_MARCHID		0xf12
+-
+-#define V5_MCACHE_CTL_IC_EN_OFFSET      0
+-#define V5_MCACHE_CTL_DC_EN_OFFSET      1
+-#define V5_MCACHE_CTL_DC_COHEN_OFFSET	19
+-#define V5_MCACHE_CTL_DC_COHSTA_OFFSET	20
+-
+-#define V5_MCACHE_CTL_IC_EN		BIT(V5_MCACHE_CTL_IC_EN_OFFSET)
+-#define V5_MCACHE_CTL_DC_EN				BIT(V5_MCACHE_CTL_DC_EN_OFFSET)
+-#define V5_MCACHE_CTL_DC_COHEN_EN       BIT(V5_MCACHE_CTL_DC_COHEN_OFFSET)
+-#define V5_MCACHE_CTL_DC_COHSTA_EN      BIT(V5_MCACHE_CTL_DC_COHSTA_OFFSET)
+-
+-
+-/*
+- * cleanup_before_linux() is called just before we call linux
+- * it prepares the processor for linux
+- *
+- * we disable interrupt and caches.
+- */
+-int cleanup_before_linux(void)
+-{
+-	disable_interrupts();
+-
+-	/* turn off I/D-cache */
+-	cache_flush();
+-	icache_disable();
+-	dcache_disable();
+-
+-	return 0;
+-}
+-
+-void harts_early_init(void)
+-{
+-	if (CONFIG_IS_ENABLED(RISCV_MMODE)) {
+-		unsigned long long mcache_ctl_val = csr_read(CSR_MCACHE_CTL);
+-
+-		if (!(mcache_ctl_val & V5_MCACHE_CTL_DC_COHEN_EN))
+-			mcache_ctl_val |= V5_MCACHE_CTL_DC_COHEN_EN;
+-		if (!(mcache_ctl_val & V5_MCACHE_CTL_IC_EN))
+-			mcache_ctl_val |= V5_MCACHE_CTL_IC_EN;
+-		if (!(mcache_ctl_val & V5_MCACHE_CTL_DC_EN))
+-			mcache_ctl_val |= V5_MCACHE_CTL_DC_EN;
+-		csr_write(CSR_MCACHE_CTL, mcache_ctl_val);
+-
+-		/*
+-		 * Check DC_COHEN_EN, if cannot write to mcache_ctl,
+-		 * we assume this bitmap not support L2 CM
+-		 */
+-		mcache_ctl_val = csr_read(CSR_MCACHE_CTL);
+-		if ((mcache_ctl_val & V5_MCACHE_CTL_DC_COHEN_EN)) {
+-		/* Wait for DC_COHSTA bit be set */
+-			while (!(mcache_ctl_val & V5_MCACHE_CTL_DC_COHSTA_EN))
+-				mcache_ctl_val = csr_read(CSR_MCACHE_CTL);
+-		}
+-	}
+-}
+diff --git a/arch/riscv/cpu/start.S b/arch/riscv/cpu/start.S
+index 2ccda4f515..3e7c6a7760 100644
+--- a/arch/riscv/cpu/start.S
++++ b/arch/riscv/cpu/start.S
+@@ -183,10 +183,6 @@ wait_for_gd_init:
+ 	bnez	s2, secondary_hart_loop
+ #endif
+ 
+-	/* Enable cache */
+-	jal	icache_enable
+-	jal	dcache_enable
+-
+ #ifdef CONFIG_DEBUG_UART
+ 	jal	debug_uart_init
+ #endif
+diff --git a/arch/riscv/dts/Makefile b/arch/riscv/dts/Makefile
+index 5c15a0f303..fbbcd08bbd 100644
+--- a/arch/riscv/dts/Makefile
++++ b/arch/riscv/dts/Makefile
+@@ -1,6 +1,8 @@
+ # SPDX-License-Identifier: GPL-2.0+
+ 
+-dtb-$(CONFIG_TARGET_AX25_AE350) += ae350_32.dtb ae350_64.dtb
++dtb-$(CONFIG_TARGET_ANDES25_AE350) += ae350_32.dtb ae350_64.dtb
++dtb-$(CONFIG_TARGET_ANDES45_AE350) += ae350_32.dtb ae350_64.dtb
++dtb-$(CONFIG_TARGET_ANDES45_QILAI) += qilai_32.dtb qilai_64.dtb
+ dtb-$(CONFIG_TARGET_MICROCHIP_ICICLE) += microchip-mpfs-icicle-kit.dtb
+ dtb-$(CONFIG_TARGET_QEMU_VIRT) += qemu-virt32.dtb qemu-virt64.dtb
+ dtb-$(CONFIG_TARGET_OPENPITON_RISCV64) += openpiton-riscv64.dtb
+diff --git a/arch/riscv/dts/qilai_32.dts b/arch/riscv/dts/qilai_32.dts
+new file mode 100644
+index 0000000000..1b36847a6c
+--- /dev/null
++++ b/arch/riscv/dts/qilai_32.dts
+@@ -0,0 +1,301 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++
++#include "binman.dtsi"
++
++/ {
++	#address-cells = <0x2>;
++	#size-cells = <0x2>;
++	compatible = "andestech,a45";
++	model = "andestech,a45";
++
++	aliases {
++		uart0 = &serial0;
++		spi0 = &spi;
++		i2c0 = &i2c;
++	};
++
++	chosen {
++		bootargs = "console=ttyS0,38400n8 earlycon=sbi debug loglevel=7";
++		stdout-path = "uart0:38400n8";
++	};
++
++	cpus {
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		timebase-frequency = <0x3938700>;
++
++		CPU0: cpu@0 {
++			device_type = "cpu";
++			reg = <0x0>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv32imafdc";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv32";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x20>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x20>;
++			next-level-cache = <&L2>;
++
++			CPU0_intc: interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++			};
++		};
++
++		CPU1: cpu@1 {
++			device_type = "cpu";
++			reg = <0x1>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv32imafdc";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv32";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x20>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x20>;
++			next-level-cache = <&L2>;
++
++			CPU1_intc: interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++			};
++		};
++
++		CPU2: cpu@2 {
++			device_type = "cpu";
++			reg = <0x2>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv32imafdc";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv32";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x20>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x20>;
++			next-level-cache = <&L2>;
++
++			CPU2_intc: interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++			};
++		};
++
++		CPU3: cpu@3 {
++			device_type = "cpu";
++			reg = <0x3>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv32imafdc";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv32";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x20>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x20>;
++			next-level-cache = <&L2>;
++
++			CPU3_intc: interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++			};
++		};
++	};
++
++	L2: l2-cache@200000 {
++		compatible = "cache";
++		cache-level = <0x2>;
++		cache-size = <0x40000>;
++		reg = <0x0 0x00200000 0x0 0x100000>;
++		andes,inst-prefetch = <0x3>;
++		andes,data-prefetch = <0x3>;
++		andes,tag-ram-ctl = <0x0 0x0>;
++		andes,data-ram-ctl = <0x0 0x0>;
++	};
++
++	memory@400000000 {
++		device_type = "memory";
++		reg = <0x04 0x00000000 0x0 0x40000000>;
++	};
++
++	soc {
++		#address-cells = <0x2>;
++		#size-cells = <0x2>;
++		compatible = "andestech,riscv-ae350-soc", "simple-bus";
++		ranges;
++
++		plic0: interrupt-controller@2000000 {
++			compatible = "riscv,plic0";
++			#address-cells = <0x2>;
++			#interrupt-cells = <0x2>;
++			interrupt-controller;
++			reg = <0x0 0x02000000 0x0 0x2000000>;
++			riscv,ndev = <0x47>;
++			interrupts-extended = <&CPU0_intc 11 &CPU0_intc 9
++				&CPU1_intc 11 &CPU1_intc 9
++				&CPU2_intc 11 &CPU2_intc 9
++				&CPU3_intc 11 &CPU3_intc 9>;
++		};
++
++		plic1: interrupt-controller@400000 {
++			compatible = "riscv,plic1";
++			#address-cells = <0x2>;
++			#interrupt-cells = <0x2>;
++			interrupt-controller;
++			reg = <0x0 0x00400000 0x0 0x400000>;
++			riscv,ndev = <0x1>;
++			interrupts-extended = <&CPU0_intc 3
++				&CPU1_intc 3
++				&CPU2_intc 3
++				&CPU3_intc 3>;
++		};
++
++		plmt0@100000 {
++			compatible = "riscv,plmt0";
++			reg = <0x0 0x00100000 0x0 0x100000>;
++			interrupts-extended = <&CPU0_intc 7
++				&CPU1_intc 7
++				&CPU2_intc 7
++				&CPU3_intc 7>;
++		};
++	};
++
++	spiclk: virt_100mhz {
++		#clock-cells = <0x0>;
++		compatible = "fixed-clock";
++		clock-frequency = <0x5f5e100>;
++	};
++
++	smu@30100000 {
++		compatible = "andestech,atcsmu";
++		reg = <0x0 0x30100000 0x0 0x100000>;
++	};
++
++	wdt@30500000 {
++		compatible = "andestech,atcwdt200";
++		interrupts = <0x0 0x4>;
++		reg = <0x0 0x30500000 0x0 0x100000>;
++		clock-frequency = <0xe4e1c0>;
++		interrupt-parent = <&plic0>;
++	};
++
++	timer0: timer@30400000 {
++		compatible = "andestech,atcpit100";
++		reg = <0x0 0x30400000 0x0 0x100000>;
++		clock-frequency = <0x3938700>;
++		interrupts = <0x3 0x4>;
++		interrupt-parent = <&plic0>;
++	};
++
++	serial0: serial@30300000 {
++		compatible = "andestech,uart16550", "ns16550a";
++		reg = <0x0 0x30300000 0x0 0x1000>;
++		interrupts = <0x9 0x4>;
++		clock-frequency = <0x12c0000>;
++		reg-shift = <0x2>;
++		reg-offset = <0x20>;
++		no-loopback-test = <0x1>;
++		interrupt-parent = <&plic0>;
++	};
++
++	gpio@30700000 {
++		compatible = "andestech,atcgpio100";
++		reg = <0x0 0x30700000 0x0 0x100000>;
++		interrupts = <0x7 0x4>;
++		interrupt-parent = <&plic0>;
++	};
++
++	rtc@30600000 {
++		compatible = "andestech,atcrtc100";
++		reg = <0x0 0x30600000 0x0 0x100000>;
++		interrupts = <0x1 0x4 0x2 0x4>;
++		interrupt-parent = <&plic0>;
++		wakeup-source;
++	};
++
++	mmc0: mmc@30c00000 {
++		compatible = "andestech,atfsdc010";
++		max-frequency = <0x5f5e100>;
++		clock-freq-min-max = <0x61a80 0x5f5e100>;
++		fifo-depth = <0x10>;
++		reg = <0x0 0x30c00000 0x0 0x1000>;
++		interrupts = <0x12 0x4>;
++		cap-sd-highspeed;
++		interrupt-parent = <&plic0>;
++		dma-coherent;
++	};
++
++	dma0: dma@30a00000 {
++		compatible = "andestech,atcdmac300";
++		reg = <0x0 0x30a00000 0x0 0x100000>;
++		interrupts = <0xa 0x4 0x40 0x4 0x41 0x4 0x42 0x4 0x43 0x4 0x44 0x4 0x45 0x4 0x46 0x4 0x47 0x4>;
++		dma-channels = <0x8>;
++		interrupt-parent = <&plic0>;
++		dma-coherent;
++	};
++
++	pmu {
++		device_type = "pmu";
++		compatible = "riscv,andes-pmu";
++	};
++
++	nor@0,0 {
++		compatible = "cfi-flash";
++		reg = <0x0 0x88000000 0x0 0x1000>;
++		bank-width = <0x2>;
++		device-width = <0x1>;
++	};
++
++	spi: spi@30900000 {
++		compatible = "andestech,atcspi200";
++		reg = <0x0 0x30900000 0x0 0x100000>;
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		num-cs = <0x1>;
++		clocks = <&spiclk>;
++		interrupts = <0x4 0x4>;
++		interrupt-parent = <&plic0>;
++
++		flash@0 {
++			compatible = "mx25u1635e", "jedec,spi-nor";
++			spi-max-frequency = <0x2faf080>;
++			reg = <0x0>;
++			spi-cpol;
++			spi-cpha;
++		};
++	};
++
++	pwm@30400000 {
++		compatible = "andestech,atcpit100-pwm";
++		reg = <0x0 0x30400000 0x0 0x100000>;
++		clock-frequency = <0x3938700>;
++		interrupts = <0x3 0x4>;
++		interrupt-parent = <&plic0>;
++		pwm-cells = <0x2>;
++	};
++
++	i2c: i2c@30800000 {
++		compatible = "andestech,atciic100";
++		reg = <0x0 0x30800000 0x0 0x100000>;
++		interrupts = <0x6 0x4>;
++		interrupt-parent = <&plic0>;
++	};
++
++};
+diff --git a/arch/riscv/dts/qilai_64.dts b/arch/riscv/dts/qilai_64.dts
+new file mode 100644
+index 0000000000..223cfd1cf1
+--- /dev/null
++++ b/arch/riscv/dts/qilai_64.dts
+@@ -0,0 +1,301 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++
++#include "binman.dtsi"
++
++/ {
++	#address-cells = <0x2>;
++	#size-cells = <0x2>;
++	compatible = "andestech,ax45";
++	model = "andestech,ax45";
++
++	aliases {
++		uart0 = &serial0;
++		spi0 = &spi;
++		i2c0 = &i2c;
++	};
++
++	chosen {
++		bootargs = "console=ttyS0,38400n8 earlycon=sbi debug loglevel=7";
++		stdout-path = "uart0:38400n8";
++	};
++
++	cpus {
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		timebase-frequency = <0x3938700>;
++
++		CPU0: cpu@0 {
++			device_type = "cpu";
++			reg = <0x0>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64imafdc";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x20>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x20>;
++			next-level-cache = <&L2>;
++
++			CPU0_intc: interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++			};
++		};
++
++		CPU1: cpu@1 {
++			device_type = "cpu";
++			reg = <0x1>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64imafdc";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x20>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x20>;
++			next-level-cache = <&L2>;
++
++			CPU1_intc: interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++			};
++		};
++
++		CPU2: cpu@2 {
++			device_type = "cpu";
++			reg = <0x2>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64imafdc";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x20>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x20>;
++			next-level-cache = <&L2>;
++
++			CPU2_intc: interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++			};
++		};
++
++		CPU3: cpu@3 {
++			device_type = "cpu";
++			reg = <0x3>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64imafdc";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x20>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x20>;
++			next-level-cache = <&L2>;
++
++			CPU3_intc: interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++			};
++		};
++	};
++
++	L2: l2-cache@200000 {
++		compatible = "cache";
++		cache-level = <0x2>;
++		cache-size = <0x40000>;
++		reg = <0x0 0x00200000 0x0 0x100000>;
++		andes,inst-prefetch = <0x3>;
++		andes,data-prefetch = <0x3>;
++		andes,tag-ram-ctl = <0x0 0x0>;
++		andes,data-ram-ctl = <0x0 0x0>;
++	};
++
++	memory@400000000 {
++		device_type = "memory";
++		reg = <0x04 0x00000000 0x0 0x40000000>;
++	};
++
++	soc {
++		#address-cells = <0x2>;
++		#size-cells = <0x2>;
++		compatible = "andestech,riscv-ae350-soc", "simple-bus";
++		ranges;
++
++		plic0: interrupt-controller@2000000 {
++			compatible = "riscv,plic0";
++			#address-cells = <0x2>;
++			#interrupt-cells = <0x2>;
++			interrupt-controller;
++			reg = <0x0 0x02000000 0x0 0x2000000>;
++			riscv,ndev = <0x47>;
++			interrupts-extended = <&CPU0_intc 11 &CPU0_intc 9
++				&CPU1_intc 11 &CPU1_intc 9
++				&CPU2_intc 11 &CPU2_intc 9
++				&CPU3_intc 11 &CPU3_intc 9>;
++		};
++
++		plic1: interrupt-controller@400000 {
++			compatible = "riscv,plic1";
++			#address-cells = <0x2>;
++			#interrupt-cells = <0x2>;
++			interrupt-controller;
++			reg = <0x0 0x00400000 0x0 0x400000>;
++			riscv,ndev = <0x1>;
++			interrupts-extended = <&CPU0_intc 3
++				&CPU1_intc 3
++				&CPU2_intc 3
++				&CPU3_intc 3>;
++		};
++
++		plmt0@100000 {
++			compatible = "riscv,plmt0";
++			reg = <0x0 0x00100000 0x0 0x100000>;
++			interrupts-extended = <&CPU0_intc 7
++				&CPU1_intc 7
++				&CPU2_intc 7
++				&CPU3_intc 7>;
++		};
++	};
++
++	spiclk: virt_100mhz {
++		#clock-cells = <0x0>;
++		compatible = "fixed-clock";
++		clock-frequency = <0x5f5e100>;
++	};
++
++	smu@30100000 {
++		compatible = "andestech,atcsmu";
++		reg = <0x0 0x30100000 0x0 0x100000>;
++	};
++
++	wdt@30500000 {
++		compatible = "andestech,atcwdt200";
++		interrupts = <0x0 0x4>;
++		reg = <0x0 0x30500000 0x0 0x100000>;
++		clock-frequency = <0xe4e1c0>;
++		interrupt-parent = <&plic0>;
++	};
++
++	timer0: timer@30400000 {
++		compatible = "andestech,atcpit100";
++		reg = <0x0 0x30400000 0x0 0x100000>;
++		clock-frequency = <0x3938700>;
++		interrupts = <0x3 0x4>;
++		interrupt-parent = <&plic0>;
++	};
++
++	serial0: serial@30300000 {
++		compatible = "andestech,uart16550", "ns16550a";
++		reg = <0x0 0x30300000 0x0 0x1000>;
++		interrupts = <0x9 0x4>;
++		clock-frequency = <0x12c0000>;
++		reg-shift = <0x2>;
++		reg-offset = <0x20>;
++		no-loopback-test = <0x1>;
++		interrupt-parent = <&plic0>;
++	};
++
++	gpio@30700000 {
++		compatible = "andestech,atcgpio100";
++		reg = <0x0 0x30700000 0x0 0x100000>;
++		interrupts = <0x7 0x4>;
++		interrupt-parent = <&plic0>;
++	};
++
++	rtc@30600000 {
++		compatible = "andestech,atcrtc100";
++		reg = <0x0 0x30600000 0x0 0x100000>;
++		interrupts = <0x1 0x4 0x2 0x4>;
++		interrupt-parent = <&plic0>;
++		wakeup-source;
++	};
++
++	mmc0: mmc@30c00000 {
++		compatible = "andestech,atfsdc010";
++		max-frequency = <0x5f5e100>;
++		clock-freq-min-max = <0x61a80 0x5f5e100>;
++		fifo-depth = <0x10>;
++		reg = <0x0 0x30c00000 0x0 0x1000>;
++		interrupts = <0x12 0x4>;
++		cap-sd-highspeed;
++		interrupt-parent = <&plic0>;
++		dma-coherent;
++	};
++
++	dma0: dma@30a00000 {
++		compatible = "andestech,atcdmac300";
++		reg = <0x0 0x30a00000 0x0 0x100000>;
++		interrupts = <0xa 0x4 0x40 0x4 0x41 0x4 0x42 0x4 0x43 0x4 0x44 0x4 0x45 0x4 0x46 0x4 0x47 0x4>;
++		dma-channels = <0x8>;
++		interrupt-parent = <&plic0>;
++		dma-coherent;
++	};
++
++	pmu {
++		device_type = "pmu";
++		compatible = "riscv,andes-pmu";
++	};
++
++	nor@0,0 {
++		compatible = "cfi-flash";
++		reg = <0x0 0x88000000 0x0 0x1000>;
++		bank-width = <0x2>;
++		device-width = <0x1>;
++	};
++
++	spi: spi@30900000 {
++		compatible = "andestech,atcspi200";
++		reg = <0x0 0x30900000 0x0 0x100000>;
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		num-cs = <0x1>;
++		clocks = <&spiclk>;
++		interrupts = <0x4 0x4>;
++		interrupt-parent = <&plic0>;
++
++		flash@0 {
++			compatible = "mx25u1635e", "jedec,spi-nor";
++			spi-max-frequency = <0x2faf080>;
++			reg = <0x0>;
++			spi-cpol;
++			spi-cpha;
++		};
++	};
++
++	pwm@30400000 {
++		compatible = "andestech,atcpit100-pwm";
++		reg = <0x0 0x30400000 0x0 0x100000>;
++		clock-frequency = <0x3938700>;
++		interrupts = <0x3 0x4>;
++		interrupt-parent = <&plic0>;
++		pwm-cells = <0x2>;
++	};
++
++	i2c: i2c@30800000 {
++		compatible = "andestech,atciic100";
++		reg = <0x0 0x30800000 0x0 0x100000>;
++		interrupts = <0x6 0x4>;
++		interrupt-parent = <&plic0>;
++	};
++
++};
+diff --git a/arch/riscv/include/asm/csr.h b/arch/riscv/include/asm/csr.h
+index 4c5f14c302..8224a7b16d 100644
+--- a/arch/riscv/include/asm/csr.h
++++ b/arch/riscv/include/asm/csr.h
+@@ -165,6 +165,7 @@
+ #define CSR_CYCLEH		0xc80
+ #define CSR_TIMEH		0xc81
+ #define CSR_INSTRETH		0xc82
++#define CSR_MARCHID		0xf12
+ #define CSR_MHARTID		0xf14
+ 
+ #define CSR_MMSCCFG            0xfc2
+diff --git a/board/AndesTech/ae350/Kconfig b/board/AndesTech/ae350/Kconfig
+new file mode 100644
+index 0000000000..816da061cf
+--- /dev/null
++++ b/board/AndesTech/ae350/Kconfig
+@@ -0,0 +1,78 @@
++if TARGET_ANDES25_AE350
++
++config SYS_CPU
++	default "andes25"
++
++config SYS_BOARD
++	default "ae350"
++
++config SYS_VENDOR
++	default "AndesTech"
++
++config SYS_CONFIG_NAME
++	default "andes25-ae350"
++
++config ENV_SIZE
++	default 0x2000 if ENV_IS_IN_SPI_FLASH
++
++config ENV_OFFSET
++	default 0x140000 if ENV_IS_IN_SPI_FLASH
++
++config SPL_TEXT_BASE
++	default 0x800000
++
++config SPL_OPENSBI_LOAD_ADDR
++	default 0x01000000
++
++config BOARD_SPECIFIC_OPTIONS # dummy
++	def_bool y
++	select RISCV_NDS
++	select SUPPORT_SPL
++	select BINMAN if SPL
++	imply SMP
++	imply SPL_RAM_SUPPORT
++	imply SPL_RAM_DEVICE
++	imply BOARD_EARLY_INIT_F
++	imply OF_HAS_PRIOR_STAGE
++
++endif
++
++if TARGET_ANDES45_AE350
++
++config SYS_CPU
++	default "andes45"
++
++config SYS_BOARD
++	default "ae350"
++
++config SYS_VENDOR
++	default "AndesTech"
++
++config SYS_CONFIG_NAME
++	default "andes45-ae350"
++
++config ENV_SIZE
++	default 0x2000 if ENV_IS_IN_SPI_FLASH
++
++config ENV_OFFSET
++	default 0x140000 if ENV_IS_IN_SPI_FLASH
++
++config SPL_TEXT_BASE
++	default 0x800000
++
++config SPL_OPENSBI_LOAD_ADDR
++	default 0x01000000
++
++config BOARD_SPECIFIC_OPTIONS # dummy
++	def_bool y
++	select RISCV_NDS
++	select SUPPORT_SPL
++	select BINMAN if SPL
++	imply SMP
++	imply SPL_RAM_SUPPORT
++	imply SPL_RAM_DEVICE
++	imply BOARD_EARLY_INIT_F
++	imply OF_HAS_PRIOR_STAGE
++	imply BOARD_EARLY_INIT_R
++
++endif
+diff --git a/board/AndesTech/ae350/MAINTAINERS b/board/AndesTech/ae350/MAINTAINERS
+new file mode 100644
+index 0000000000..ad842a1e2b
+--- /dev/null
++++ b/board/AndesTech/ae350/MAINTAINERS
+@@ -0,0 +1,18 @@
++AE350 BOARD
++M:	Rick Chen <rick@andestech.com>
++S:	Maintained
++F:	board/AndesTech/ae350/
++F:	include/configs/andes25-ae350.h
++F:	include/configs/andes45-ae350.h
++F:	configs/ae350_rv32_defconfig
++F:	configs/ae350_rv64_defconfig
++F:	configs/ae350_rv32_xip_defconfig
++F:	configs/ae350_rv64_xip_defconfig
++F:	configs/ae350_a25_spl_defconfig
++F:	configs/ae350_ax25_spl_defconfig
++F:	configs/ae350_a45_spl_defconfig
++F:	configs/ae350_ax45_spl_defconfig
++F:	configs/ae350_a25_spl_xip_defconfig
++F:	configs/ae350_ax25_spl_xip_defconfig
++F:	configs/ae350_a45_spl_xip_defconfig
++F:	configs/ae350_ax45_spl_xip_defconfig
+diff --git a/board/AndesTech/ax25-ae350/Makefile b/board/AndesTech/ae350/Makefile
+similarity index 58%
+rename from board/AndesTech/ax25-ae350/Makefile
+rename to board/AndesTech/ae350/Makefile
+index 0e4ba8d702..d468280be1 100644
+--- a/board/AndesTech/ax25-ae350/Makefile
++++ b/board/AndesTech/ae350/Makefile
+@@ -3,4 +3,5 @@
+ # Copyright (C) 2017 Andes Technology Corporation.
+ # Rick Chen, Andes Technology Corporation <rick@andestech.com>
+ 
+-obj-y	:= ax25-ae350.o
++obj-$(CONFIG_TARGET_ANDES25_AE350)	:= andes25-ae350.o
++obj-$(CONFIG_TARGET_ANDES45_AE350)	:= andes45-ae350.o
+diff --git a/board/AndesTech/ax25-ae350/ax25-ae350.c b/board/AndesTech/ae350/andes25-ae350.c
+similarity index 72%
+rename from board/AndesTech/ax25-ae350/ax25-ae350.c
+rename to board/AndesTech/ae350/andes25-ae350.c
+index d6a4291379..c02db0233c 100644
+--- a/board/AndesTech/ax25-ae350/ax25-ae350.c
++++ b/board/AndesTech/ae350/andes25-ae350.c
+@@ -4,7 +4,10 @@
+  * Rick Chen, Andes Technology Corporation <rick@andestech.com>
+  */
+ 
++#include <asm/csr.h>
++#include <asm/sbi.h>
+ #include <common.h>
++#include <cpu_func.h>
+ #include <flash.h>
+ #include <image.h>
+ #include <init.h>
+@@ -25,6 +28,20 @@ DECLARE_GLOBAL_DATA_PTR;
+  * Miscellaneous platform dependent initializations
+  */
+ 
++int misc_init_r(void)
++{
++	char *rv64cpu = "ax25", *rv32cpu = "a25";
++	long csr_marchid = 0;
++	u16 mask64 = 0x8000;
++#if CONFIG_IS_ENABLED(RISCV_SMODE)
++	sbi_get_marchid(&csr_marchid);
++#elif CONFIG_IS_ENABLED(RISCV_MMODE)
++	csr_marchid = csr_read(CSR_MARCHID);
++#endif
++
++	return (csr_marchid & mask64)? env_set("cpu", rv64cpu) : env_set("cpu", rv32cpu);
++}
++
+ int board_init(void)
+ {
+ 	gd->bd->bi_boot_params = PHYS_SDRAM_0 + 0x400;
+@@ -54,17 +71,18 @@ ulong board_flash_get_legacy(ulong base, int banknum, flash_info_t *info)
+ 	return 0;
+ }
+ 
++#define ANDES_HW_DTB_ADDRESS	0xF2000000
+ void *board_fdt_blob_setup(int *err)
+ {
+ 	*err = 0;
+-#if defined(CONFIG_OF_BOARD)
+-	return (void *)(ulong)gd->arch.firmware_fdt_addr;
+-#elif defined(CONFIG_OF_SEPARATE)
+-	return (void *)CONFIG_SYS_FDT_BASE;
+-#else
+-	*err = -EINVAL;
+-	return NULL;
+-#endif
++	if (IS_ENABLED(CONFIG_OF_SEPARATE) || IS_ENABLED(CONFIG_OF_BOARD)) {
++		if (gd->arch.firmware_fdt_addr)
++			return (void *)(ulong)gd->arch.firmware_fdt_addr;
++	}
++
++	if (fdt_magic(CONFIG_SYS_FDT_BASE) == FDT_MAGIC)
++		return (void *)CONFIG_SYS_FDT_BASE;
++	return (void *)ANDES_HW_DTB_ADDRESS;
+ }
+ 
+ int smc_init(void)
+@@ -85,24 +103,16 @@ int smc_init(void)
+ 	if (addr == FDT_ADDR_T_NONE)
+ 		return -EINVAL;
+ 
+-	regs = (struct ftsmc020_bank *)(uintptr_t)addr;
++	regs = (struct ftsmc020_bank *)addr;
+ 	regs->cr &= ~FTSMC020_BANK_WPROT;
+ 
+ 	return 0;
+ }
+ 
+-static void v5l2_init(void)
+-{
+-	struct udevice *dev;
+-
+-	uclass_get_device(UCLASS_CACHE, 0, &dev);
+-}
+-
+ #ifdef CONFIG_BOARD_EARLY_INIT_F
+ int board_early_init_f(void)
+ {
+ 	smc_init();
+-	v5l2_init();
+ 
+ 	return 0;
+ }
+diff --git a/board/AndesTech/ae350/andes45-ae350.c b/board/AndesTech/ae350/andes45-ae350.c
+new file mode 100644
+index 0000000000..5ea701ecdc
+--- /dev/null
++++ b/board/AndesTech/ae350/andes45-ae350.c
+@@ -0,0 +1,158 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (C) 2017 Andes Technology Corporation
++ * Rick Chen, Andes Technology Corporation <rick@andestech.com>
++ */
++
++#include <asm/csr.h>
++#include <asm/sbi.h>
++#include <common.h>
++#include <cpu_func.h>
++#include <flash.h>
++#include <image.h>
++#include <init.h>
++#include <net.h>
++#if defined(CONFIG_FTMAC100) && !defined(CONFIG_DM_ETH)
++#include <netdev.h>
++#endif
++#include <asm/global_data.h>
++#include <linux/io.h>
++#include <faraday/ftsmc020.h>
++#include <fdtdec.h>
++#include <dm.h>
++#include <spl.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++/*
++ * Miscellaneous platform dependent initializations
++ */
++
++int misc_init_r(void)
++{
++	long csr_marchid = 0;
++	u16 mask64 = 0x8000;
++#if CONFIG_IS_ENABLED(RISCV_SMODE)
++	sbi_get_marchid(&csr_marchid);
++#elif CONFIG_IS_ENABLED(RISCV_MMODE)
++	csr_marchid = csr_read(CSR_MARCHID);
++#endif
++
++	return (csr_marchid & mask64)? env_set("cpu", "ax45") : env_set("cpu", "a45");
++}
++
++int board_init(void)
++{
++	gd->bd->bi_boot_params = PHYS_SDRAM_0 + 0x400;
++
++	return 0;
++}
++
++int dram_init(void)
++{
++	return fdtdec_setup_mem_size_base();
++}
++
++int dram_init_banksize(void)
++{
++	return fdtdec_setup_memory_banksize();
++}
++
++#if defined(CONFIG_FTMAC100) && !defined(CONFIG_DM_ETH)
++int board_eth_init(struct bd_info *bd)
++{
++	return ftmac100_initialize(bd);
++}
++#endif
++
++ulong board_flash_get_legacy(ulong base, int banknum, flash_info_t *info)
++{
++	return 0;
++}
++
++#define ANDES_HW_DTB_ADDRESS	0xF2000000
++void *board_fdt_blob_setup(int *err)
++{
++	*err = 0;
++	if (IS_ENABLED(CONFIG_OF_SEPARATE) || IS_ENABLED(CONFIG_OF_BOARD)) {
++		if (gd->arch.firmware_fdt_addr)
++			return (void *)(ulong)gd->arch.firmware_fdt_addr;
++	}
++
++	if (fdt_magic(CONFIG_SYS_FDT_BASE) == FDT_MAGIC)
++		return (void *)CONFIG_SYS_FDT_BASE;
++	return (void *)ANDES_HW_DTB_ADDRESS;
++}
++
++void spl_board_init()
++{
++	enable_caches();
++}
++
++int smc_init(void)
++{
++	int node = -1;
++	const char *compat = "andestech,atfsmc020";
++	void *blob = (void *)gd->fdt_blob;
++	fdt_addr_t addr;
++	struct ftsmc020_bank *regs;
++
++	node = fdt_node_offset_by_compatible(blob, -1, compat);
++	if (node < 0)
++		return -FDT_ERR_NOTFOUND;
++
++	addr = fdtdec_get_addr_size_auto_noparent(blob, node,
++		"reg", 0, NULL, false);
++
++	if (addr == FDT_ADDR_T_NONE)
++		return -EINVAL;
++
++	regs = (struct ftsmc020_bank *)addr;
++	regs->cr &= ~FTSMC020_BANK_WPROT;
++
++	return 0;
++}
++
++#ifdef CONFIG_BOARD_EARLY_INIT_F
++int board_early_init_f(void)
++{
++	smc_init();
++
++	return 0;
++}
++#endif
++
++#ifdef CONFIG_BOARD_EARLY_INIT_R
++int board_early_init_r(void)
++{
++	enable_caches();
++
++	return 0;
++}
++#endif
++
++#ifdef CONFIG_SPL
++void board_boot_order(u32 *spl_boot_list)
++{
++	u8 i;
++	u32 boot_devices[] = {
++#ifdef CONFIG_SPL_RAM_SUPPORT
++		BOOT_DEVICE_RAM,
++#endif
++#ifdef CONFIG_SPL_MMC
++		BOOT_DEVICE_MMC1,
++#endif
++	};
++
++	for (i = 0; i < ARRAY_SIZE(boot_devices); i++)
++		spl_boot_list[i] = boot_devices[i];
++}
++#endif
++
++#ifdef CONFIG_SPL_LOAD_FIT
++int board_fit_config_name_match(const char *name)
++{
++	/* boot using first FIT config */
++	return 0;
++}
++#endif
+diff --git a/board/AndesTech/ax25-ae350/MAINTAINERS b/board/AndesTech/ax25-ae350/MAINTAINERS
+deleted file mode 100644
+index eebee167c3..0000000000
+--- a/board/AndesTech/ax25-ae350/MAINTAINERS
++++ /dev/null
+@@ -1,13 +0,0 @@
+-AX25-AE350 BOARD
+-M:	Rick Chen <rick@andestech.com>
+-S:	Maintained
+-F:	board/AndesTech/ax25-ae350/
+-F:	include/configs/ax25-ae350.h
+-F:	configs/ae350_rv32_defconfig
+-F:	configs/ae350_rv64_defconfig
+-F:	configs/ae350_rv32_xip_defconfig
+-F:	configs/ae350_rv64_xip_defconfig
+-F:	configs/ae350_rv32_spl_defconfig
+-F:	configs/ae350_rv64_spl_defconfig
+-F:	configs/ae350_rv32_spl_xip_defconfig
+-F:	configs/ae350_rv64_spl_xip_defconfig
+diff --git a/board/AndesTech/ax25-ae350/Kconfig b/board/AndesTech/qilai/Kconfig
+similarity index 77%
+rename from board/AndesTech/ax25-ae350/Kconfig
+rename to board/AndesTech/qilai/Kconfig
+index e50f505a2b..7e7dba75a8 100644
+--- a/board/AndesTech/ax25-ae350/Kconfig
++++ b/board/AndesTech/qilai/Kconfig
+@@ -1,19 +1,16 @@
+-if TARGET_AX25_AE350
++if TARGET_ANDES45_QILAI
+ 
+ config SYS_CPU
+-	default "ax25"
++	default "andes45"
+ 
+ config SYS_BOARD
+-	default "ax25-ae350"
++	default "qilai"
+ 
+ config SYS_VENDOR
+ 	default "AndesTech"
+ 
+-config SYS_SOC
+-	default "ae350"
+-
+ config SYS_CONFIG_NAME
+-	default "ax25-ae350"
++	default "andes45-qilai"
+ 
+ config ENV_SIZE
+ 	default 0x2000 if ENV_IS_IN_SPI_FLASH
+@@ -22,7 +19,7 @@ config ENV_OFFSET
+ 	default 0x140000 if ENV_IS_IN_SPI_FLASH
+ 
+ config SPL_TEXT_BASE
+-	default 0x800000
++	default 0x000000
+ 
+ config SPL_OPENSBI_LOAD_ADDR
+ 	default 0x01000000
+@@ -35,5 +32,6 @@ config BOARD_SPECIFIC_OPTIONS # dummy
+ 	imply SMP
+ 	imply SPL_RAM_SUPPORT
+ 	imply SPL_RAM_DEVICE
++	imply OF_HAS_PRIOR_STAGE
+ 
+ endif
+diff --git a/board/AndesTech/qilai/MAINTAINERS b/board/AndesTech/qilai/MAINTAINERS
+new file mode 100644
+index 0000000000..f9218fc41d
+--- /dev/null
++++ b/board/AndesTech/qilai/MAINTAINERS
+@@ -0,0 +1,9 @@
++QILAI BOARD
++M:	Rick Chen <rick@andestech.com>
++S:	Maintained
++F:	board/AndesTech/qilai/
++F:	include/configs/andes45-qilai.h
++F:	configs/qilai_a45_spl_defconfig
++F:	configs/qilai_ax45_spl_defconfig
++F:	configs/qilai_a45_spl_xip_defconfig
++F:	configs/qilai_ax45_spl_xip_defconfig
+diff --git a/board/AndesTech/qilai/Makefile b/board/AndesTech/qilai/Makefile
+new file mode 100644
+index 0000000000..a358c77a92
+--- /dev/null
++++ b/board/AndesTech/qilai/Makefile
+@@ -0,0 +1,6 @@
++# SPDX-License-Identifier: GPL-2.0+
++#
++# Copyright (C) 2022 Andes Technology Corporation.
++# Rick Chen, Andes Technology Corporation <rick@andestech.com>
++
++obj-y	:= qilai.o
+diff --git a/board/AndesTech/qilai/qilai.c b/board/AndesTech/qilai/qilai.c
+new file mode 100644
+index 0000000000..37fbb4cde2
+--- /dev/null
++++ b/board/AndesTech/qilai/qilai.c
+@@ -0,0 +1,116 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (C) 2017 Andes Technology Corporation
++ * Rick Chen, Andes Technology Corporation <rick@andestech.com>
++ */
++
++#include <asm/csr.h>
++#include <asm/sbi.h>
++#include <common.h>
++#include <cpu_func.h>
++#include <flash.h>
++#include <image.h>
++#include <init.h>
++#include <net.h>
++#if defined(CONFIG_FTMAC100) && !defined(CONFIG_DM_ETH)
++#include <netdev.h>
++#endif
++#include <asm/global_data.h>
++#include <linux/io.h>
++#include <faraday/ftsmc020.h>
++#include <fdtdec.h>
++#include <dm.h>
++#include <spl.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++/*
++ * Miscellaneous platform dependent initializations
++ */
++
++int misc_init_r(void)
++{
++	long csr_marchid = 0;
++	u16 mask64 = 0x8000;
++#if CONFIG_IS_ENABLED(RISCV_SMODE)
++	sbi_get_marchid(&csr_marchid);
++#elif CONFIG_IS_ENABLED(RISCV_MMODE)
++	csr_marchid = csr_read(CSR_MARCHID);
++#endif
++
++	return (csr_marchid & mask64)? env_set("cpu", "ax45") : env_set("cpu", "a45");
++}
++
++int board_init(void)
++{
++	gd->bd->bi_boot_params = PHYS_SDRAM_0 + 0x400;
++
++	return 0;
++}
++
++int dram_init(void)
++{
++	return fdtdec_setup_mem_size_base();
++}
++
++int dram_init_banksize(void)
++{
++	return fdtdec_setup_memory_banksize();
++}
++
++#if defined(CONFIG_FTMAC100) && !defined(CONFIG_DM_ETH)
++int board_eth_init(struct bd_info *bd)
++{
++	return ftmac100_initialize(bd);
++}
++#endif
++
++ulong board_flash_get_legacy(ulong base, int banknum, flash_info_t *info)
++{
++	return 0;
++}
++
++#define ANDES_HW_DTB_ADDRESS	0xF2000000
++void *board_fdt_blob_setup(int *err)
++{
++	*err = 0;
++	if (IS_ENABLED(CONFIG_OF_SEPARATE) || IS_ENABLED(CONFIG_OF_BOARD)) {
++		if (gd->arch.firmware_fdt_addr)
++			return (void *)(ulong)gd->arch.firmware_fdt_addr;
++	}
++
++	if (fdt_magic(CONFIG_SYS_FDT_BASE) == FDT_MAGIC)
++		return (void *)CONFIG_SYS_FDT_BASE;
++	return (void *)ANDES_HW_DTB_ADDRESS;
++}
++
++void spl_board_init()
++{
++	enable_caches();
++}
++
++#ifdef CONFIG_SPL
++void board_boot_order(u32 *spl_boot_list)
++{
++	u8 i;
++	u32 boot_devices[] = {
++#ifdef CONFIG_SPL_RAM_SUPPORT
++		BOOT_DEVICE_RAM,
++#endif
++#ifdef CONFIG_SPL_MMC
++		BOOT_DEVICE_MMC1,
++#endif
++	};
++
++	for (i = 0; i < ARRAY_SIZE(boot_devices); i++)
++		spl_boot_list[i] = boot_devices[i];
++}
++#endif
++
++#ifdef CONFIG_SPL_LOAD_FIT
++int board_fit_config_name_match(const char *name)
++{
++	/* boot using first FIT config */
++	return 0;
++}
++#endif
+diff --git a/common/board_r.c b/common/board_r.c
+index c24d9b4e22..1f40c4765e 100644
+--- a/common/board_r.c
++++ b/common/board_r.c
+@@ -98,7 +98,7 @@ static int initr_reloc(void)
+ 	return 0;
+ }
+ 
+-#if defined(CONFIG_ARM) || defined(CONFIG_RISCV)
++#if defined(CONFIG_ARM)
+ /*
+  * Some of these functions are needed purely because the functions they
+  * call return void. If we change them to return 0, these stubs can go away.
+@@ -595,7 +595,7 @@ static init_fnc_t init_sequence_r[] = {
+ 	initr_trace,
+ 	initr_reloc,
+ 	/* TODO: could x86/PPC have this also perhaps? */
+-#if defined(CONFIG_ARM) || defined(CONFIG_RISCV)
++#if defined(CONFIG_ARM)
+ 	initr_caches,
+ 	/* Note: For Freescale LS2 SoCs, new MMU table is created in DDR.
+ 	 *	 A temporary mapping of IFC high region is since removed,
+diff --git a/configs/ae350_rv32_spl_defconfig b/configs/ae350_a25_spl_defconfig
+similarity index 84%
+rename from configs/ae350_rv32_spl_defconfig
+rename to configs/ae350_a25_spl_defconfig
+index 2484d19445..660fc8ebe4 100644
+--- a/configs/ae350_rv32_spl_defconfig
++++ b/configs/ae350_a25_spl_defconfig
+@@ -6,14 +6,16 @@ CONFIG_ENV_SECT_SIZE=0x1000
+ CONFIG_DEFAULT_DEVICE_TREE="ae350_32"
+ CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
+ CONFIG_SPL=y
+-CONFIG_TARGET_AX25_AE350=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES25_AE350=y
+ CONFIG_RISCV_SMODE=y
+ CONFIG_DISTRO_DEFAULTS=y
+ CONFIG_SYS_LOAD_ADDR=0x100000
+ CONFIG_FIT=y
+ CONFIG_SPL_LOAD_FIT_ADDRESS=0x00200000
+ CONFIG_BOOTDELAY=3
+-CONFIG_BOARD_EARLY_INIT_F=y
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
+ CONFIG_SYS_PROMPT="RISC-V # "
+ CONFIG_CMD_IMLS=y
+ CONFIG_CMD_MMC=y
+@@ -21,10 +23,12 @@ CONFIG_CMD_SF_TEST=y
+ # CONFIG_CMD_SETEXPR is not set
+ CONFIG_BOOTP_PREFER_SERVERIP=y
+ CONFIG_CMD_CACHE=y
++CONFIG_OF_BOARD=y
+ CONFIG_ENV_OVERWRITE=y
+ CONFIG_ENV_IS_IN_SPI_FLASH=y
+ CONFIG_BOOTP_SEND_HOSTNAME=y
+ CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
+ CONFIG_MMC=y
+ CONFIG_FTSDC010=y
+ CONFIG_FTSDC010_SDIO=y
+@@ -38,3 +42,4 @@ CONFIG_BAUDRATE=38400
+ CONFIG_SYS_NS16550=y
+ CONFIG_SPI=y
+ CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/ae350_rv32_spl_xip_defconfig b/configs/ae350_a25_spl_xip_defconfig
+similarity index 85%
+rename from configs/ae350_rv32_spl_xip_defconfig
+rename to configs/ae350_a25_spl_xip_defconfig
+index 9f21084a54..af18316a01 100644
+--- a/configs/ae350_rv32_spl_xip_defconfig
++++ b/configs/ae350_a25_spl_xip_defconfig
+@@ -7,7 +7,8 @@ CONFIG_DEFAULT_DEVICE_TREE="ae350_32"
+ CONFIG_SPL_TEXT_BASE=0x80000000
+ CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
+ CONFIG_SPL=y
+-CONFIG_TARGET_AX25_AE350=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES25_AE350=y
+ CONFIG_RISCV_SMODE=y
+ CONFIG_XIP=y
+ CONFIG_DISTRO_DEFAULTS=y
+@@ -15,7 +16,8 @@ CONFIG_SYS_LOAD_ADDR=0x100000
+ CONFIG_FIT=y
+ CONFIG_SPL_LOAD_FIT_ADDRESS=0x80010000
+ CONFIG_BOOTDELAY=3
+-CONFIG_BOARD_EARLY_INIT_F=y
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
+ CONFIG_SYS_PROMPT="RISC-V # "
+ CONFIG_CMD_IMLS=y
+ CONFIG_CMD_MMC=y
+@@ -23,10 +25,12 @@ CONFIG_CMD_SF_TEST=y
+ # CONFIG_CMD_SETEXPR is not set
+ CONFIG_BOOTP_PREFER_SERVERIP=y
+ CONFIG_CMD_CACHE=y
++CONFIG_OF_BOARD=y
+ CONFIG_ENV_OVERWRITE=y
+ CONFIG_ENV_IS_IN_SPI_FLASH=y
+ CONFIG_BOOTP_SEND_HOSTNAME=y
+ CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
+ CONFIG_MMC=y
+ CONFIG_FTSDC010=y
+ CONFIG_FTSDC010_SDIO=y
+@@ -40,3 +44,4 @@ CONFIG_BAUDRATE=38400
+ CONFIG_SYS_NS16550=y
+ CONFIG_SPI=y
+ CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/ae350_a45_spl_defconfig b/configs/ae350_a45_spl_defconfig
+new file mode 100644
+index 0000000000..dfbed11cdc
+--- /dev/null
++++ b/configs/ae350_a45_spl_defconfig
+@@ -0,0 +1,47 @@
++CONFIG_RISCV=y
++CONFIG_SYS_TEXT_BASE=0x01200000
++CONFIG_SYS_MALLOC_LEN=0x80000
++CONFIG_NR_DRAM_BANKS=2
++CONFIG_ENV_SECT_SIZE=0x1000
++CONFIG_DEFAULT_DEVICE_TREE="ae350_32"
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
++CONFIG_SPL=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES45_AE350=y
++CONFIG_RISCV_SMODE=y
++CONFIG_DISTRO_DEFAULTS=y
++CONFIG_PHYS_64BIT=y
++CONFIG_FIT=y
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x00200000
++CONFIG_SYS_MONITOR_BASE=0x88000000
++CONFIG_BOOTDELAY=3
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
++CONFIG_SYS_PROMPT="RISC-V # "
++CONFIG_CMD_IMLS=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_SF_TEST=y
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_BOOTP_PREFER_SERVERIP=y
++CONFIG_CMD_CACHE=y
++CONFIG_OF_BOARD=y
++CONFIG_OF_LIST="ae350_64"
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_SPI_FLASH=y
++CONFIG_BOOTP_SEND_HOSTNAME=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
++CONFIG_MMC=y
++CONFIG_FTSDC010=y
++CONFIG_FTSDC010_SDIO=y
++CONFIG_MTD_NOR_FLASH=y
++CONFIG_FLASH_CFI_DRIVER=y
++CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
++CONFIG_SYS_FLASH_CFI=y
++CONFIG_SPI_FLASH_MACRONIX=y
++CONFIG_FTMAC100=y
++CONFIG_BAUDRATE=38400
++CONFIG_SYS_NS16550=y
++CONFIG_SPI=y
++CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/ae350_a45_spl_xip_defconfig b/configs/ae350_a45_spl_xip_defconfig
+new file mode 100644
+index 0000000000..75c82b264f
+--- /dev/null
++++ b/configs/ae350_a45_spl_xip_defconfig
+@@ -0,0 +1,49 @@
++CONFIG_RISCV=y
++CONFIG_SYS_TEXT_BASE=0x01200000
++CONFIG_SYS_MALLOC_LEN=0x80000
++CONFIG_NR_DRAM_BANKS=2
++CONFIG_ENV_SECT_SIZE=0x1000
++CONFIG_DEFAULT_DEVICE_TREE="ae350_32"
++CONFIG_SPL_TEXT_BASE=0x80000000
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
++CONFIG_SPL=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES45_AE350=y
++CONFIG_RISCV_SMODE=y
++CONFIG_XIP=y
++CONFIG_DISTRO_DEFAULTS=y
++CONFIG_PHYS_64BIT=y
++CONFIG_FIT=y
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x80010000
++CONFIG_SYS_MONITOR_BASE=0x88000000
++CONFIG_BOOTDELAY=3
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
++CONFIG_SYS_PROMPT="RISC-V # "
++CONFIG_CMD_IMLS=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_SF_TEST=y
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_BOOTP_PREFER_SERVERIP=y
++CONFIG_CMD_CACHE=y
++CONFIG_OF_BOARD=y
++CONFIG_OF_LIST="ae350_64"
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_SPI_FLASH=y
++CONFIG_BOOTP_SEND_HOSTNAME=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
++CONFIG_MMC=y
++CONFIG_FTSDC010=y
++CONFIG_FTSDC010_SDIO=y
++CONFIG_MTD_NOR_FLASH=y
++CONFIG_FLASH_CFI_DRIVER=y
++CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
++CONFIG_SYS_FLASH_CFI=y
++CONFIG_SPI_FLASH_MACRONIX=y
++CONFIG_FTMAC100=y
++CONFIG_BAUDRATE=38400
++CONFIG_SYS_NS16550=y
++CONFIG_SPI=y
++CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/ae350_rv64_spl_defconfig b/configs/ae350_ax25_spl_defconfig
+similarity index 84%
+rename from configs/ae350_rv64_spl_defconfig
+rename to configs/ae350_ax25_spl_defconfig
+index 8ef8e91a4f..85c2878045 100644
+--- a/configs/ae350_rv64_spl_defconfig
++++ b/configs/ae350_ax25_spl_defconfig
+@@ -6,7 +6,8 @@ CONFIG_ENV_SECT_SIZE=0x1000
+ CONFIG_DEFAULT_DEVICE_TREE="ae350_64"
+ CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
+ CONFIG_SPL=y
+-CONFIG_TARGET_AX25_AE350=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES25_AE350=y
+ CONFIG_ARCH_RV64I=y
+ CONFIG_RISCV_SMODE=y
+ CONFIG_DISTRO_DEFAULTS=y
+@@ -14,7 +15,8 @@ CONFIG_SYS_LOAD_ADDR=0x100000
+ CONFIG_FIT=y
+ CONFIG_SPL_LOAD_FIT_ADDRESS=0x00200000
+ CONFIG_BOOTDELAY=3
+-CONFIG_BOARD_EARLY_INIT_F=y
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
+ CONFIG_SYS_PROMPT="RISC-V # "
+ CONFIG_CMD_IMLS=y
+ CONFIG_CMD_MMC=y
+@@ -22,10 +24,12 @@ CONFIG_CMD_SF_TEST=y
+ # CONFIG_CMD_SETEXPR is not set
+ CONFIG_BOOTP_PREFER_SERVERIP=y
+ CONFIG_CMD_CACHE=y
++CONFIG_OF_BOARD=y
+ CONFIG_ENV_OVERWRITE=y
+ CONFIG_ENV_IS_IN_SPI_FLASH=y
+ CONFIG_BOOTP_SEND_HOSTNAME=y
+ CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
+ CONFIG_MMC=y
+ CONFIG_FTSDC010=y
+ CONFIG_FTSDC010_SDIO=y
+@@ -39,3 +43,4 @@ CONFIG_BAUDRATE=38400
+ CONFIG_SYS_NS16550=y
+ CONFIG_SPI=y
+ CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/ae350_rv64_spl_xip_defconfig b/configs/ae350_ax25_spl_xip_defconfig
+similarity index 85%
+rename from configs/ae350_rv64_spl_xip_defconfig
+rename to configs/ae350_ax25_spl_xip_defconfig
+index 2bf3dd66ac..8ba3376a5f 100644
+--- a/configs/ae350_rv64_spl_xip_defconfig
++++ b/configs/ae350_ax25_spl_xip_defconfig
+@@ -7,7 +7,8 @@ CONFIG_DEFAULT_DEVICE_TREE="ae350_64"
+ CONFIG_SPL_TEXT_BASE=0x80000000
+ CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
+ CONFIG_SPL=y
+-CONFIG_TARGET_AX25_AE350=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES25_AE350=y
+ CONFIG_ARCH_RV64I=y
+ CONFIG_RISCV_SMODE=y
+ CONFIG_XIP=y
+@@ -16,7 +17,8 @@ CONFIG_SYS_LOAD_ADDR=0x100000
+ CONFIG_FIT=y
+ CONFIG_SPL_LOAD_FIT_ADDRESS=0x80010000
+ CONFIG_BOOTDELAY=3
+-CONFIG_BOARD_EARLY_INIT_F=y
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
+ CONFIG_SYS_PROMPT="RISC-V # "
+ CONFIG_CMD_IMLS=y
+ CONFIG_CMD_MMC=y
+@@ -24,10 +26,12 @@ CONFIG_CMD_SF_TEST=y
+ # CONFIG_CMD_SETEXPR is not set
+ CONFIG_BOOTP_PREFER_SERVERIP=y
+ CONFIG_CMD_CACHE=y
++CONFIG_OF_BOARD=y
+ CONFIG_ENV_OVERWRITE=y
+ CONFIG_ENV_IS_IN_SPI_FLASH=y
+ CONFIG_BOOTP_SEND_HOSTNAME=y
+ CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
+ CONFIG_MMC=y
+ CONFIG_FTSDC010=y
+ CONFIG_FTSDC010_SDIO=y
+@@ -41,3 +45,4 @@ CONFIG_BAUDRATE=38400
+ CONFIG_SYS_NS16550=y
+ CONFIG_SPI=y
+ CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/ae350_ax45_spl_defconfig b/configs/ae350_ax45_spl_defconfig
+new file mode 100644
+index 0000000000..6b59708621
+--- /dev/null
++++ b/configs/ae350_ax45_spl_defconfig
+@@ -0,0 +1,46 @@
++CONFIG_RISCV=y
++CONFIG_SYS_TEXT_BASE=0x01200000
++CONFIG_SYS_MALLOC_LEN=0x80000
++CONFIG_NR_DRAM_BANKS=2
++CONFIG_ENV_SECT_SIZE=0x1000
++CONFIG_DEFAULT_DEVICE_TREE="ae350_64"
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
++CONFIG_SPL=y
++CONFIG_TARGET_ANDES45_AE350=y
++CONFIG_ARCH_RV64I=y
++CONFIG_RISCV_SMODE=y
++CONFIG_DISTRO_DEFAULTS=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_FIT=y
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x00200000
++CONFIG_SYS_MONITOR_BASE=0x88000000
++CONFIG_BOOTDELAY=3
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
++CONFIG_SYS_PROMPT="RISC-V # "
++CONFIG_CMD_IMLS=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_SF_TEST=y
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_BOOTP_PREFER_SERVERIP=y
++CONFIG_CMD_CACHE=y
++CONFIG_OF_BOARD=y
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_SPI_FLASH=y
++CONFIG_BOOTP_SEND_HOSTNAME=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
++CONFIG_MMC=y
++CONFIG_FTSDC010=y
++CONFIG_FTSDC010_SDIO=y
++CONFIG_MTD_NOR_FLASH=y
++CONFIG_FLASH_CFI_DRIVER=y
++CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
++CONFIG_SYS_FLASH_CFI=y
++CONFIG_SPI_FLASH_MACRONIX=y
++CONFIG_FTMAC100=y
++CONFIG_BAUDRATE=38400
++CONFIG_SYS_NS16550=y
++CONFIG_SPI=y
++CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/ae350_ax45_spl_xip_defconfig b/configs/ae350_ax45_spl_xip_defconfig
+new file mode 100644
+index 0000000000..9903ae8340
+--- /dev/null
++++ b/configs/ae350_ax45_spl_xip_defconfig
+@@ -0,0 +1,48 @@
++CONFIG_RISCV=y
++CONFIG_SYS_TEXT_BASE=0x01200000
++CONFIG_SYS_MALLOC_LEN=0x80000
++CONFIG_NR_DRAM_BANKS=2
++CONFIG_ENV_SECT_SIZE=0x1000
++CONFIG_DEFAULT_DEVICE_TREE="ae350_64"
++CONFIG_SPL_TEXT_BASE=0x80000000
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
++CONFIG_SPL=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES45_AE350=y
++CONFIG_ARCH_RV64I=y
++CONFIG_RISCV_SMODE=y
++CONFIG_XIP=y
++CONFIG_DISTRO_DEFAULTS=y
++CONFIG_FIT=y
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x80010000
++CONFIG_SYS_MONITOR_BASE=0x88000000
++CONFIG_BOOTDELAY=3
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
++CONFIG_SYS_PROMPT="RISC-V # "
++CONFIG_CMD_IMLS=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_SF_TEST=y
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_BOOTP_PREFER_SERVERIP=y
++CONFIG_CMD_CACHE=y
++CONFIG_OF_BOARD=y
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_SPI_FLASH=y
++CONFIG_BOOTP_SEND_HOSTNAME=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
++CONFIG_MMC=y
++CONFIG_FTSDC010=y
++CONFIG_FTSDC010_SDIO=y
++CONFIG_MTD_NOR_FLASH=y
++CONFIG_FLASH_CFI_DRIVER=y
++CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
++CONFIG_SYS_FLASH_CFI=y
++CONFIG_SPI_FLASH_MACRONIX=y
++CONFIG_FTMAC100=y
++CONFIG_BAUDRATE=38400
++CONFIG_SYS_NS16550=y
++CONFIG_SPI=y
++CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/ae350_rv32_defconfig b/configs/ae350_rv32_defconfig
+index 0324f1e7de..1c1acb000c 100644
+--- a/configs/ae350_rv32_defconfig
++++ b/configs/ae350_rv32_defconfig
+@@ -4,12 +4,13 @@ CONFIG_SYS_MALLOC_LEN=0x80000
+ CONFIG_NR_DRAM_BANKS=2
+ CONFIG_ENV_SECT_SIZE=0x1000
+ CONFIG_DEFAULT_DEVICE_TREE="ae350_32"
+-CONFIG_TARGET_AX25_AE350=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES25_AE350=y
+ CONFIG_DISTRO_DEFAULTS=y
+ CONFIG_SYS_LOAD_ADDR=0x100000
+ CONFIG_FIT=y
+ CONFIG_BOOTDELAY=3
+-CONFIG_BOARD_EARLY_INIT_F=y
++CONFIG_MISC_INIT_R=y
+ CONFIG_SYS_PROMPT="RISC-V # "
+ CONFIG_CMD_IMLS=y
+ CONFIG_CMD_MMC=y
+@@ -22,6 +23,7 @@ CONFIG_ENV_IS_IN_SPI_FLASH=y
+ CONFIG_SYS_RELOC_GD_ENV_ADDR=y
+ CONFIG_BOOTP_SEND_HOSTNAME=y
+ CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
+ CONFIG_MMC=y
+ CONFIG_FTSDC010=y
+ CONFIG_FTSDC010_SDIO=y
+diff --git a/configs/ae350_rv32_xip_defconfig b/configs/ae350_rv32_xip_defconfig
+index d69a585b82..efed944542 100644
+--- a/configs/ae350_rv32_xip_defconfig
++++ b/configs/ae350_rv32_xip_defconfig
+@@ -4,13 +4,14 @@ CONFIG_SYS_MALLOC_LEN=0x80000
+ CONFIG_NR_DRAM_BANKS=2
+ CONFIG_ENV_SECT_SIZE=0x1000
+ CONFIG_DEFAULT_DEVICE_TREE="ae350_32"
+-CONFIG_TARGET_AX25_AE350=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES25_AE350=y
+ CONFIG_XIP=y
+ CONFIG_DISTRO_DEFAULTS=y
+ CONFIG_SYS_LOAD_ADDR=0x100000
+ CONFIG_FIT=y
+ CONFIG_BOOTDELAY=3
+-CONFIG_BOARD_EARLY_INIT_F=y
++CONFIG_MISC_INIT_R=y
+ CONFIG_SYS_PROMPT="RISC-V # "
+ CONFIG_CMD_IMLS=y
+ CONFIG_CMD_MMC=y
+@@ -23,6 +24,7 @@ CONFIG_ENV_IS_IN_SPI_FLASH=y
+ CONFIG_SYS_RELOC_GD_ENV_ADDR=y
+ CONFIG_BOOTP_SEND_HOSTNAME=y
+ CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
+ CONFIG_MMC=y
+ CONFIG_FTSDC010=y
+ CONFIG_FTSDC010_SDIO=y
+diff --git a/configs/ae350_rv64_defconfig b/configs/ae350_rv64_defconfig
+index c30763ac1e..350be87d0e 100644
+--- a/configs/ae350_rv64_defconfig
++++ b/configs/ae350_rv64_defconfig
+@@ -4,13 +4,14 @@ CONFIG_SYS_MALLOC_LEN=0x80000
+ CONFIG_NR_DRAM_BANKS=2
+ CONFIG_ENV_SECT_SIZE=0x1000
+ CONFIG_DEFAULT_DEVICE_TREE="ae350_64"
+-CONFIG_TARGET_AX25_AE350=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES25_AE350=y
+ CONFIG_ARCH_RV64I=y
+ CONFIG_DISTRO_DEFAULTS=y
+ CONFIG_SYS_LOAD_ADDR=0x100000
+ CONFIG_FIT=y
+ CONFIG_BOOTDELAY=3
+-CONFIG_BOARD_EARLY_INIT_F=y
++CONFIG_MISC_INIT_R=y
+ CONFIG_SYS_PROMPT="RISC-V # "
+ CONFIG_CMD_IMLS=y
+ CONFIG_CMD_MMC=y
+@@ -23,6 +24,7 @@ CONFIG_ENV_IS_IN_SPI_FLASH=y
+ CONFIG_SYS_RELOC_GD_ENV_ADDR=y
+ CONFIG_BOOTP_SEND_HOSTNAME=y
+ CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
+ CONFIG_MMC=y
+ CONFIG_FTSDC010=y
+ CONFIG_FTSDC010_SDIO=y
+diff --git a/configs/ae350_rv64_xip_defconfig b/configs/ae350_rv64_xip_defconfig
+index e8dc447874..8551e7f887 100644
+--- a/configs/ae350_rv64_xip_defconfig
++++ b/configs/ae350_rv64_xip_defconfig
+@@ -4,14 +4,15 @@ CONFIG_SYS_MALLOC_LEN=0x80000
+ CONFIG_NR_DRAM_BANKS=2
+ CONFIG_ENV_SECT_SIZE=0x1000
+ CONFIG_DEFAULT_DEVICE_TREE="ae350_64"
+-CONFIG_TARGET_AX25_AE350=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES25_AE350=y
+ CONFIG_ARCH_RV64I=y
+ CONFIG_XIP=y
+ CONFIG_DISTRO_DEFAULTS=y
+ CONFIG_SYS_LOAD_ADDR=0x100000
+ CONFIG_FIT=y
+ CONFIG_BOOTDELAY=3
+-CONFIG_BOARD_EARLY_INIT_F=y
++CONFIG_MISC_INIT_R=y
+ CONFIG_SYS_PROMPT="RISC-V # "
+ CONFIG_CMD_IMLS=y
+ CONFIG_CMD_MMC=y
+@@ -24,6 +25,7 @@ CONFIG_ENV_IS_IN_SPI_FLASH=y
+ CONFIG_SYS_RELOC_GD_ENV_ADDR=y
+ CONFIG_BOOTP_SEND_HOSTNAME=y
+ CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
+ CONFIG_MMC=y
+ CONFIG_FTSDC010=y
+ CONFIG_FTSDC010_SDIO=y
+diff --git a/configs/qilai_a45_spl_defconfig b/configs/qilai_a45_spl_defconfig
+new file mode 100644
+index 0000000000..de20d9d310
+--- /dev/null
++++ b/configs/qilai_a45_spl_defconfig
+@@ -0,0 +1,48 @@
++CONFIG_RISCV=y
++CONFIG_SYS_TEXT_BASE=0x01200000
++CONFIG_SYS_MALLOC_LEN=0x80000
++CONFIG_NR_DRAM_BANKS=2
++CONFIG_ENV_SECT_SIZE=0x1000
++CONFIG_DEFAULT_DEVICE_TREE="qilai_32"
++CONFIG_SPL_TEXT_BASE=0x800000
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
++CONFIG_SPL=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_TARGET_ANDES45_QILAI=y
++CONFIG_RISCV_SMODE=y
++CONFIG_DISTRO_DEFAULTS=y
++CONFIG_PHYS_64BIT=y
++CONFIG_FIT=y
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x00200000
++CONFIG_SYS_MONITOR_BASE=0x88000000
++CONFIG_BOOTDELAY=3
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
++CONFIG_SYS_PROMPT="RISC-V # "
++CONFIG_CMD_IMLS=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_SF_TEST=y
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_BOOTP_PREFER_SERVERIP=y
++CONFIG_CMD_CACHE=y
++CONFIG_OF_BOARD=y
++CONFIG_OF_LIST="ae350_64"
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_SPI_FLASH=y
++CONFIG_BOOTP_SEND_HOSTNAME=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
++CONFIG_MMC=y
++CONFIG_FTSDC010=y
++CONFIG_FTSDC010_SDIO=y
++CONFIG_MTD_NOR_FLASH=y
++CONFIG_FLASH_CFI_DRIVER=y
++CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
++CONFIG_SYS_FLASH_CFI=y
++CONFIG_SPI_FLASH_MACRONIX=y
++CONFIG_FTMAC100=y
++CONFIG_BAUDRATE=38400
++CONFIG_SYS_NS16550=y
++CONFIG_SPI=y
++CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/qilai_ax45_spl_defconfig b/configs/qilai_ax45_spl_defconfig
+new file mode 100644
+index 0000000000..6b59708621
+--- /dev/null
++++ b/configs/qilai_ax45_spl_defconfig
+@@ -0,0 +1,46 @@
++CONFIG_RISCV=y
++CONFIG_SYS_TEXT_BASE=0x01200000
++CONFIG_SYS_MALLOC_LEN=0x80000
++CONFIG_NR_DRAM_BANKS=2
++CONFIG_ENV_SECT_SIZE=0x1000
++CONFIG_DEFAULT_DEVICE_TREE="ae350_64"
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
++CONFIG_SPL=y
++CONFIG_TARGET_ANDES45_AE350=y
++CONFIG_ARCH_RV64I=y
++CONFIG_RISCV_SMODE=y
++CONFIG_DISTRO_DEFAULTS=y
++CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_FIT=y
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x00200000
++CONFIG_SYS_MONITOR_BASE=0x88000000
++CONFIG_BOOTDELAY=3
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
++CONFIG_SYS_PROMPT="RISC-V # "
++CONFIG_CMD_IMLS=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_SF_TEST=y
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_BOOTP_PREFER_SERVERIP=y
++CONFIG_CMD_CACHE=y
++CONFIG_OF_BOARD=y
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_SPI_FLASH=y
++CONFIG_BOOTP_SEND_HOSTNAME=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
++CONFIG_MMC=y
++CONFIG_FTSDC010=y
++CONFIG_FTSDC010_SDIO=y
++CONFIG_MTD_NOR_FLASH=y
++CONFIG_FLASH_CFI_DRIVER=y
++CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
++CONFIG_SYS_FLASH_CFI=y
++CONFIG_SPI_FLASH_MACRONIX=y
++CONFIG_FTMAC100=y
++CONFIG_BAUDRATE=38400
++CONFIG_SYS_NS16550=y
++CONFIG_SPI=y
++CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/doc/board/AndesTech/ax25-ae350.rst b/doc/board/AndesTech/andes25-ae350.rst
+similarity index 98%
+rename from doc/board/AndesTech/ax25-ae350.rst
+rename to doc/board/AndesTech/andes25-ae350.rst
+index b46f427f4b..996d6295f7 100644
+--- a/doc/board/AndesTech/ax25-ae350.rst
++++ b/doc/board/AndesTech/andes25-ae350.rst
+@@ -1,20 +1,20 @@
+ .. SPDX-License-Identifier: GPL-2.0+
+ 
+-AX25-AE350
+-==========
++ANDES25-AE350
++=============
+ 
+-AE350 is the mainline SoC produced by Andes Technology using AX25 CPU core
+-base on RISC-V architecture.
++AE350 is the mainline SoC produced by Andes Technology using ANDES 25 series
++CPU core base on RISC-V architecture.
+ 
+ AE350 has integrated both AHB and APB bus and many periphals for application
+ and product development.
+ 
+-AX25-AE350 is the SoC with AE350 hardcore CPU.
++ANDES25-AE350 is the SoC with AE350 hardcore CPU.
+ 
+-AX25 is Andes CPU IP to adopt RISC-V architecture.
++ANDES25 is Andes CPU IP to adopt RISC-V architecture.
+ 
+-AX25 Features
+--------------
++ANDES25 Features
++----------------
+ 
+ CPU Core
+  - 5-stage in-order execution pipeline
+diff --git a/doc/board/AndesTech/index.rst b/doc/board/AndesTech/index.rst
+index d8f7d155fc..68f54a7d11 100644
+--- a/doc/board/AndesTech/index.rst
++++ b/doc/board/AndesTech/index.rst
+@@ -7,4 +7,4 @@ Andes Tech
+    :maxdepth: 2
+ 
+    adp-ag101p
+-   ax25-ae350
++   andes25-ae350
+diff --git a/drivers/cache/Kconfig b/drivers/cache/Kconfig
+index 40f41a817c..6cb8c3e980 100644
+--- a/drivers/cache/Kconfig
++++ b/drivers/cache/Kconfig
+@@ -25,7 +25,6 @@ config L2X0_CACHE
+ config V5L2_CACHE
+ 	bool "Andes V5L2 cache driver"
+ 	select CACHE
+-	depends on RISCV_NDS_CACHE
+ 	help
+ 	  Support Andes V5L2 cache controller in AE350 platform.
+ 	  It will configure tag and data ram timing control from the
+diff --git a/include/configs/ax25-ae350.h b/include/configs/andes25-ae350.h
+similarity index 100%
+rename from include/configs/ax25-ae350.h
+rename to include/configs/andes25-ae350.h
+diff --git a/include/configs/andes45-ae350.h b/include/configs/andes45-ae350.h
+new file mode 100644
+index 0000000000..8b8b9ef066
+--- /dev/null
++++ b/include/configs/andes45-ae350.h
+@@ -0,0 +1,135 @@
++/* SPDX-License-Identifier: GPL-2.0+ */
++/*
++ * Copyright (C) 2017 Andes Technology Corporation
++ * Rick Chen, Andes Technology Corporation <rick@andestech.com>
++ */
++
++#ifndef __CONFIG_H
++#define __CONFIG_H
++
++#include <linux/sizes.h>
++
++#ifdef CONFIG_SPL
++#define CONFIG_SPL_MAX_SIZE		0x00100000
++#define CONFIG_SPL_BSS_START_ADDR	0x04000000
++#define CONFIG_SPL_BSS_MAX_SIZE		0x00100000
++
++#ifdef CONFIG_SPL_MMC
++#define CONFIG_SPL_FS_LOAD_PAYLOAD_NAME		"u-boot.itb"
++#endif
++#endif
++
++#define RISCV_MMODE_TIMERBASE           0xe6000000
++#define RISCV_MMODE_TIMER_FREQ          60000000
++
++#define RISCV_SMODE_TIMER_FREQ          60000000
++
++/*
++ * CPU and Board Configuration Options
++ */
++
++/*
++ * Miscellaneous configurable options
++ */
++#define CONFIG_SYS_CBSIZE	1024	/* Console I/O Buffer Size */
++
++/*
++ * Print Buffer Size
++ */
++#define CONFIG_SYS_PBSIZE	\
++	(CONFIG_SYS_CBSIZE + sizeof(CONFIG_SYS_PROMPT) + 16)
++
++/*
++ * max number of command args
++ */
++#define CONFIG_SYS_MAXARGS	16
++
++/*
++ * Boot Argument Buffer Size
++ */
++#define CONFIG_SYS_BARGSIZE	CONFIG_SYS_CBSIZE
++
++#define CONFIG_SYS_NONCACHED_MEMORY	SZ_1M
++
++/* DT blob (fdt) address */
++#define CONFIG_SYS_FDT_BASE		0x800f0000
++
++/*
++ * Physical Memory Map
++ */
++#define PHYS_SDRAM_0	0x00000000		/* SDRAM Bank #1 */
++#define PHYS_SDRAM_1	\
++	(PHYS_SDRAM_0 + PHYS_SDRAM_0_SIZE)	/* SDRAM Bank #2 */
++#define PHYS_SDRAM_0_SIZE	0x20000000	/* 512 MB */
++#define PHYS_SDRAM_1_SIZE	0x20000000	/* 512 MB */
++#define CONFIG_SYS_SDRAM_BASE	PHYS_SDRAM_0
++
++/*
++ * Serial console configuration
++ */
++#define CONFIG_SYS_NS16550_SERIAL
++#ifndef CONFIG_DM_SERIAL
++#define CONFIG_SYS_NS16550_REG_SIZE	-4
++#endif
++#define CONFIG_SYS_NS16550_CLK		19660800
++
++/* Init Stack Pointer */
++#define CONFIG_SYS_INIT_SP_ADDR		(CONFIG_SYS_SDRAM_BASE + 0x10000000 - \
++					GENERATED_GBL_DATA_SIZE)
++
++/* use CFI framework */
++
++#define CONFIG_SYS_FLASH_CFI_WIDTH	FLASH_CFI_16BIT
++#define CONFIG_SYS_CFI_FLASH_STATUS_POLL
++
++/* support JEDEC */
++#define PHYS_FLASH_1			0x88000000	/* BANK 0 */
++#define CONFIG_SYS_FLASH_BASE		PHYS_FLASH_1
++#define CONFIG_SYS_FLASH_BANKS_LIST	{ PHYS_FLASH_1, }
++
++#define CONFIG_SYS_FLASH_ERASE_TOUT	120000	/* TO for Flash Erase (ms) */
++#define CONFIG_SYS_FLASH_WRITE_TOUT	500	/* TO for Flash Write (ms) */
++
++/* max number of memory banks */
++/*
++ * There are 4 banks supported for this Controller,
++ * but we have only 1 bank connected to flash on board
++*/
++#define CONFIG_SYS_FLASH_BANKS_SIZES {0x4000000}
++
++/* max number of sectors on one chip */
++#define CONFIG_FLASH_SECTOR_SIZE	(0x10000*2)
++#define CONFIG_SYS_MAX_FLASH_SECT	512
++
++/* environments */
++
++/* SPI FLASH */
++
++/*
++ * For booting Linux, the board info and command line data
++ * have to be in the first 16 MB of memory, since this is
++ * the maximum mapped by the Linux kernel during initialization.
++ */
++
++/* Initial Memory map for Linux*/
++#define CONFIG_SYS_BOOTMAPSZ	(64 << 20)
++/* Increase max gunzip size */
++#define CONFIG_SYS_BOOTM_LEN	(64 << 20)
++
++/* When we use RAM as ENV */
++
++/* Enable distro boot */
++#define BOOT_TARGET_DEVICES(func) \
++	func(MMC, mmc, 0) \
++	func(DHCP, dhcp, na)
++#include <config_distro_bootcmd.h>
++
++#define CONFIG_EXTRA_ENV_SETTINGS	\
++				"kernel_addr_r=0x00080000\0" \
++				"pxefile_addr_r=0x01f00000\0" \
++				"scriptaddr=0x01f00000\0" \
++				"fdt_addr_r=0x02000000\0" \
++				"ramdisk_addr_r=0x02800000\0" \
++				BOOTENV
++
++#endif /* __CONFIG_H */
+diff --git a/include/configs/andes45-qilai.h b/include/configs/andes45-qilai.h
+new file mode 100644
+index 0000000000..8b8b9ef066
+--- /dev/null
++++ b/include/configs/andes45-qilai.h
+@@ -0,0 +1,135 @@
++/* SPDX-License-Identifier: GPL-2.0+ */
++/*
++ * Copyright (C) 2017 Andes Technology Corporation
++ * Rick Chen, Andes Technology Corporation <rick@andestech.com>
++ */
++
++#ifndef __CONFIG_H
++#define __CONFIG_H
++
++#include <linux/sizes.h>
++
++#ifdef CONFIG_SPL
++#define CONFIG_SPL_MAX_SIZE		0x00100000
++#define CONFIG_SPL_BSS_START_ADDR	0x04000000
++#define CONFIG_SPL_BSS_MAX_SIZE		0x00100000
++
++#ifdef CONFIG_SPL_MMC
++#define CONFIG_SPL_FS_LOAD_PAYLOAD_NAME		"u-boot.itb"
++#endif
++#endif
++
++#define RISCV_MMODE_TIMERBASE           0xe6000000
++#define RISCV_MMODE_TIMER_FREQ          60000000
++
++#define RISCV_SMODE_TIMER_FREQ          60000000
++
++/*
++ * CPU and Board Configuration Options
++ */
++
++/*
++ * Miscellaneous configurable options
++ */
++#define CONFIG_SYS_CBSIZE	1024	/* Console I/O Buffer Size */
++
++/*
++ * Print Buffer Size
++ */
++#define CONFIG_SYS_PBSIZE	\
++	(CONFIG_SYS_CBSIZE + sizeof(CONFIG_SYS_PROMPT) + 16)
++
++/*
++ * max number of command args
++ */
++#define CONFIG_SYS_MAXARGS	16
++
++/*
++ * Boot Argument Buffer Size
++ */
++#define CONFIG_SYS_BARGSIZE	CONFIG_SYS_CBSIZE
++
++#define CONFIG_SYS_NONCACHED_MEMORY	SZ_1M
++
++/* DT blob (fdt) address */
++#define CONFIG_SYS_FDT_BASE		0x800f0000
++
++/*
++ * Physical Memory Map
++ */
++#define PHYS_SDRAM_0	0x00000000		/* SDRAM Bank #1 */
++#define PHYS_SDRAM_1	\
++	(PHYS_SDRAM_0 + PHYS_SDRAM_0_SIZE)	/* SDRAM Bank #2 */
++#define PHYS_SDRAM_0_SIZE	0x20000000	/* 512 MB */
++#define PHYS_SDRAM_1_SIZE	0x20000000	/* 512 MB */
++#define CONFIG_SYS_SDRAM_BASE	PHYS_SDRAM_0
++
++/*
++ * Serial console configuration
++ */
++#define CONFIG_SYS_NS16550_SERIAL
++#ifndef CONFIG_DM_SERIAL
++#define CONFIG_SYS_NS16550_REG_SIZE	-4
++#endif
++#define CONFIG_SYS_NS16550_CLK		19660800
++
++/* Init Stack Pointer */
++#define CONFIG_SYS_INIT_SP_ADDR		(CONFIG_SYS_SDRAM_BASE + 0x10000000 - \
++					GENERATED_GBL_DATA_SIZE)
++
++/* use CFI framework */
++
++#define CONFIG_SYS_FLASH_CFI_WIDTH	FLASH_CFI_16BIT
++#define CONFIG_SYS_CFI_FLASH_STATUS_POLL
++
++/* support JEDEC */
++#define PHYS_FLASH_1			0x88000000	/* BANK 0 */
++#define CONFIG_SYS_FLASH_BASE		PHYS_FLASH_1
++#define CONFIG_SYS_FLASH_BANKS_LIST	{ PHYS_FLASH_1, }
++
++#define CONFIG_SYS_FLASH_ERASE_TOUT	120000	/* TO for Flash Erase (ms) */
++#define CONFIG_SYS_FLASH_WRITE_TOUT	500	/* TO for Flash Write (ms) */
++
++/* max number of memory banks */
++/*
++ * There are 4 banks supported for this Controller,
++ * but we have only 1 bank connected to flash on board
++*/
++#define CONFIG_SYS_FLASH_BANKS_SIZES {0x4000000}
++
++/* max number of sectors on one chip */
++#define CONFIG_FLASH_SECTOR_SIZE	(0x10000*2)
++#define CONFIG_SYS_MAX_FLASH_SECT	512
++
++/* environments */
++
++/* SPI FLASH */
++
++/*
++ * For booting Linux, the board info and command line data
++ * have to be in the first 16 MB of memory, since this is
++ * the maximum mapped by the Linux kernel during initialization.
++ */
++
++/* Initial Memory map for Linux*/
++#define CONFIG_SYS_BOOTMAPSZ	(64 << 20)
++/* Increase max gunzip size */
++#define CONFIG_SYS_BOOTM_LEN	(64 << 20)
++
++/* When we use RAM as ENV */
++
++/* Enable distro boot */
++#define BOOT_TARGET_DEVICES(func) \
++	func(MMC, mmc, 0) \
++	func(DHCP, dhcp, na)
++#include <config_distro_bootcmd.h>
++
++#define CONFIG_EXTRA_ENV_SETTINGS	\
++				"kernel_addr_r=0x00080000\0" \
++				"pxefile_addr_r=0x01f00000\0" \
++				"scriptaddr=0x01f00000\0" \
++				"fdt_addr_r=0x02000000\0" \
++				"ramdisk_addr_r=0x02800000\0" \
++				BOOTENV
++
++#endif /* __CONFIG_H */
+-- 
+2.34.1
+

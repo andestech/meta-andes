@@ -1,0 +1,37 @@
+From 35c894927af9753d70ac32fd88e0288ee26407d3 Mon Sep 17 00:00:00 2001
+From: Leo Yu-Chi Liang <ycliang@andestech.com>
+Date: Mon, 25 Jul 2022 14:16:47 +0800
+Subject: [PATCH 09/34] riscv: ae350: Rename dynamic mode fast boot default
+ configs
+
+Signed-off-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+---
+ ...0_rv32_spl_dynamic_defconfig => ae350_rv32_fastboot_defconfig} | 0
+ ...pl_xip_dynamic_defconfig => ae350_rv32_fastboot_xip_defconfig} | 0
+ ...0_rv64_spl_dynamic_defconfig => ae350_rv64_fastboot_defconfig} | 0
+ ...pl_xip_dynamic_defconfig => ae350_rv64_fastboot_xip_defconfig} | 0
+ 4 files changed, 0 insertions(+), 0 deletions(-)
+ rename configs/{ae350_rv32_spl_dynamic_defconfig => ae350_rv32_fastboot_defconfig} (100%)
+ rename configs/{ae350_rv32_spl_xip_dynamic_defconfig => ae350_rv32_fastboot_xip_defconfig} (100%)
+ rename configs/{ae350_rv64_spl_dynamic_defconfig => ae350_rv64_fastboot_defconfig} (100%)
+ rename configs/{ae350_rv64_spl_xip_dynamic_defconfig => ae350_rv64_fastboot_xip_defconfig} (100%)
+
+diff --git a/configs/ae350_rv32_spl_dynamic_defconfig b/configs/ae350_rv32_fastboot_defconfig
+similarity index 100%
+rename from configs/ae350_rv32_spl_dynamic_defconfig
+rename to configs/ae350_rv32_fastboot_defconfig
+diff --git a/configs/ae350_rv32_spl_xip_dynamic_defconfig b/configs/ae350_rv32_fastboot_xip_defconfig
+similarity index 100%
+rename from configs/ae350_rv32_spl_xip_dynamic_defconfig
+rename to configs/ae350_rv32_fastboot_xip_defconfig
+diff --git a/configs/ae350_rv64_spl_dynamic_defconfig b/configs/ae350_rv64_fastboot_defconfig
+similarity index 100%
+rename from configs/ae350_rv64_spl_dynamic_defconfig
+rename to configs/ae350_rv64_fastboot_defconfig
+diff --git a/configs/ae350_rv64_spl_xip_dynamic_defconfig b/configs/ae350_rv64_fastboot_xip_defconfig
+similarity index 100%
+rename from configs/ae350_rv64_spl_xip_dynamic_defconfig
+rename to configs/ae350_rv64_fastboot_xip_defconfig
+-- 
+2.34.1
+

@@ -1,0 +1,42 @@
+From 674f8b1699f09b5c905636478fe0419d2192405e Mon Sep 17 00:00:00 2001
+From: Rick Chen <rick@andestech.com>
+Date: Thu, 10 Nov 2022 14:10:41 +0800
+Subject: [PATCH 20/34] riscv: qilai: Check firmware_fdt_addr validation
+
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ board/AndesTech/qilai/qilai-invecas.c | 4 ++--
+ board/AndesTech/qilai/qilai.c         | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/board/AndesTech/qilai/qilai-invecas.c b/board/AndesTech/qilai/qilai-invecas.c
+index 3b278f4588..ddb5948b41 100644
+--- a/board/AndesTech/qilai/qilai-invecas.c
++++ b/board/AndesTech/qilai/qilai-invecas.c
+@@ -75,8 +75,8 @@ void *board_fdt_blob_setup(int *err)
+ {
+ 	*err = 0;
+ 	if (IS_ENABLED(CONFIG_OF_SEPARATE) || IS_ENABLED(CONFIG_OF_BOARD)) {
+-		if (gd->arch.firmware_fdt_addr)
+-			return (void *)(ulong)gd->arch.firmware_fdt_addr;
++		if (fdt_magic((uintptr_t)gd->arch.firmware_fdt_addr) == FDT_MAGIC)
++				return (void *)(ulong)gd->arch.firmware_fdt_addr;
+ 	}
+ 
+ 	if (fdt_magic(CONFIG_SYS_FDT_BASE) == FDT_MAGIC)
+diff --git a/board/AndesTech/qilai/qilai.c b/board/AndesTech/qilai/qilai.c
+index 3b278f4588..70f6ca74cd 100644
+--- a/board/AndesTech/qilai/qilai.c
++++ b/board/AndesTech/qilai/qilai.c
+@@ -75,7 +75,7 @@ void *board_fdt_blob_setup(int *err)
+ {
+ 	*err = 0;
+ 	if (IS_ENABLED(CONFIG_OF_SEPARATE) || IS_ENABLED(CONFIG_OF_BOARD)) {
+-		if (gd->arch.firmware_fdt_addr)
++		if (fdt_magic((uintptr_t)gd->arch.firmware_fdt_addr) == FDT_MAGIC)
+ 			return (void *)(ulong)gd->arch.firmware_fdt_addr;
+ 	}
+ 
+-- 
+2.34.1
+

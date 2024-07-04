@@ -1,0 +1,799 @@
+From 9225d5fbd1e936ce683abbf6f5a19037aa01d4af Mon Sep 17 00:00:00 2001
+From: Rick Chen <rick@andestech.com>
+Date: Wed, 6 Apr 2022 18:18:26 +0800
+Subject: [PATCH 01/34] Add Andes PMA support
+
+This patch set includes the following patches:
+
+	18d8e96cdd drivers/net: Support non-coherent MAC
+	fd2ef9443d riscv: enable noncached memory for Andes CPU
+	12112f061c riscv: Add API for setting PMA
+	5e2c76e186 riscv: Add configurations to support PMA setting
+
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ arch/riscv/Kconfig                |   5 +
+ arch/riscv/cpu/ax25/Kconfig       |   1 +
+ arch/riscv/cpu/ax25/Makefile      |   1 +
+ arch/riscv/cpu/ax25/pma.c         |  70 ++++++++
+ arch/riscv/include/asm/csr.h      |  25 +++
+ arch/riscv/include/asm/encoding.h |  14 ++
+ arch/riscv/include/asm/sbi.h      |  11 ++
+ arch/riscv/include/asm/system.h   |  10 ++
+ arch/riscv/lib/Makefile           |   1 +
+ arch/riscv/lib/andes_pma.c        | 286 ++++++++++++++++++++++++++++++
+ arch/riscv/lib/sbi.c              |  23 +++
+ drivers/net/ftmac100.c            |  74 ++++++--
+ 12 files changed, 508 insertions(+), 13 deletions(-)
+ create mode 100644 arch/riscv/cpu/ax25/pma.c
+ create mode 100644 arch/riscv/lib/andes_pma.c
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index ba29e70acf..1108d321fd 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -195,6 +195,11 @@ config ANDES_PLIC
+ 	  The Andes PLIC block holds memory-mapped claim and pending registers
+ 	  associated with software interrupt.
+ 
++config ANDES_PMA
++	bool
++	help
++	  The Andes PMA configuration.
++
+ config SYS_MALLOC_F_LEN
+ 	default 0x1000
+ 
+diff --git a/arch/riscv/cpu/ax25/Kconfig b/arch/riscv/cpu/ax25/Kconfig
+index 941d963ece..db11995a49 100644
+--- a/arch/riscv/cpu/ax25/Kconfig
++++ b/arch/riscv/cpu/ax25/Kconfig
+@@ -7,6 +7,7 @@ config RISCV_NDS
+ 	imply ANDES_PLIC if (RISCV_MMODE || SPL_RISCV_MMODE)
+ 	imply ANDES_PLMT_TIMER if (RISCV_MMODE || SPL_RISCV_MMODE)
+ 	imply SPL_CPU
++	imply ANDES_PMA if (RISCV_MMODE || SPL_RISCV_MMODE)
+ 	imply SPL_OPENSBI
+ 	imply SPL_LOAD_FIT
+ 	help
+diff --git a/arch/riscv/cpu/ax25/Makefile b/arch/riscv/cpu/ax25/Makefile
+index 318baccb09..24f5a4512a 100644
+--- a/arch/riscv/cpu/ax25/Makefile
++++ b/arch/riscv/cpu/ax25/Makefile
+@@ -5,3 +5,4 @@
+ 
+ obj-y	:= cpu.o
+ obj-y	+= cache.o
++obj-$(CONFIG_ANDES_PMA)	+= pma.o
+diff --git a/arch/riscv/cpu/ax25/pma.c b/arch/riscv/cpu/ax25/pma.c
+new file mode 100644
+index 0000000000..3a4fdcb07f
+--- /dev/null
++++ b/arch/riscv/cpu/ax25/pma.c
+@@ -0,0 +1,70 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (C) 2017 Andes Technology Corporation
++ * Rick Chen, Andes Technology Corporation <rick@andestech.com>
++ */
++
++#include <asm/csr.h>
++#include <asm/encoding.h>
++#include <asm/sbi.h>
++#include <common.h>
++#include <cpu_func.h>
++#include <malloc.h>
++#include <linux/log2.h>
++
++#define DPMA			(_AC(0x1, UL) << 30)
++int pma_set(unsigned long addr, unsigned int size);
++
++
++#ifdef CONFIG_SYS_NONCACHED_MEMORY
++/*
++ * Reserve one MMU section worth of address space below the malloc() area that
++ * will be mapped uncached.
++ */
++static unsigned long noncached_start = 0;
++static unsigned long noncached_end = 0;
++static unsigned long noncached_next = 0;
++
++int noncached_init(void)
++{
++	phys_addr_t start, end;
++	size_t size;
++
++#if !CONFIG_IS_ENABLED(RISCV_SMODE)
++	if (!(csr_read(CSR_MMSCCFG) & DPMA))
++#else
++
++	if (!sbi_probe_pma())
++#endif
++		return -ENXIO;
++	end = ALIGN(mem_malloc_start, MMU_SECTION_SIZE) - MMU_SECTION_SIZE;
++	size = ALIGN(CONFIG_SYS_NONCACHED_MEMORY, MMU_SECTION_SIZE);
++	start = end - size;
++	debug("mapping memory %pa-%pa non-cached\n", &start, &end);
++
++	noncached_start = start;
++	noncached_end = end;
++	noncached_next = start;
++
++	return 0;
++}
++
++phys_addr_t noncached_alloc(size_t size, size_t align)
++{
++	phys_addr_t next = ALIGN(noncached_next, align);
++	size = __roundup_pow_of_two(size);
++
++	if (next >= noncached_end || (noncached_end - next) < size)
++		return 0;
++
++	debug("allocated %zu bytes of uncached memory @%pa\n", size, &next);
++#if !CONFIG_IS_ENABLED(RISCV_SMODE)
++	pma_set(next, size);
++#else
++	sbi_set_pma(next, next, 0x100);
++#endif
++	noncached_next = next + size;
++
++	return next;
++}
++#endif /* CONFIG_SYS_NONCACHED_MEMORY */
+diff --git a/arch/riscv/include/asm/csr.h b/arch/riscv/include/asm/csr.h
+index 1a15089cae..4c5f14c302 100644
+--- a/arch/riscv/include/asm/csr.h
++++ b/arch/riscv/include/asm/csr.h
+@@ -131,6 +131,29 @@
+ #define CSR_MCAUSE		0x342
+ #define CSR_MTVAL		0x343
+ #define CSR_MIP			0x344
++
++#define CSR_PMACFG0		0xbc0
++#define CSR_PMACFG1		0xbc1
++#define CSR_PMACFG2		0xbc2
++#define CSR_PMACFG3		0xbc3
++#define CSR_PMAADDR0		0xbd0
++#define CSR_PMAADDR1		0xbd1
++#define CSR_PMAADDR2		0xbd2
++#define CSR_PMAADDR3		0xbd3
++#define CSR_PMAADDR4		0xbd4
++#define CSR_PMAADDR5		0xbd5
++#define CSR_PMAADDR6		0xbd6
++#define CSR_PMAADDR7		0xbd7
++#define CSR_PMAADDR8		0xbd8
++#define CSR_PMAADDR9		0xbd9
++#define CSR_PMAADDR10		0xbda
++#define CSR_PMAADDR11		0xbdb
++#define CSR_PMAADDR12		0xbdc
++#define CSR_PMAADDR13		0xbdd
++#define CSR_PMAADDR14		0xbde
++#define CSR_PMAADDR15		0xbdf
++
++
+ #ifdef CONFIG_RISCV_PRIV_1_9
+ #define CSR_MBASE		0x380
+ #define CSR_MBOUND		0x381
+@@ -144,6 +167,8 @@
+ #define CSR_INSTRETH		0xc82
+ #define CSR_MHARTID		0xf14
+ 
++#define CSR_MMSCCFG            0xfc2
++
+ #ifndef __ASSEMBLY__
+ 
+ #define csr_swap(csr, val)					\
+diff --git a/arch/riscv/include/asm/encoding.h b/arch/riscv/include/asm/encoding.h
+index edafad36b3..ef55bdfa22 100644
+--- a/arch/riscv/include/asm/encoding.h
++++ b/arch/riscv/include/asm/encoding.h
+@@ -97,6 +97,20 @@
+ #define EXT_IO_BASE		0x40000000
+ #define DRAM_BASE		0x80000000
+ 
++#define PMA_ETYPE			0x3
++#define PMA_ETYPE_TOR			0x01
++#define PMA_ETYPE_NA4			0x02
++#define PMA_ETYPE_NAPOT			0x03
++#define PMA_MTYPE_OFF			2
++#define MTYPE_DEV_NONBUF		0
++#define MTYPE_DEV_BUF			1
++#define MTYPE_MEM_NONCACHE_NONBUF	2
++#define MTYPE_MEM_NONCACHE_BUF		3
++#define MTYPE_MEM_WT_RW			7
++#define PMA_SHIFT			2
++#define PMA_COUNT			16
++#define PMA_TOR_COUNT			8
++
+ // page table entry (PTE) fields
+ #define PTE_V		0x001 // Valid
+ #define PTE_TYPE	0x01E // Type
+diff --git a/arch/riscv/include/asm/sbi.h b/arch/riscv/include/asm/sbi.h
+index bfcd204953..590c6e5451 100644
+--- a/arch/riscv/include/asm/sbi.h
++++ b/arch/riscv/include/asm/sbi.h
+@@ -27,6 +27,8 @@ enum sbi_ext_id {
+ 	SBI_EXT_RFENCE = 0x52464E43,
+ 	SBI_EXT_HSM = 0x48534D,
+ 	SBI_EXT_SRST = 0x53525354,
++	SBI_EXT_PMU = 0x504D55,
++	SBI_EXT_ANDES = 0x0900031E,
+ };
+ 
+ enum sbi_ext_base_fid {
+@@ -88,6 +90,12 @@ enum sbi_srst_reset_reason {
+ 	SBI_SRST_RESET_REASON_SYS_FAILURE,
+ };
+ 
++enum sbi_ext_andes_fid {
++          SBI_EXT_ANDES_SET_PMA,
++          SBI_EXT_ANDES_FREE_PMA,
++          SBI_EXT_ANDES_PROBE_PMA,
++};
++
+ #ifdef CONFIG_SBI_V01
+ #define SBI_EXT_SET_TIMER		SBI_EXT_0_1_SET_TIMER
+ #define SBI_FID_SET_TIMER		0
+@@ -155,5 +163,8 @@ int sbi_get_impl_id(void);
+ int sbi_get_impl_version(long *version);
+ int sbi_probe_extension(int ext);
+ void sbi_srst_reset(unsigned long type, unsigned long reason);
++void sbi_set_pma(phys_addr_t offset, unsigned long vaddr, size_t size);
++void sbi_free_pma(unsigned long vaddr);
++long sbi_probe_pma(void);
+ 
+ #endif
+diff --git a/arch/riscv/include/asm/system.h b/arch/riscv/include/asm/system.h
+index a340475823..91a457007f 100644
+--- a/arch/riscv/include/asm/system.h
++++ b/arch/riscv/include/asm/system.h
+@@ -7,6 +7,16 @@
+ #ifndef __ASM_RISCV_SYSTEM_H
+ #define __ASM_RISCV_SYSTEM_H
+ 
++struct event;
++/* 2MB granularity */
++#define MMU_SECTION_SHIFT	21
++#define MMU_SECTION_SIZE	(1 << MMU_SECTION_SHIFT)
++
++#ifdef CONFIG_SYS_NONCACHED_MEMORY
++int noncached_init(void);
++phys_addr_t noncached_alloc(size_t size, size_t align);
++#endif
++
+ /*
+  * Interrupt configuring macros.
+  *
+diff --git a/arch/riscv/lib/Makefile b/arch/riscv/lib/Makefile
+index 06020fcc2a..33baab323f 100644
+--- a/arch/riscv/lib/Makefile
++++ b/arch/riscv/lib/Makefile
+@@ -14,6 +14,7 @@ obj-$(CONFIG_SIFIVE_CACHE) += sifive_cache.o
+ ifeq ($(CONFIG_$(SPL_)RISCV_MMODE),y)
+ obj-$(CONFIG_$(SPL_)SIFIVE_CLINT) += sifive_clint.o
+ obj-$(CONFIG_ANDES_PLIC) += andes_plic.o
++obj-$(CONFIG_ANDES_PMA) += andes_pma.o
+ else
+ obj-$(CONFIG_SBI) += sbi.o
+ obj-$(CONFIG_SBI_IPI) += sbi_ipi.o
+diff --git a/arch/riscv/lib/andes_pma.c b/arch/riscv/lib/andes_pma.c
+new file mode 100644
+index 0000000000..ca21687f6c
+--- /dev/null
++++ b/arch/riscv/lib/andes_pma.c
+@@ -0,0 +1,286 @@
++/*
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * Copyright (c) 2019 Western Digital Corporation or its affiliates.
++ *
++ * Authors:
++ *   Anup Patel <anup.patel@wdc.com>
++ */
++
++#include <asm/encoding.h>
++#include <common.h>
++#include <linux/log2.h>
++
++char tor_index = 8;
++char align_index = 0;
++
++static unsigned long csr_read_num(int csr_num)
++{
++	unsigned long ret = 0;
++
++	switch (csr_num) {
++	case CSR_PMACFG0:
++		ret = csr_read(CSR_PMACFG0);
++		break;
++	case CSR_PMACFG1:
++		ret = csr_read(CSR_PMACFG1);
++		break;
++	case CSR_PMACFG2:
++		ret = csr_read(CSR_PMACFG2);
++		break;
++	case CSR_PMACFG3:
++		ret = csr_read(CSR_PMACFG3);
++		break;
++	case CSR_PMAADDR0:
++		ret = csr_read(CSR_PMAADDR0);
++		break;
++	case CSR_PMAADDR1:
++		ret = csr_read(CSR_PMAADDR1);
++		break;
++	case CSR_PMAADDR2:
++		ret = csr_read(CSR_PMAADDR2);
++		break;
++	case CSR_PMAADDR3:
++		ret = csr_read(CSR_PMAADDR3);
++		break;
++	case CSR_PMAADDR4:
++		ret = csr_read(CSR_PMAADDR4);
++		break;
++	case CSR_PMAADDR5:
++		ret = csr_read(CSR_PMAADDR5);
++		break;
++	case CSR_PMAADDR6:
++		ret = csr_read(CSR_PMAADDR6);
++		break;
++	case CSR_PMAADDR7:
++		ret = csr_read(CSR_PMAADDR7);
++		break;
++	case CSR_PMAADDR8:
++		ret = csr_read(CSR_PMAADDR8);
++		break;
++	case CSR_PMAADDR9:
++		ret = csr_read(CSR_PMAADDR9);
++		break;
++	case CSR_PMAADDR10:
++		ret = csr_read(CSR_PMAADDR10);
++		break;
++	case CSR_PMAADDR11:
++		ret = csr_read(CSR_PMAADDR11);
++		break;
++	case CSR_PMAADDR12:
++		ret = csr_read(CSR_PMAADDR12);
++		break;
++	case CSR_PMAADDR13:
++		ret = csr_read(CSR_PMAADDR13);
++		break;
++	case CSR_PMAADDR14:
++		ret = csr_read(CSR_PMAADDR14);
++		break;
++	case CSR_PMAADDR15:
++		ret = csr_read(CSR_PMAADDR15);
++		break;
++	default:
++		break;
++	};
++
++	return ret;
++}
++
++static void csr_write_num(int csr_num, unsigned long val)
++{
++	switch (csr_num) {
++	case CSR_PMACFG0:
++		csr_write(CSR_PMACFG0, val);
++		break;
++	case CSR_PMACFG1:
++		csr_write(CSR_PMACFG1, val);
++		break;
++	case CSR_PMACFG2:
++		csr_write(CSR_PMACFG2, val);
++		break;
++	case CSR_PMACFG3:
++		csr_write(CSR_PMACFG3, val);
++		break;
++	case CSR_PMAADDR0:
++		csr_write(CSR_PMAADDR0, val);
++		break;
++	case CSR_PMAADDR1:
++		csr_write(CSR_PMAADDR1, val);
++		break;
++	case CSR_PMAADDR2:
++		csr_write(CSR_PMAADDR2, val);
++		break;
++	case CSR_PMAADDR3:
++		csr_write(CSR_PMAADDR3, val);
++		break;
++	case CSR_PMAADDR4:
++		csr_write(CSR_PMAADDR4, val);
++		break;
++	case CSR_PMAADDR5:
++		csr_write(CSR_PMAADDR5, val);
++		break;
++	case CSR_PMAADDR6:
++		csr_write(CSR_PMAADDR6, val);
++		break;
++	case CSR_PMAADDR7:
++		csr_write(CSR_PMAADDR7, val);
++		break;
++	case CSR_PMAADDR8:
++		csr_write(CSR_PMAADDR8, val);
++		break;
++	case CSR_PMAADDR9:
++		csr_write(CSR_PMAADDR9, val);
++		break;
++	case CSR_PMAADDR10:
++		csr_write(CSR_PMAADDR10, val);
++		break;
++	case CSR_PMAADDR11:
++		csr_write(CSR_PMAADDR11, val);
++		break;
++	case CSR_PMAADDR12:
++		csr_write(CSR_PMAADDR12, val);
++		break;
++	case CSR_PMAADDR13:
++		csr_write(CSR_PMAADDR13, val);
++		break;
++	case CSR_PMAADDR14:
++		csr_write(CSR_PMAADDR14, val);
++		break;
++	case CSR_PMAADDR15:
++		csr_write(CSR_PMAADDR15, val);
++		break;
++	default:
++		break;
++
++	};
++}
++
++static bool addr_align(unsigned long addr, unsigned int size)
++{
++	return (generic_ffs(addr) >= generic_ffs(size));
++}
++
++static int get_index(int align)
++{
++	int n;
++
++	if (align) {
++		n = align_index;
++		if (n >= PMA_COUNT) {
++			printf("NAPOT full !!!\n");
++			return -EINVAL;
++		}
++	}
++	else {
++		n = tor_index + 1;
++
++		if (n >= PMA_TOR_COUNT) {
++			printf("TOR full !!!\n");
++			return -EINVAL;
++		}
++	}
++
++	return n;
++}
++
++static void set_index(int n, int align)
++{
++	if (align) {
++		n ++;
++		align_index = n;
++	}
++	else {
++		n += 2;
++		tor_index = n;
++	}
++}
++
++
++
++static int pma_check(unsigned long addr,unsigned int size)
++{
++	if ((generic_hweight32(size) > 1) || (!addr_align(addr, size)))
++		return 0;
++
++	return 1;
++}
++
++static int _set_pma(int n, unsigned long addr,
++	    unsigned int size, int align)
++{
++	int pmacfg_csr, pmacfg_shift, pmaaddr_csr;
++	unsigned long cfgmask, pmacfg;
++	unsigned long addrmask, pmaaddr;
++	unsigned long prot = 0;
++	int log2len;
++
++	log2len = generic_ffs(size) - 1;
++	if (align == 1)
++		if ((log2len > __riscv_xlen) || (log2len < PMA_SHIFT))
++			return -EINVAL;
++
++	/* calculate PMA register and offset */
++#if __riscv_xlen == 32
++	pmacfg_csr   = CSR_PMACFG0 + (n >> 2);
++	pmacfg_shift = (n & 3) << 3;
++#elif __riscv_xlen == 64
++	pmacfg_csr   = (CSR_PMACFG0 + (n >> 2)) & ~1;
++	pmacfg_shift = (n & 7) << 3;
++#else
++	pmacfg_csr   = -1;
++	pmacfg_shift = -1;
++#endif
++	pmaaddr_csr = CSR_PMAADDR0 + n;
++	if (pmacfg_csr < 0 || pmacfg_shift < 0)
++		return -ENOTSUPP;
++
++	/* Transfer start address to word address */
++	pmaaddr = (addr >> PMA_SHIFT);
++	if (align == 1)
++		prot = (log2len == PMA_SHIFT) ? PMA_ETYPE_NA4 : PMA_ETYPE_NAPOT;
++	else
++		prot = PMA_ETYPE_TOR;
++
++	cfgmask = ~(0xff << pmacfg_shift);
++	pmacfg	= (csr_read_num(pmacfg_csr) & cfgmask);
++	pmacfg |= ((prot << pmacfg_shift) & ~cfgmask);
++	pmacfg |= (MTYPE_MEM_NONCACHE_BUF<< (pmacfg_shift + PMA_MTYPE_OFF));
++	csr_write_num(pmacfg_csr, pmacfg);
++	pmacfg = csr_read_num(pmacfg_csr);
++
++	if (align == 1) {
++		if (log2len == __riscv_xlen)
++			pmaaddr = -1UL;
++		else {
++			addrmask = (1UL << (log2len - PMA_SHIFT)) - 1;
++			pmaaddr  &= (~addrmask);
++			pmaaddr |= (addrmask >> 1);
++		}
++		csr_write_num(pmaaddr_csr, pmaaddr);
++		pmaaddr = csr_read_num(pmaaddr_csr);
++	}
++	else {
++		csr_write_num(pmaaddr_csr - 1, pmaaddr);
++		csr_write_num(pmaaddr_csr, pmaaddr + (size >> PMA_SHIFT));
++		pmaaddr = csr_read_num(pmaaddr_csr - 1);
++		pmaaddr = csr_read_num(pmaaddr_csr);
++	}
++	set_index(n, align);
++
++	return 0;
++
++}
++
++int pma_set(unsigned long addr, unsigned int size)
++{
++	int align;
++	int n;
++
++	size = __roundup_pow_of_two(size);
++	align = pma_check(addr, size);
++	n = get_index(align);
++	if (n < 0)
++		return n;
++
++	return _set_pma(n, addr, size, align);
++}
+diff --git a/arch/riscv/lib/sbi.c b/arch/riscv/lib/sbi.c
+index d427d1b29e..b4ea32e3f0 100644
+--- a/arch/riscv/lib/sbi.c
++++ b/arch/riscv/lib/sbi.c
+@@ -139,6 +139,29 @@ void sbi_srst_reset(unsigned long type, unsigned long reason)
+ 		  0, 0, 0, 0);
+ }
+ 
++long sbi_probe_pma(void)
++{
++	struct sbiret ret;
++
++	ret = sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_PROBE_PMA, 0, 0, 0, 0, 0, 0);
++
++	if (!ret.error)
++		if (ret.value)
++			return ret.value;
++
++	return -ENOTSUPP;
++}
++
++void sbi_set_pma(phys_addr_t offset, unsigned long vaddr, size_t size)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_SET_PMA, offset, vaddr, size, 0, 0, 0);
++}
++
++void sbi_free_pma(unsigned long vaddr)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_FREE_PMA, vaddr, 0, 0, 0, 0, 0);
++}
++
+ #ifdef CONFIG_SBI_V01
+ 
+ /**
+diff --git a/drivers/net/ftmac100.c b/drivers/net/ftmac100.c
+index c30ace96bb..db1f7d8dce 100644
+--- a/drivers/net/ftmac100.c
++++ b/drivers/net/ftmac100.c
+@@ -23,12 +23,18 @@ DECLARE_GLOBAL_DATA_PTR;
+ #endif
+ #define ETH_ZLEN	60
+ 
+-struct ftmac100_data {
++struct ftmac100_des {
+ 	struct ftmac100_txdes txdes[1];
+ 	struct ftmac100_rxdes rxdes[PKTBUFSRX];
++};
++
++struct ftmac100_data {
++	struct ftmac100_des des;
+ 	int rx_index;
+ 	const char *name;
+ 	phys_addr_t iobase;
++	struct ftmac100_des *pdes;
++	bool coherent;
+ };
+ 
+ /*
+@@ -83,8 +89,8 @@ static void _ftmac100_halt(struct ftmac100_data *priv)
+ static int _ftmac100_init(struct ftmac100_data *priv, unsigned char enetaddr[6])
+ {
+ 	struct ftmac100 *ftmac100 = (struct ftmac100 *)(uintptr_t)priv->iobase;
+-	struct ftmac100_txdes *txdes = priv->txdes;
+-	struct ftmac100_rxdes *rxdes = priv->rxdes;
++	struct ftmac100_txdes *txdes = priv->pdes->txdes;
++	struct ftmac100_rxdes *rxdes = priv->pdes->rxdes;
+ 	unsigned int maccr;
+ 	int i;
+ 	debug ("%s()\n", __func__);
+@@ -147,7 +153,8 @@ static int _ftmac100_init(struct ftmac100_data *priv, unsigned char enetaddr[6])
+ static int _ftmac100_free_pkt(struct ftmac100_data *priv)
+ {
+ 	struct ftmac100_rxdes *curr_des;
+-	curr_des = &priv->rxdes[priv->rx_index];
++	curr_des = &priv->pdes->rxdes[priv->rx_index];
++
+ 	/* release buffer to DMA */
+ 	curr_des->rxdes0 |= FTMAC100_RXDES0_RXDMA_OWN;
+ 	priv->rx_index = (priv->rx_index + 1) % PKTBUFSRX;
+@@ -162,7 +169,7 @@ static int __ftmac100_recv(struct ftmac100_data *priv)
+ 	struct ftmac100_rxdes *curr_des;
+ 	unsigned short rxlen;
+ 
+-	curr_des = &priv->rxdes[priv->rx_index];
++	curr_des = &priv->pdes->rxdes[priv->rx_index];
+ 	if (curr_des->rxdes0 & FTMAC100_RXDES0_RXDMA_OWN)
+ 		return 0;
+ 
+@@ -175,7 +182,9 @@ static int __ftmac100_recv(struct ftmac100_data *priv)
+ 	}
+ 
+ 	rxlen = FTMAC100_RXDES0_RFL (curr_des->rxdes0);
+-	invalidate_dcache_range(curr_des->rxdes2,curr_des->rxdes2+rxlen);
++	if (!priv->coherent)
++		invalidate_dcache_range(curr_des->rxdes2,curr_des->rxdes2+rxlen);
++
+ 	debug ("%s(): RX buffer %d, %x received\n",
+ 	       __func__, priv->rx_index, rxlen);
+ 
+@@ -188,7 +197,7 @@ static int __ftmac100_recv(struct ftmac100_data *priv)
+ static int _ftmac100_send(struct ftmac100_data *priv, void *packet, int length)
+ {
+ 	struct ftmac100 *ftmac100 = (struct ftmac100 *)(uintptr_t)priv->iobase;
+-	struct ftmac100_txdes *curr_des = priv->txdes;
++	struct ftmac100_txdes *curr_des = priv->pdes->txdes;
+ 	ulong start;
+ 
+ 	if (curr_des->txdes0 & FTMAC100_TXDES0_TXDMA_OWN) {
+@@ -201,8 +210,8 @@ static int _ftmac100_send(struct ftmac100_data *priv, void *packet, int length)
+ 	length = (length < ETH_ZLEN) ? ETH_ZLEN : length;
+ 
+ 	/* initiate a transmit sequence */
+-
+-	flush_dcache_range((unsigned long)packet,(unsigned long)packet+length);
++	if (!priv->coherent)
++		flush_dcache_range((unsigned long)packet,(unsigned long)packet+length);
+ 	curr_des->txdes2 = (unsigned int)(unsigned long)packet;	/* TXBUF_BADR */
+ 
+ 	curr_des->txdes1 &= FTMAC100_TXDES1_EDOTR;
+@@ -241,7 +250,7 @@ static void ftmac100_halt(struct eth_device *dev)
+ 	return _ftmac100_halt(priv);
+ }
+ 
+-static int ftmac100_init(struct eth_device *dev, struct bd_info *bd)
++static int ftmac100_init(struct eth_device *dev, bd_t *bd)
+ {
+ 	struct ftmac100_data *priv = dev->priv;
+ 	return _ftmac100_init(priv , dev->enetaddr);
+@@ -251,7 +260,8 @@ static int _ftmac100_recv(struct ftmac100_data *priv)
+ {
+ 	struct ftmac100_rxdes *curr_des;
+ 	unsigned short len;
+-	curr_des = &priv->rxdes[priv->rx_index];
++	curr_des = &priv->pdes->rxdes[priv->rx_index];
++
+ 	len = __ftmac100_recv(priv);
+ 	if (len) {
+ 		/* pass the packet up to the protocol layers. */
+@@ -279,7 +289,7 @@ static int ftmac100_send(struct eth_device *dev, void *packet, int length)
+ 	return _ftmac100_send(priv , packet , length);
+ }
+ 
+-int ftmac100_initialize (struct bd_info *bd)
++int ftmac100_initialize (bd_t *bd)
+ {
+ 	struct eth_device *dev;
+ 	struct ftmac100_data *priv;
+@@ -328,6 +338,7 @@ static int ftmac100_start(struct udevice *dev)
+ static void ftmac100_stop(struct udevice *dev)
+ {
+ 	struct ftmac100_data *priv = dev_get_priv(dev);
++
+ 	_ftmac100_halt(priv);
+ }
+ 
+@@ -343,9 +354,11 @@ static int ftmac100_recv(struct udevice *dev, int flags, uchar **packetp)
+ {
+ 	struct ftmac100_data *priv = dev_get_priv(dev);
+ 	struct ftmac100_rxdes *curr_des;
+-	curr_des = &priv->rxdes[priv->rx_index];
++	curr_des = &priv->pdes->rxdes[priv->rx_index];
+ 	int len;
++
+ 	len = __ftmac100_recv(priv);
++
+ 	if (len)
+ 		*packetp = (uchar *)(unsigned long)curr_des->rxdes2;
+ 
+@@ -394,6 +407,28 @@ static const char *dtbmacaddr(u32 ifno)
+ 	return NULL;
+ }
+ 
++static bool dtbcoherent(struct udevice *dev)
++{
++	int node, len;
++
++	if (dev_read_bool(dev, "dma-coherent"))
++		return true;
++
++	if (gd->fdt_blob == NULL) {
++		printf("%s: don't have a valid gd->fdt_blob!\n", __func__);
++		return NULL;
++	}
++
++	node = fdt_path_offset(gd->fdt_blob, "/");
++	if (node < 0)
++		return NULL;
++
++	if (fdt_get_property(gd->fdt_blob, node, "dma-coherent", &len))
++		return true;
++
++	return false;
++}
++
+ static int ftmac100_of_to_plat(struct udevice *dev)
+ {
+ 	struct ftmac100_data *priv = dev_get_priv(dev);
+@@ -401,6 +436,7 @@ static int ftmac100_of_to_plat(struct udevice *dev)
+ 	const char *mac;
+ 	pdata->iobase = dev_read_addr(dev);
+ 	priv->iobase = pdata->iobase;
++	priv->coherent = dtbcoherent(dev);
+ 	mac = dtbmacaddr(0);
+ 	if (mac)
+ 		memcpy(pdata->enetaddr , mac , 6);
+@@ -411,7 +447,19 @@ static int ftmac100_of_to_plat(struct udevice *dev)
+ static int ftmac100_probe(struct udevice *dev)
+ {
+ 	struct ftmac100_data *priv = dev_get_priv(dev);
++
+ 	priv->name = dev->name;
++	priv->pdes = 0;
++
++#ifdef CONFIG_SYS_NONCACHED_MEMORY
++	if (!priv->coherent)
++		priv->pdes = (struct ftmac100_des *)noncached_alloc(sizeof(struct ftmac100_des), 4096);
++#endif
++
++	if (!priv->pdes)
++		priv->pdes = (struct ftmac100_des *)&priv->des;
++	memset(priv->pdes, 0, sizeof(struct ftmac100_des));
++
+ 	return 0;
+ }
+ 
+-- 
+2.34.1
+

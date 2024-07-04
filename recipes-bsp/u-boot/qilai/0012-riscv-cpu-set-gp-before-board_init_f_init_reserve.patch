@@ -1,0 +1,30 @@
+From 390eb8248d423860534b583e19c65bed7fbebb33 Mon Sep 17 00:00:00 2001
+From: Nikita Shubin <n.shubin@yadro.com>
+Date: Fri, 20 May 2022 14:41:17 +0300
+Subject: [PATCH 12/34] riscv: cpu: set gp before board_init_f_init_reserve
+
+Restore global pointer before board_init_f_init_reserve call,
+as "a0" can be set in harts_early_init call and we end up with
+invalid global pointer.
+
+Signed-off-by: Nikita Shubin <n.shubin@yadro.com>
+Reviewed-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+---
+ arch/riscv/cpu/start.S | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/riscv/cpu/start.S b/arch/riscv/cpu/start.S
+index 3e7c6a7760..730ed5ed06 100644
+--- a/arch/riscv/cpu/start.S
++++ b/arch/riscv/cpu/start.S
+@@ -144,6 +144,7 @@ call_harts_early_init:
+ #endif
+ #endif
+ 
++	mv      a0, s0
+ 	jal	board_init_f_init_reserve
+ 
+ 	SREG	s1, GD_FIRMWARE_FDT_ADDR(gp)
+-- 
+2.34.1
+

@@ -1,0 +1,28 @@
+From 9bb703b771a97a9cc07fa81869920f44c25ca664 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Wed, 18 Jan 2023 11:45:02 +0800
+Subject: [PATCH 25/34] riscv: qilai: add openamp ipi extend call
+
+SBI_EXT_ANDES_OPENAMP_IDX to tell opensbi remoteproc will enable/disabel
+SBI_EXT_ANDES_OPENAMP_SEND_IPI to tell opensbi do nofity ipi to
+remoteproc
+---
+ arch/riscv/include/asm/sbi.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/riscv/include/asm/sbi.h b/arch/riscv/include/asm/sbi.h
+index a71a0668cf..e6e97db055 100644
+--- a/arch/riscv/include/asm/sbi.h
++++ b/arch/riscv/include/asm/sbi.h
+@@ -115,6 +115,8 @@ enum sbi_ext_andes_fid {
+ 	SBI_EXT_ANDES_FREE_PMA,
+ 	SBI_EXT_ANDES_PROBE_PMA,
+ 	SBI_EXT_ANDES_DCACHE_WBINVAL_ALL,
++	SBI_EXT_ANDES_OPENAMP_IDX,
++	SBI_EXT_ANDES_OPENAMP_SEND_IPI,
+ };
+ 
+ #ifdef CONFIG_SBI_V01
+-- 
+2.34.1
+

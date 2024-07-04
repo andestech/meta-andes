@@ -1,0 +1,202 @@
+From a12aa30d5e2ad9116905f5d880a69c36099ecdb4 Mon Sep 17 00:00:00 2001
+From: Rick Chen <rick@andestech.com>
+Date: Tue, 19 Jul 2022 09:33:39 +0800
+Subject: [PATCH 06/34] riscv: Modify cache disable flow
+
+Change cache disable flow as disable first,
+then flush to match datasheet.
+
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ arch/riscv/cpu/andes25/cache.c        |  4 ++--
+ arch/riscv/cpu/andes45/cache.c        | 29 ---------------------------
+ arch/riscv/include/asm/global_data.h  |  3 +++
+ board/AndesTech/ae350/Kconfig         |  2 +-
+ board/AndesTech/ae350/andes25-ae350.c |  9 +++++++++
+ drivers/cache/cache-v5l2.c            | 16 ++++++++-------
+ 6 files changed, 24 insertions(+), 39 deletions(-)
+
+diff --git a/arch/riscv/cpu/andes25/cache.c b/arch/riscv/cpu/andes25/cache.c
+index 690a223ba8..acada6843c 100644
+--- a/arch/riscv/cpu/andes25/cache.c
++++ b/arch/riscv/cpu/andes25/cache.c
+@@ -88,10 +88,10 @@ void icache_disable(void)
+ {
+ #if CONFIG_IS_ENABLED(RISCV_MMODE)
+ 	asm volatile (
+-		"fence.i\n\t"
+ 		"csrr t1, 0x7ca\n\t"
+ 		"andi t0, t1, ~0x1\n\t"
+ 		"csrw 0x7ca, t0\n\t"
++		"fence.i\n\t"
+ 	);
+ #else
+ 	sbi_dis_icache();
+@@ -116,12 +116,12 @@ void dcache_enable(void)
+ void dcache_disable(void)
+ {
+ #if CONFIG_IS_ENABLED(RISCV_MMODE)
+-	csr_write(CCTL_REG_MCCTLCOMMAND_NUM, CCTL_L1D_WBINVAL_ALL);
+ 	asm volatile (
+ 		"csrr t1, 0x7ca\n\t"
+ 		"andi t0, t1, ~0x2\n\t"
+ 		"csrw 0x7ca, t0\n\t"
+ 	);
++	csr_write(CCTL_REG_MCCTLCOMMAND_NUM, CCTL_L1D_WBINVAL_ALL);
+ #else
+ 	sbi_dis_dcache();
+ #endif
+diff --git a/arch/riscv/cpu/andes45/cache.c b/arch/riscv/cpu/andes45/cache.c
+index d42f5066d2..150f1cd561 100644
+--- a/arch/riscv/cpu/andes45/cache.c
++++ b/arch/riscv/cpu/andes45/cache.c
+@@ -86,20 +86,6 @@ void icache_enable(void)
+ #endif
+ }
+ 
+-void icache_disable(void)
+-{
+-#if CONFIG_IS_ENABLED(RISCV_MMODE)
+-	asm volatile (
+-		"fence.i\n\t"
+-		"csrr t1, 0x7ca\n\t"
+-		"andi t0, t1, ~0x1\n\t"
+-		"csrw 0x7ca, t0\n\t"
+-	);
+-#else
+-	sbi_dis_icache();
+-#endif
+-}
+-
+ void dcache_enable(void)
+ {
+ #if CONFIG_IS_ENABLED(RISCV_MMODE)
+@@ -115,21 +101,6 @@ void dcache_enable(void)
+ 	cache_ops(cache_enable);
+ }
+ 
+-void dcache_disable(void)
+-{
+-#if CONFIG_IS_ENABLED(RISCV_MMODE)
+-	csr_write(CCTL_REG_MCCTLCOMMAND_NUM, CCTL_L1D_WBINVAL_ALL);
+-	asm volatile (
+-		"csrr t1, 0x7ca\n\t"
+-		"andi t0, t1, ~0x2\n\t"
+-		"csrw 0x7ca, t0\n\t"
+-	);
+-#else
+-	sbi_dis_dcache();
+-#endif
+-	cache_ops(cache_disable);
+-}
+-
+ int icache_status(void)
+ {
+ 	int ret = 0;
+diff --git a/arch/riscv/include/asm/global_data.h b/arch/riscv/include/asm/global_data.h
+index 095484a635..48d7b44e46 100644
+--- a/arch/riscv/include/asm/global_data.h
++++ b/arch/riscv/include/asm/global_data.h
+@@ -24,6 +24,9 @@ struct arch_global_data {
+ #ifdef CONFIG_ANDES_PLIC
+ 	void __iomem *plic;	/* plic base address */
+ #endif
++#ifdef CONFIG_V5L2_CACHE
++	void __iomem *l2c;	/* l2c base address */
++#endif
+ #if CONFIG_IS_ENABLED(SMP)
+ 	struct ipi_data ipi[CONFIG_NR_CPUS];
+ #endif
+diff --git a/board/AndesTech/ae350/Kconfig b/board/AndesTech/ae350/Kconfig
+index 9ae69d0597..232ba06f0e 100644
+--- a/board/AndesTech/ae350/Kconfig
++++ b/board/AndesTech/ae350/Kconfig
+@@ -36,7 +36,7 @@ config BOARD_SPECIFIC_OPTIONS # dummy
+ 	imply SPL_RAM_DEVICE
+ 	imply BOARD_EARLY_INIT_F
+ 	imply OF_HAS_PRIOR_STAGE
+-
++	imply BOARD_EARLY_INIT_R
+ endif
+ 
+ if TARGET_ANDES45_AE350
+diff --git a/board/AndesTech/ae350/andes25-ae350.c b/board/AndesTech/ae350/andes25-ae350.c
+index c02db0233c..d5611fbce7 100644
+--- a/board/AndesTech/ae350/andes25-ae350.c
++++ b/board/AndesTech/ae350/andes25-ae350.c
+@@ -118,6 +118,15 @@ int board_early_init_f(void)
+ }
+ #endif
+ 
++#ifdef CONFIG_BOARD_EARLY_INIT_R
++int board_early_init_r(void)
++{
++	enable_caches();
++
++	return 0;
++}
++#endif
++
+ #ifdef CONFIG_SPL
+ void board_boot_order(u32 *spl_boot_list)
+ {
+diff --git a/drivers/cache/cache-v5l2.c b/drivers/cache/cache-v5l2.c
+index 715f134bbb..8284ef8e40 100644
+--- a/drivers/cache/cache-v5l2.c
++++ b/drivers/cache/cache-v5l2.c
+@@ -34,6 +34,8 @@ struct l2cache {
+ 	volatile u64	cctl_status;
+ };
+ 
++DECLARE_GLOBAL_DATA_PTR;
++
+ /* Configuration register */
+ #define MEM_MAP_OFF	20
+ #define MEM_MAP_MSK	BIT(MEM_MAP_OFF)
+@@ -92,15 +94,15 @@ static int v5l2_enable(struct udevice *dev)
+ 	return 0;
+ }
+ 
+-static int v5l2_wbinval(struct udevice *dev)
++static inline int v5l2_wbinval(struct udevice *dev)
+ {
+-	struct v5l2_plat *plat = dev_get_plat(dev);
+-	volatile struct l2cache *regs = plat->regs;
++	volatile struct l2cache *regs = gd->arch.l2c;
++
+ 	u8 hart = gd->arch.boot_hart;
+ 	void __iomem *cctlcmd = (void __iomem *)CCTL_CMD_REG(regs, hart);
+ 	void __iomem *cctlstat = (void __iomem *)CCTL_STATUS_REG(regs, hart);
+ 
+-	if ((regs) && (readl(&regs->control) & L2_ENABLE)) {
++	if (regs) {
+ 		writel(L2_WBINVAL_ALL, cctlcmd);
+ 
+ 		while (readl(cctlstat) & CCTL_STATUS_MSK(hart)) {
+@@ -120,13 +122,12 @@ static int v5l2_disable(struct udevice *dev)
+ 	volatile struct l2cache *regs = plat->regs;
+ 	int ret = -ENXIO;
+ 
++	if ((regs) && (readl(&regs->control) & L2_ENABLE))
++		clrbits_le32(&regs->control, L2_ENABLE);
+ 	ret = v5l2_wbinval(dev);
+ 	if(ret)
+ 		return ret;
+ 
+-	if ((regs) && (readl(&regs->control) & L2_ENABLE))
+-		clrbits_le32(&regs->control, L2_ENABLE);
+-
+ 	return 0;
+ }
+ 
+@@ -160,6 +161,7 @@ static int v5l2_probe(struct udevice *dev)
+ 	struct l2cache *regs = plat->regs;
+ 	u32 cfg_val, ctl_val;
+ 
++	gd->arch.l2c = regs;
+ 	cfg_val = readl(&regs->configure);
+ 	ctl_val = readl(&regs->control);
+ 
+-- 
+2.34.1
+

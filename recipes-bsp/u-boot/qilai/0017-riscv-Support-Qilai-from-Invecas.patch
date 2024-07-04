@@ -1,0 +1,719 @@
+From 961e1d06fa7c35c20044050edcd29d32313cdef5 Mon Sep 17 00:00:00 2001
+From: Rick Chen <rick@andestech.com>
+Date: Wed, 24 Aug 2022 15:16:22 +0800
+Subject: [PATCH 17/34] riscv: Support Qilai from Invecas
+
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ arch/riscv/Kconfig                       |   3 +
+ arch/riscv/cpu/andes45/cpu.c             |  11 +-
+ arch/riscv/dts/binman_d.dtsi             |   6 +-
+ arch/riscv/dts/qilai-u-boot.dtsi         |  52 +++++++++
+ arch/riscv/dts/qilai_64.dts              |   3 +-
+ board/AndesTech/qilai/Kconfig            |  38 ++++++
+ board/AndesTech/qilai/Makefile           |   3 +-
+ board/AndesTech/qilai/qilai-invecas.c    | 116 +++++++++++++++++++
+ board/AndesTech/qilai/qilai.c            |   4 +-
+ configs/qilai_ax45_spl_defconfig         |   4 +-
+ configs/qilai_invecas_fastboot_defconfig |  47 ++++++++
+ configs/qilai_invecas_spl_defconfig      |  46 ++++++++
+ configs/qilai_rv64_fastboot_defconfig    |  47 ++++++++
+ include/configs/andes45-qilai-invecas.h  | 140 +++++++++++++++++++++++
+ include/configs/andes45-qilai.h          |   5 +-
+ 15 files changed, 508 insertions(+), 17 deletions(-)
+ create mode 100644 arch/riscv/dts/qilai-u-boot.dtsi
+ create mode 100644 board/AndesTech/qilai/qilai-invecas.c
+ create mode 100644 configs/qilai_invecas_fastboot_defconfig
+ create mode 100644 configs/qilai_invecas_spl_defconfig
+ create mode 100644 configs/qilai_rv64_fastboot_defconfig
+ create mode 100644 include/configs/andes45-qilai-invecas.h
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 30b08aa263..8c3fb69bd0 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -11,6 +11,9 @@ choice
+ config TARGET_ANDES45_QILAI
+ 	bool "Support andes45-qilai"
+ 
++config TARGET_ANDES45_QILAI_INVECAS
++	bool "Support andes45-qilai-invecas"
++
+ config TARGET_ANDES25_AE350
+ 	bool "Support andes25-ae350"
+ 
+diff --git a/arch/riscv/cpu/andes45/cpu.c b/arch/riscv/cpu/andes45/cpu.c
+index 2b8de44b17..95a96816f0 100644
+--- a/arch/riscv/cpu/andes45/cpu.c
++++ b/arch/riscv/cpu/andes45/cpu.c
+@@ -108,10 +108,13 @@ void harts_early_init(void)
+         unsigned long long mdcm_cfg_val = csr_read(CSR_MICM_CFG);
+         unsigned long long micm_cfg_val = csr_read(CSR_MDCM_CFG);
+ 
+-		mcache_ctl_val |= (V5_MCACHE_CTL_DC_COHEN_EN | V5_MCACHE_CTL_IC_EN | \
+-							V5_MCACHE_CTL_DC_EN | V5_MCACHE_CTL_CCTL_SUEN | \
+-							V5_MCACHE_CTL_L1I_PREFETCH_EN | V5_MCACHE_CTL_L1D_PREFETCH_EN | \
+-							V5_MCACHE_CTL_DC_WAROUND_1_EN | V5_MCACHE_CTL_L2C_WAROUND_1_EN);
++		if(csr_read(CSR_MHARTID) == 4)
++			while(1);
++
++		mcache_ctl_val |= (V5_MCACHE_CTL_DC_COHEN_EN | V5_MCACHE_CTL_CCTL_SUEN | \
++			V5_MCACHE_CTL_L1I_PREFETCH_EN | V5_MCACHE_CTL_L1D_PREFETCH_EN | \
++			V5_MCACHE_CTL_DC_WAROUND_1_EN | V5_MCACHE_CTL_L2C_WAROUND_1_EN);
++
+ 
+ 		if ((mmsc_cfg_val & V5_MMSC_CFG_TLB_ECC_1) || (mmsc_cfg_val & V5_MMSC_CFG_TLB_ECC_2))
+ 			mcache_ctl_val |= V5_MCACHE_CTL_TLB_ECCEN_2;
+diff --git a/arch/riscv/dts/binman_d.dtsi b/arch/riscv/dts/binman_d.dtsi
+index 35e0220919..185660ca58 100644
+--- a/arch/riscv/dts/binman_d.dtsi
++++ b/arch/riscv/dts/binman_d.dtsi
+@@ -27,7 +27,7 @@
+ 					os = "Linux";
+ 					arch = "riscv";
+ 					compression = "none";
+-					load = <CONFIG_SYS_TEXT_BASE>;
++					load = /bits/64 <CONFIG_SYS_TEXT_BASE>;
+ 
+ 					linux_blob: blob-ext {
+ 						filename = "Image";
+@@ -40,8 +40,8 @@
+ 					os = "opensbi";
+ 					arch = "riscv";
+ 					compression = "none";
+-					load = <CONFIG_SPL_OPENSBI_LOAD_ADDR>;
+-					entry = <CONFIG_SPL_OPENSBI_LOAD_ADDR>;
++					load = /bits/64 <CONFIG_SPL_OPENSBI_LOAD_ADDR>;
++					entry = /bits/64 <CONFIG_SPL_OPENSBI_LOAD_ADDR>;
+ 
+ 					opensbi_blob: opensbi {
+ 						filename = "fw_dynamic.bin";
+diff --git a/arch/riscv/dts/qilai-u-boot.dtsi b/arch/riscv/dts/qilai-u-boot.dtsi
+new file mode 100644
+index 0000000000..ef3b61a5d1
+--- /dev/null
++++ b/arch/riscv/dts/qilai-u-boot.dtsi
+@@ -0,0 +1,52 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/ {
++	cpus {
++		u-boot,dm-spl;
++		CPU0: cpu@0 {
++			u-boot,dm-spl;
++			CPU0_intc: interrupt-controller {
++				u-boot,dm-spl;
++			};
++		};
++		CPU1: cpu@1 {
++			u-boot,dm-spl;
++			CPU1_intc: interrupt-controller {
++				u-boot,dm-spl;
++			};
++		};
++		CPU2: cpu@2 {
++			u-boot,dm-spl;
++			CPU2_intc: interrupt-controller {
++				u-boot,dm-spl;
++			};
++		};
++		CPU3: cpu@3 {
++			u-boot,dm-spl;
++			CPU3_intc: interrupt-controller {
++				u-boot,dm-spl;
++			};
++		};
++	};
++
++	memory@0 {
++		u-boot,dm-spl;
++	};
++
++	soc {
++		u-boot,dm-spl;
++
++		plic1: interrupt-controller@400000 {
++			u-boot,dm-spl;
++		};
++
++		plmt0@100000 {
++			u-boot,dm-spl;
++		};
++	};
++
++	serial0: serial@30300000 {
++		u-boot,dm-spl;
++	};
++
++};
+diff --git a/arch/riscv/dts/qilai_64.dts b/arch/riscv/dts/qilai_64.dts
+index 223cfd1cf1..2d86025a6d 100644
+--- a/arch/riscv/dts/qilai_64.dts
++++ b/arch/riscv/dts/qilai_64.dts
+@@ -2,7 +2,8 @@
+ 
+ /dts-v1/;
+ 
+-#include "binman.dtsi"
++#include CONFIG_SPL_LOAD_FIT_CONFIG
++#include "qilai-u-boot.dtsi"
+ 
+ / {
+ 	#address-cells = <0x2>;
+diff --git a/board/AndesTech/qilai/Kconfig b/board/AndesTech/qilai/Kconfig
+index 5233e815c2..ed63394704 100644
+--- a/board/AndesTech/qilai/Kconfig
++++ b/board/AndesTech/qilai/Kconfig
+@@ -35,3 +35,41 @@ config BOARD_SPECIFIC_OPTIONS # dummy
+ 	imply OF_HAS_PRIOR_STAGE
+ 
+ endif
++
++if TARGET_ANDES45_QILAI_INVECAS
++
++config SYS_CPU
++	default "andes45"
++
++config SYS_BOARD
++	default "qilai"
++
++config SYS_VENDOR
++	default "AndesTech"
++
++config SYS_CONFIG_NAME
++	default "andes45-qilai-invecas"
++
++config ENV_SIZE
++	default 0x2000 if ENV_IS_IN_SPI_FLASH
++
++config ENV_OFFSET
++	default 0x140000 if ENV_IS_IN_SPI_FLASH
++
++config SPL_TEXT_BASE
++	default 0x400800000
++
++config SPL_OPENSBI_LOAD_ADDR
++	default 0x400000000
++
++config BOARD_SPECIFIC_OPTIONS # dummy
++	def_bool y
++	select RISCV_NDS
++	select SUPPORT_SPL
++	select BINMAN if SPL
++	imply SMP
++	imply SPL_RAM_SUPPORT
++	imply SPL_RAM_DEVICE
++	imply OF_HAS_PRIOR_STAGE
++
++endif
+diff --git a/board/AndesTech/qilai/Makefile b/board/AndesTech/qilai/Makefile
+index a358c77a92..5586862c6f 100644
+--- a/board/AndesTech/qilai/Makefile
++++ b/board/AndesTech/qilai/Makefile
+@@ -3,4 +3,5 @@
+ # Copyright (C) 2022 Andes Technology Corporation.
+ # Rick Chen, Andes Technology Corporation <rick@andestech.com>
+ 
+-obj-y	:= qilai.o
++obj-$(CONFIG_TARGET_ANDES45_QILAI)	:= qilai.o
++obj-$(CONFIG_TARGET_ANDES45_QILAI_INVECAS)	:= qilai-invecas.o
+diff --git a/board/AndesTech/qilai/qilai-invecas.c b/board/AndesTech/qilai/qilai-invecas.c
+new file mode 100644
+index 0000000000..3b278f4588
+--- /dev/null
++++ b/board/AndesTech/qilai/qilai-invecas.c
+@@ -0,0 +1,116 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (C) 2017 Andes Technology Corporation
++ * Rick Chen, Andes Technology Corporation <rick@andestech.com>
++ */
++
++#include <asm/csr.h>
++#include <asm/sbi.h>
++#include <common.h>
++#include <cpu_func.h>
++#include <flash.h>
++#include <image.h>
++#include <init.h>
++#include <net.h>
++#if defined(CONFIG_FTMAC100) && !defined(CONFIG_DM_ETH)
++#include <netdev.h>
++#endif
++#include <asm/global_data.h>
++#include <linux/io.h>
++#include <faraday/ftsmc020.h>
++#include <fdtdec.h>
++#include <dm.h>
++#include <spl.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++/*
++ * Miscellaneous platform dependent initializations
++ */
++
++int misc_init_r(void)
++{
++	long csr_marchid = 0;
++	u16 mask64 = 0x8000;
++#if CONFIG_IS_ENABLED(RISCV_SMODE)
++	sbi_get_marchid(&csr_marchid);
++#elif CONFIG_IS_ENABLED(RISCV_MMODE)
++	csr_marchid = csr_read(CSR_MARCHID);
++#endif
++
++	return (csr_marchid & mask64)? env_set("cpu", "ax45") : env_set("cpu", "a45");
++}
++
++int board_init(void)
++{
++	gd->bd->bi_boot_params = PHYS_SDRAM_0 + 0x400;
++
++	return 0;
++}
++
++int dram_init(void)
++{
++	return fdtdec_setup_mem_size_base();
++}
++
++int dram_init_banksize(void)
++{
++	return fdtdec_setup_memory_banksize();
++}
++
++#if defined(CONFIG_FTMAC100) && !defined(CONFIG_DM_ETH)
++int board_eth_init(struct bd_info *bd)
++{
++	return ftmac100_initialize(bd);
++}
++#endif
++
++ulong board_flash_get_legacy(ulong base, int banknum, flash_info_t *info)
++{
++	return 0;
++}
++
++#define ANDES_HW_DTB_ADDRESS	0x4F2000000
++void *board_fdt_blob_setup(int *err)
++{
++	*err = 0;
++	if (IS_ENABLED(CONFIG_OF_SEPARATE) || IS_ENABLED(CONFIG_OF_BOARD)) {
++		if (gd->arch.firmware_fdt_addr)
++			return (void *)(ulong)gd->arch.firmware_fdt_addr;
++	}
++
++	if (fdt_magic(CONFIG_SYS_FDT_BASE) == FDT_MAGIC)
++		return (void *)CONFIG_SYS_FDT_BASE;
++	return (void *)ANDES_HW_DTB_ADDRESS;
++}
++
++void spl_board_init(void)
++{
++	enable_caches();
++}
++
++#ifdef CONFIG_SPL
++void board_boot_order(u32 *spl_boot_list)
++{
++	u8 i;
++	u32 boot_devices[] = {
++#ifdef CONFIG_SPL_RAM_SUPPORT
++		BOOT_DEVICE_RAM,
++#endif
++#ifdef CONFIG_SPL_MMC
++		BOOT_DEVICE_MMC1,
++#endif
++	};
++
++	for (i = 0; i < ARRAY_SIZE(boot_devices); i++)
++		spl_boot_list[i] = boot_devices[i];
++}
++#endif
++
++#ifdef CONFIG_SPL_LOAD_FIT
++int board_fit_config_name_match(const char *name)
++{
++	/* boot using first FIT config */
++	return 0;
++}
++#endif
+diff --git a/board/AndesTech/qilai/qilai.c b/board/AndesTech/qilai/qilai.c
+index 37fbb4cde2..3b278f4588 100644
+--- a/board/AndesTech/qilai/qilai.c
++++ b/board/AndesTech/qilai/qilai.c
+@@ -70,7 +70,7 @@ ulong board_flash_get_legacy(ulong base, int banknum, flash_info_t *info)
+ 	return 0;
+ }
+ 
+-#define ANDES_HW_DTB_ADDRESS	0xF2000000
++#define ANDES_HW_DTB_ADDRESS	0x4F2000000
+ void *board_fdt_blob_setup(int *err)
+ {
+ 	*err = 0;
+@@ -84,7 +84,7 @@ void *board_fdt_blob_setup(int *err)
+ 	return (void *)ANDES_HW_DTB_ADDRESS;
+ }
+ 
+-void spl_board_init()
++void spl_board_init(void)
+ {
+ 	enable_caches();
+ }
+diff --git a/configs/qilai_ax45_spl_defconfig b/configs/qilai_ax45_spl_defconfig
+index e3667943e3..b2592dd54c 100644
+--- a/configs/qilai_ax45_spl_defconfig
++++ b/configs/qilai_ax45_spl_defconfig
+@@ -10,10 +10,11 @@ CONFIG_TARGET_ANDES45_QILAI=y
+ CONFIG_ARCH_RV64I=y
+ CONFIG_RISCV_SMODE=y
+ CONFIG_DISTRO_DEFAULTS=y
+-CONFIG_SYS_LOAD_ADDR=0x100000
++CONFIG_SYS_LOAD_ADDR=0x400100000
+ CONFIG_FIT=y
+ CONFIG_SPL_LOAD_FIT_CONFIG="binman.dtsi"
+ CONFIG_SPL_LOAD_FIT_ADDRESS=0x400200000
++CONFIG_SPL_OPENSBI_LOAD_ADDR=0x400000000
+ CONFIG_BOOTDELAY=3
+ CONFIG_MISC_INIT_R=y
+ CONFIG_SPL_CACHE=y
+@@ -24,7 +25,6 @@ CONFIG_CMD_SF_TEST=y
+ # CONFIG_CMD_SETEXPR is not set
+ CONFIG_BOOTP_PREFER_SERVERIP=y
+ CONFIG_CMD_CACHE=y
+-CONFIG_OF_BOARD=y
+ CONFIG_ENV_OVERWRITE=y
+ CONFIG_ENV_IS_IN_SPI_FLASH=y
+ CONFIG_BOOTP_SEND_HOSTNAME=y
+diff --git a/configs/qilai_invecas_fastboot_defconfig b/configs/qilai_invecas_fastboot_defconfig
+new file mode 100644
+index 0000000000..833e0e6e42
+--- /dev/null
++++ b/configs/qilai_invecas_fastboot_defconfig
+@@ -0,0 +1,47 @@
++CONFIG_RISCV=y
++CONFIG_SYS_TEXT_BASE=0x401200000
++CONFIG_SYS_MALLOC_LEN=0x800000
++CONFIG_NR_DRAM_BANKS=2
++CONFIG_ENV_SECT_SIZE=0x1000
++CONFIG_DEFAULT_DEVICE_TREE="qilai_64"
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x1800000
++CONFIG_SPL=y
++CONFIG_TARGET_ANDES45_QILAI_INVECAS=y
++CONFIG_ARCH_RV64I=y
++CONFIG_RISCV_SMODE=y
++CONFIG_SPL_LOAD_FIT_DYNAMIC=y
++CONFIG_SPL_LOAD_FIT_CONFIG="binman_d.dtsi"
++CONFIG_DISTRO_DEFAULTS=y
++CONFIG_SYS_LOAD_ADDR=0x400100000
++CONFIG_FIT=y
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x406000000
++CONFIG_BOOTDELAY=3
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_BOARD_INIT=y
++CONFIG_SPL_CACHE=y
++CONFIG_SYS_PROMPT="RISC-V # "
++CONFIG_CMD_IMLS=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_SF_TEST=y
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_BOOTP_PREFER_SERVERIP=y
++CONFIG_CMD_CACHE=y
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_SPI_FLASH=y
++CONFIG_BOOTP_SEND_HOSTNAME=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
++CONFIG_MMC=y
++CONFIG_FTSDC010=y
++CONFIG_FTSDC010_SDIO=y
++# CONFIG_MTD_NOR_FLASH is not set
++CONFIG_FLASH_CFI_DRIVER=y
++CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
++CONFIG_SYS_FLASH_CFI=y
++CONFIG_SPI_FLASH_MACRONIX=y
++CONFIG_FTMAC100=y
++CONFIG_BAUDRATE=38400
++CONFIG_SYS_NS16550=y
++CONFIG_SPI=y
++CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/qilai_invecas_spl_defconfig b/configs/qilai_invecas_spl_defconfig
+new file mode 100644
+index 0000000000..f61f3c17e1
+--- /dev/null
++++ b/configs/qilai_invecas_spl_defconfig
+@@ -0,0 +1,46 @@
++CONFIG_RISCV=y
++CONFIG_SYS_TEXT_BASE=0x401200000
++CONFIG_SYS_MALLOC_LEN=0x800000
++CONFIG_NR_DRAM_BANKS=2
++CONFIG_ENV_SECT_SIZE=0x1000
++CONFIG_DEFAULT_DEVICE_TREE="qilai_64"
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
++CONFIG_SPL=y
++CONFIG_TARGET_ANDES45_QILAI_INVECAS=y
++CONFIG_ARCH_RV64I=y
++CONFIG_RISCV_SMODE=y
++CONFIG_DISTRO_DEFAULTS=y
++CONFIG_SYS_LOAD_ADDR=0x400100000
++CONFIG_FIT=y
++CONFIG_SPL_LOAD_FIT_CONFIG="binman.dtsi"
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x400200000
++CONFIG_SPL_OPENSBI_LOAD_ADDR=0x400000000
++CONFIG_BOOTDELAY=3
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_CACHE=y
++CONFIG_SYS_PROMPT="RISC-V # "
++CONFIG_CMD_IMLS=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_SF_TEST=y
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_BOOTP_PREFER_SERVERIP=y
++CONFIG_CMD_CACHE=y
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_SPI_FLASH=y
++CONFIG_BOOTP_SEND_HOSTNAME=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
++CONFIG_MMC=y
++CONFIG_FTSDC010=y
++CONFIG_FTSDC010_SDIO=y
++# CONFIG_MTD_NOR_FLASH is not set
++CONFIG_FLASH_CFI_DRIVER=y
++CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
++CONFIG_SYS_FLASH_CFI=y
++CONFIG_SPI_FLASH_MACRONIX=y
++CONFIG_FTMAC100=y
++CONFIG_BAUDRATE=38400
++CONFIG_SYS_NS16550=y
++CONFIG_SPI=y
++CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/qilai_rv64_fastboot_defconfig b/configs/qilai_rv64_fastboot_defconfig
+new file mode 100644
+index 0000000000..f023b69298
+--- /dev/null
++++ b/configs/qilai_rv64_fastboot_defconfig
+@@ -0,0 +1,47 @@
++CONFIG_RISCV=y
++CONFIG_SYS_TEXT_BASE=0x401200000
++CONFIG_SYS_MALLOC_LEN=0x800000
++CONFIG_NR_DRAM_BANKS=2
++CONFIG_ENV_SECT_SIZE=0x1000
++CONFIG_DEFAULT_DEVICE_TREE="qilai_64"
++CONFIG_SPL_SYS_MALLOC_F_LEN=0x1800000
++CONFIG_SPL=y
++CONFIG_TARGET_ANDES45_QILAI=y
++CONFIG_ARCH_RV64I=y
++CONFIG_RISCV_SMODE=y
++CONFIG_SPL_LOAD_FIT_DYNAMIC=y
++CONFIG_SPL_LOAD_FIT_CONFIG="binman_d.dtsi"
++CONFIG_DISTRO_DEFAULTS=y
++CONFIG_SYS_LOAD_ADDR=0x400100000
++CONFIG_FIT=y
++CONFIG_SPL_LOAD_FIT_ADDRESS=0x406000000
++CONFIG_BOOTDELAY=3
++CONFIG_MISC_INIT_R=y
++CONFIG_SPL_BOARD_INIT=y
++CONFIG_SPL_CACHE=y
++CONFIG_SYS_PROMPT="RISC-V # "
++CONFIG_CMD_IMLS=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_SF_TEST=y
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_BOOTP_PREFER_SERVERIP=y
++CONFIG_CMD_CACHE=y
++CONFIG_ENV_OVERWRITE=y
++CONFIG_ENV_IS_IN_SPI_FLASH=y
++CONFIG_BOOTP_SEND_HOSTNAME=y
++CONFIG_NET_RANDOM_ETHADDR=y
++CONFIG_V5L2_CACHE=y
++CONFIG_MMC=y
++CONFIG_FTSDC010=y
++CONFIG_FTSDC010_SDIO=y
++# CONFIG_MTD_NOR_FLASH is not set
++CONFIG_FLASH_CFI_DRIVER=y
++CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
++CONFIG_SYS_FLASH_CFI=y
++CONFIG_SPI_FLASH_MACRONIX=y
++CONFIG_FTMAC100=y
++CONFIG_BAUDRATE=38400
++CONFIG_SYS_NS16550=y
++CONFIG_SPI=y
++CONFIG_ATCSPI200_SPI=y
++# CONFIG_BINMAN_FDT is not set
+diff --git a/include/configs/andes45-qilai-invecas.h b/include/configs/andes45-qilai-invecas.h
+new file mode 100644
+index 0000000000..536255b51b
+--- /dev/null
++++ b/include/configs/andes45-qilai-invecas.h
+@@ -0,0 +1,140 @@
++/* SPDX-License-Identifier: GPL-2.0+ */
++/*
++ * Copyright (C) 2017 Andes Technology Corporation
++ * Rick Chen, Andes Technology Corporation <rick@andestech.com>
++ */
++
++#ifndef __CONFIG_H
++#define __CONFIG_H
++
++#include <linux/sizes.h>
++
++#ifdef CONFIG_SPL
++#define CONFIG_SPL_MAX_SIZE		0x00100000
++#define CONFIG_SPL_BSS_START_ADDR	0x404000000
++#define CONFIG_SPL_BSS_MAX_SIZE		0x00100000
++
++#ifdef CONFIG_SPL_MMC
++#ifdef CONFIG_SPL_LOAD_FIT_NORMAL
++#define CONFIG_SPL_FS_LOAD_PAYLOAD_NAME		"u-boot.itb"
++#else
++#define CONFIG_SPL_FS_LOAD_PAYLOAD_NAME		"linux.itb"
++#endif
++#endif
++#endif
++
++#define RISCV_MMODE_TIMERBASE           0xe6000000
++
++#define RISCV_MMODE_TIMER_FREQ          100000000
++#define RISCV_SMODE_TIMER_FREQ          100000000
++
++/*
++ * CPU and Board Configuration Options
++ */
++
++/*
++ * Miscellaneous configurable options
++ */
++#define CONFIG_SYS_CBSIZE	1024	/* Console I/O Buffer Size */
++
++/*
++ * Print Buffer Size
++ */
++#define CONFIG_SYS_PBSIZE	\
++	(CONFIG_SYS_CBSIZE + sizeof(CONFIG_SYS_PROMPT) + 16)
++
++/*
++ * max number of command args
++ */
++#define CONFIG_SYS_MAXARGS	16
++
++/*
++ * Boot Argument Buffer Size
++ */
++#define CONFIG_SYS_BARGSIZE	CONFIG_SYS_CBSIZE
++
++#define CONFIG_SYS_NONCACHED_MEMORY	SZ_1M
++
++/* DT blob (fdt) address */
++#define CONFIG_SYS_FDT_BASE		0x4800f0000
++
++/*
++ * Physical Memory Map
++ */
++#define PHYS_SDRAM_0	0x400000000		/* SDRAM Bank #1 */
++#define PHYS_SDRAM_1	\
++	(PHYS_SDRAM_0 + PHYS_SDRAM_0_SIZE)	/* SDRAM Bank #2 */
++#define PHYS_SDRAM_0_SIZE	0x20000000	/* 512 MB */
++#define PHYS_SDRAM_1_SIZE	0x20000000	/* 512 MB */
++#define CONFIG_SYS_SDRAM_BASE	PHYS_SDRAM_0
++
++/*
++ * Serial console configuration
++ */
++#define CONFIG_SYS_NS16550_SERIAL
++#ifndef CONFIG_DM_SERIAL
++#define CONFIG_SYS_NS16550_REG_SIZE	-4
++#endif
++#define CONFIG_SYS_NS16550_CLK		50000000
++
++/* Init Stack Pointer */
++#define CONFIG_SYS_INIT_SP_ADDR		(CONFIG_SYS_SDRAM_BASE + 0x4000000 - \
++					GENERATED_GBL_DATA_SIZE)
++
++/* use CFI framework */
++
++#define CONFIG_SYS_FLASH_CFI_WIDTH	FLASH_CFI_16BIT
++#define CONFIG_SYS_CFI_FLASH_STATUS_POLL
++
++/* support JEDEC */
++#define PHYS_FLASH_1			0x88000000	/* BANK 0 */
++#define CONFIG_SYS_FLASH_BASE		PHYS_FLASH_1
++#define CONFIG_SYS_FLASH_BANKS_LIST	{ PHYS_FLASH_1, }
++#define CONFIG_SYS_MONITOR_BASE		PHYS_FLASH_1
++
++#define CONFIG_SYS_FLASH_ERASE_TOUT	120000	/* TO for Flash Erase (ms) */
++#define CONFIG_SYS_FLASH_WRITE_TOUT	500	/* TO for Flash Write (ms) */
++
++/* max number of memory banks */
++/*
++ * There are 4 banks supported for this Controller,
++ * but we have only 1 bank connected to flash on board
++*/
++#define CONFIG_SYS_FLASH_BANKS_SIZES {0x4000000}
++
++/* max number of sectors on one chip */
++#define CONFIG_FLASH_SECTOR_SIZE	(0x10000*2)
++#define CONFIG_SYS_MAX_FLASH_SECT	512
++
++/* environments */
++
++/* SPI FLASH */
++
++/*
++ * For booting Linux, the board info and command line data
++ * have to be in the first 16 MB of memory, since this is
++ * the maximum mapped by the Linux kernel during initialization.
++ */
++
++/* Initial Memory map for Linux*/
++#define CONFIG_SYS_BOOTMAPSZ	(64 << 20)
++/* Increase max gunzip size */
++#define CONFIG_SYS_BOOTM_LEN	(64 << 20)
++
++/* When we use RAM as ENV */
++
++/* Enable distro boot */
++#define BOOT_TARGET_DEVICES(func) \
++	func(MMC, mmc, 0) \
++	func(DHCP, dhcp, na)
++#include <config_distro_bootcmd.h>
++
++#define CONFIG_EXTRA_ENV_SETTINGS	\
++				"kernel_addr_r=0x400600000\0" \
++				"pxefile_addr_r=0x401f00000\0" \
++				"scriptaddr=0x401f00000\0" \
++				"fdt_addr_r=0x404600000\0" \
++				"ramdisk_addr_r=0x404800000\0" \
++				BOOTENV
++
++#endif /* __CONFIG_H */
+diff --git a/include/configs/andes45-qilai.h b/include/configs/andes45-qilai.h
+index b94dc0c145..8e58f32975 100644
+--- a/include/configs/andes45-qilai.h
++++ b/include/configs/andes45-qilai.h
+@@ -14,9 +14,6 @@
+ #define CONFIG_SPL_BSS_START_ADDR	0x404000000
+ #define CONFIG_SPL_BSS_MAX_SIZE		0x00100000
+ 
+-#define CONFIG_SYS_SPL_MALLOC_START	0x8000000
+-#define CONFIG_SYS_SPL_MALLOC_SIZE	0x2000000
+-
+ #ifdef CONFIG_SPL_MMC
+ #ifdef CONFIG_SPL_LOAD_FIT_NORMAL
+ #define CONFIG_SPL_FS_LOAD_PAYLOAD_NAME		"u-boot.itb"
+@@ -27,8 +24,8 @@
+ #endif
+ 
+ #define RISCV_MMODE_TIMERBASE           0xe6000000
+-#define RISCV_MMODE_TIMER_FREQ          60000000
+ 
++#define RISCV_MMODE_TIMER_FREQ          60000000
+ #define RISCV_SMODE_TIMER_FREQ          60000000
+ 
+ /*
+-- 
+2.34.1
+

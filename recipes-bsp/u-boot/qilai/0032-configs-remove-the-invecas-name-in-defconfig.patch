@@ -1,0 +1,194 @@
+From 9217e556f3c3ed0ea054333e10cbc98179b1f481 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Tue, 7 May 2024 11:37:38 +0800
+Subject: [PATCH 32/34] configs: remove the invecas name in defconfig
+
+remove unused defconfig
+qilai_invecas_spl_defconfig rename to qilai_spl_defconfig
+qilai_invecas_fastboot_defconfig rename to qilai_fastboot_defconfig
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ configs/qilai_ax45_spl_defconfig              | 46 -----------------
+ configs/qilai_ax45_spl_xip_defconfig          | 49 -------------------
+ ...oot_defconfig => qilai_fastboot_defconfig} |  0
+ configs/qilai_rv64_fastboot_defconfig         | 47 ------------------
+ ...ecas_spl_defconfig => qilai_spl_defconfig} |  0
+ 5 files changed, 142 deletions(-)
+ delete mode 100644 configs/qilai_ax45_spl_defconfig
+ delete mode 100644 configs/qilai_ax45_spl_xip_defconfig
+ rename configs/{qilai_invecas_fastboot_defconfig => qilai_fastboot_defconfig} (100%)
+ delete mode 100644 configs/qilai_rv64_fastboot_defconfig
+ rename configs/{qilai_invecas_spl_defconfig => qilai_spl_defconfig} (100%)
+
+diff --git a/configs/qilai_ax45_spl_defconfig b/configs/qilai_ax45_spl_defconfig
+deleted file mode 100644
+index 6278bbad39..0000000000
+--- a/configs/qilai_ax45_spl_defconfig
++++ /dev/null
+@@ -1,46 +0,0 @@
+-CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x401200000
+-CONFIG_SYS_MALLOC_LEN=0x800000
+-CONFIG_NR_DRAM_BANKS=2
+-CONFIG_ENV_SECT_SIZE=0x1000
+-CONFIG_DEFAULT_DEVICE_TREE="qilai_64"
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
+-CONFIG_SPL=y
+-CONFIG_TARGET_ANDES45_QILAI=y
+-CONFIG_ARCH_RV64I=y
+-CONFIG_RISCV_SMODE=y
+-CONFIG_DISTRO_DEFAULTS=y
+-CONFIG_SYS_LOAD_ADDR=0x400100000
+-CONFIG_FIT=y
+-CONFIG_SPL_LOAD_FIT_CONFIG="binman.dtsi"
+-CONFIG_SPL_LOAD_FIT_ADDRESS=0x400200000
+-CONFIG_SPL_OPENSBI_LOAD_ADDR=0x400000000
+-CONFIG_BOOTDELAY=3
+-CONFIG_MISC_INIT_R=y
+-CONFIG_SPL_CACHE=y
+-CONFIG_SYS_PROMPT="RISC-V # "
+-CONFIG_CMD_IMLS=y
+-CONFIG_CMD_MMC=y
+-CONFIG_CMD_SF_TEST=y
+-# CONFIG_CMD_SETEXPR is not set
+-CONFIG_BOOTP_PREFER_SERVERIP=y
+-CONFIG_CMD_CACHE=y
+-CONFIG_ENV_OVERWRITE=y
+-CONFIG_ENV_IS_IN_SPI_FLASH=y
+-CONFIG_BOOTP_SEND_HOSTNAME=y
+-CONFIG_NET_RANDOM_ETHADDR=y
+-CONFIG_V5L2_CACHE=y
+-CONFIG_MMC=y
+-CONFIG_FTSDC010=y
+-CONFIG_FTSDC010_SDIO=y
+-# CONFIG_MTD_NOR_FLASH is not set
+-CONFIG_FLASH_CFI_DRIVER=y
+-CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
+-CONFIG_SYS_FLASH_CFI=y
+-CONFIG_SPI_FLASH_MACRONIX=y
+-CONFIG_BAUDRATE=38400
+-CONFIG_SYS_NS16550=y
+-CONFIG_SPI=y
+-CONFIG_ATCSPI200_SPI=y
+-# CONFIG_BINMAN_FDT is not set
+-CONFIG_EFI_LOADER=n
+diff --git a/configs/qilai_ax45_spl_xip_defconfig b/configs/qilai_ax45_spl_xip_defconfig
+deleted file mode 100644
+index e4e6515643..0000000000
+--- a/configs/qilai_ax45_spl_xip_defconfig
++++ /dev/null
+@@ -1,49 +0,0 @@
+-CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x401200000
+-CONFIG_SYS_MALLOC_LEN=0x800000
+-CONFIG_NR_DRAM_BANKS=2
+-CONFIG_ENV_SECT_SIZE=0x1000
+-CONFIG_DEFAULT_DEVICE_TREE="qilai_64"
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x100000
+-CONFIG_SPL_TEXT_BASE=0x8000000
+-CONFIG_SPL=y
+-CONFIG_TARGET_ANDES45_QILAI=y
+-CONFIG_ARCH_RV64I=y
+-CONFIG_RISCV_SMODE=y
+-CONFIG_DISTRO_DEFAULTS=y
+-CONFIG_SYS_LOAD_ADDR=0x400100000
+-CONFIG_FIT=y
+-CONFIG_SPL_LOAD_FIT_CONFIG="binman.dtsi"
+-CONFIG_XIP=y
+-CONFIG_SPL_LOAD_FIT_ADDRESS=0x8010000
+-CONFIG_SPL_OPENSBI_LOAD_ADDR=0x400000000
+-CONFIG_BOOTDELAY=3
+-CONFIG_MISC_INIT_R=y
+-CONFIG_SPL_CACHE=y
+-CONFIG_SPL_CMODEL_LARGE=y
+-CONFIG_SYS_PROMPT="RISC-V # "
+-CONFIG_CMD_IMLS=y
+-CONFIG_CMD_MMC=y
+-CONFIG_CMD_SF_TEST=y
+-# CONFIG_CMD_SETEXPR is not set
+-CONFIG_BOOTP_PREFER_SERVERIP=y
+-CONFIG_CMD_CACHE=y
+-CONFIG_ENV_OVERWRITE=y
+-CONFIG_ENV_IS_IN_SPI_FLASH=y
+-CONFIG_BOOTP_SEND_HOSTNAME=y
+-CONFIG_NET_RANDOM_ETHADDR=y
+-CONFIG_V5L2_CACHE=y
+-CONFIG_MMC=y
+-CONFIG_FTSDC010=y
+-CONFIG_FTSDC010_SDIO=y
+-# CONFIG_MTD_NOR_FLASH is not set
+-CONFIG_FLASH_CFI_DRIVER=y
+-CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
+-CONFIG_SYS_FLASH_CFI=y
+-CONFIG_SPI_FLASH_MACRONIX=y
+-CONFIG_BAUDRATE=38400
+-CONFIG_SYS_NS16550=y
+-CONFIG_SPI=y
+-CONFIG_ATCSPI200_SPI=y
+-# CONFIG_BINMAN_FDT is not set
+-CONFIG_EFI_LOADER=n
+diff --git a/configs/qilai_invecas_fastboot_defconfig b/configs/qilai_fastboot_defconfig
+similarity index 100%
+rename from configs/qilai_invecas_fastboot_defconfig
+rename to configs/qilai_fastboot_defconfig
+diff --git a/configs/qilai_rv64_fastboot_defconfig b/configs/qilai_rv64_fastboot_defconfig
+deleted file mode 100644
+index c6c5117a4a..0000000000
+--- a/configs/qilai_rv64_fastboot_defconfig
++++ /dev/null
+@@ -1,47 +0,0 @@
+-CONFIG_RISCV=y
+-CONFIG_SYS_TEXT_BASE=0x401200000
+-CONFIG_SYS_MALLOC_LEN=0x800000
+-CONFIG_NR_DRAM_BANKS=2
+-CONFIG_ENV_SECT_SIZE=0x1000
+-CONFIG_DEFAULT_DEVICE_TREE="qilai_64"
+-CONFIG_SPL_SYS_MALLOC_F_LEN=0x2800000
+-CONFIG_SPL=y
+-CONFIG_TARGET_ANDES45_QILAI=y
+-CONFIG_ARCH_RV64I=y
+-CONFIG_RISCV_SMODE=y
+-CONFIG_SPL_LOAD_FIT_DYNAMIC=y
+-CONFIG_SPL_LOAD_FIT_CONFIG="binman_d.dtsi"
+-CONFIG_DISTRO_DEFAULTS=y
+-CONFIG_SYS_LOAD_ADDR=0x400100000
+-CONFIG_FIT=y
+-CONFIG_SPL_LOAD_FIT_ADDRESS=0x410000000
+-CONFIG_BOOTDELAY=3
+-CONFIG_MISC_INIT_R=y
+-CONFIG_SPL_BOARD_INIT=y
+-CONFIG_SPL_CACHE=y
+-CONFIG_SYS_PROMPT="RISC-V # "
+-CONFIG_CMD_IMLS=y
+-CONFIG_CMD_MMC=y
+-CONFIG_CMD_SF_TEST=y
+-# CONFIG_CMD_SETEXPR is not set
+-CONFIG_BOOTP_PREFER_SERVERIP=y
+-CONFIG_CMD_CACHE=y
+-CONFIG_ENV_OVERWRITE=y
+-CONFIG_ENV_IS_IN_SPI_FLASH=y
+-CONFIG_BOOTP_SEND_HOSTNAME=y
+-CONFIG_NET_RANDOM_ETHADDR=y
+-CONFIG_V5L2_CACHE=y
+-CONFIG_MMC=y
+-CONFIG_FTSDC010=y
+-CONFIG_FTSDC010_SDIO=y
+-# CONFIG_MTD_NOR_FLASH is not set
+-CONFIG_FLASH_CFI_DRIVER=y
+-CONFIG_SYS_FLASH_USE_BUFFER_WRITE=y
+-CONFIG_SYS_FLASH_CFI=y
+-CONFIG_SPI_FLASH_MACRONIX=y
+-CONFIG_FTMAC100=y
+-CONFIG_BAUDRATE=38400
+-CONFIG_SYS_NS16550=y
+-CONFIG_SPI=y
+-CONFIG_ATCSPI200_SPI=y
+-# CONFIG_BINMAN_FDT is not set
+diff --git a/configs/qilai_invecas_spl_defconfig b/configs/qilai_spl_defconfig
+similarity index 100%
+rename from configs/qilai_invecas_spl_defconfig
+rename to configs/qilai_spl_defconfig
+-- 
+2.34.1
+

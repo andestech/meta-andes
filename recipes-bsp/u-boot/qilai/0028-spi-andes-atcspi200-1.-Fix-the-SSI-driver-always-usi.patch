@@ -1,0 +1,114 @@
+From 9a05196e8a86b45f3cb42a563473af1f3a712fff Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Mon, 11 Dec 2023 17:54:41 +0800
+Subject: [PATCH 28/34] spi: andes: atcspi200: 1. Fix the SSI driver always
+ using the wrong clock setting.
+
+1. Fix the bug that the SI driver always uses a wrong clock setting, which causes a failure when reading the Flash ID.
+2. This patch must be used with DTS version 4257fd0041 and later.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/spi/atcspi200_spi.c | 44 ++++++++++++++++++-------------------
+ 1 file changed, 21 insertions(+), 23 deletions(-)
+ mode change 100644 => 100755 drivers/spi/atcspi200_spi.c
+
+diff --git a/drivers/spi/atcspi200_spi.c b/drivers/spi/atcspi200_spi.c
+old mode 100644
+new mode 100755
+index de9c14837c..f8fb950b7b
+--- a/drivers/spi/atcspi200_spi.c
++++ b/drivers/spi/atcspi200_spi.c
+@@ -79,7 +79,8 @@ struct nds_spi_slave {
+ 	volatile struct atcspi200_spi_regs *regs;
+ 	int		to;
+ 	unsigned int	freq;
+-	ulong		clock;
++	ulong		clock_source_freq;
++	ulong		clock_limit;
+ 	unsigned int	mode;
+ 	u8		num_cs;
+ 	unsigned int	mtiming;
+@@ -94,25 +95,21 @@ struct nds_spi_slave {
+ 
+ static int __atcspi200_spi_set_speed(struct nds_spi_slave *ns)
+ {
++	ulong clock_applied;
+ 	u32 tm;
+ 	u8 div;
+-	tm = ns->regs->timing;
+-	tm &= ~SCLK_DIV_MASK;
+-
+-	if(ns->freq >= ns->clock)
+-		div =0xff;
+-	else{
+-		for (div = 0; div < 0xff; div++) {
+-			if (ns->freq >= ns->clock / (2 * (div + 1)))
+-				break;
+-		}
+-	}
+ 
+-	tm |= div;
+-	ns->regs->timing = tm;
++	tm = ns->regs->timing & ~SCLK_DIV_MASK;
+ 
+-	return 0;
++	if (ns->freq >= ns->clock_limit)
++		clock_applied = ns->clock_limit;
++	else
++		clock_applied = ns->freq;
++
++	div = (ns->clock_source_freq / (clock_applied * 2)) - 1;
++	ns->regs->timing = tm | div;
+ 
++	return 0;
+ }
+ 
+ static int __atcspi200_spi_claim_bus(struct nds_spi_slave *ns)
+@@ -168,7 +165,6 @@ static int __atcspi200_spi_start(struct nds_spi_slave *ns)
+ 
+ static int __atcspi200_spi_stop(struct nds_spi_slave *ns)
+ {
+-	ns->regs->timing = ns->mtiming;
+ 	while ((ns->regs->status & SPIBSY)&&(ns->to--))
+ 		if (!ns->to)
+ 			return -EINVAL;
+@@ -357,26 +353,28 @@ static int atcspi200_spi_get_clk(struct udevice *bus)
+ 	if (ret)
+ 		return -EINVAL;
+ 
+-	clk_rate = clk_get_rate(&clk);
+-	if (!clk_rate)
++	ns->clock_source_freq = clk_get_rate(&clk);
++	if (!ns->clock_source_freq) {
++		printf("Invalid clock source and failure to initialize the SPI driver.\n");
+ 		return -EINVAL;
+-
+-	ns->clock = clk_rate;
++	}
+ 	clk_free(&clk);
+ 
++	ns->clock_limit = dev_read_u32_default(bus, "spi-max-frequency", 4000000);
++
+ 	return 0;
+ }
+ 
+ static int atcspi200_spi_probe(struct udevice *bus)
+ {
++	int ret = 0;
+ 	struct nds_spi_slave *ns = dev_get_priv(bus);
+ 
+ 	ns->to = SPI_TIMEOUT;
+ 	ns->max_transfer_length = MAX_TRANSFER_LEN;
+-	ns->mtiming = ns->regs->timing;
+-	atcspi200_spi_get_clk(bus);
++	ret = atcspi200_spi_get_clk(bus);
+ 
+-	return 0;
++	return ret;
+ }
+ 
+ static int atcspi200_ofdata_to_platadata(struct udevice *bus)
+-- 
+2.34.1
+

@@ -1,0 +1,36 @@
+From 65d184bfff2d342475d51a9656c7533e214d05af Mon Sep 17 00:00:00 2001
+From: Mina Hui-Min Chou <minachou@andestech.com>
+Date: Thu, 3 Nov 2022 14:21:22 +0800
+Subject: [PATCH 18/34] riscv: Enable I/D cache (#47)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Bitmap: T:\project\Qilai\FPGA\from INVECAS\20221102
+目前是確認 Fastboot 可以開進 Shell；開機時間從 1319s 縮短到 23s。
+
+Co-authored-by: Hui Min Mina Chou <minachou@andestech.com>
+Reviewed-on: http://gitea.andestech.com:3000/RD-SW/u-boot.official/pulls/47
+Co-authored-by: Mina Hui-Min Chou <minachou@andestech.com>
+Co-committed-by: Mina Hui-Min Chou <minachou@andestech.com>
+---
+ arch/riscv/cpu/andes45/cpu.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/riscv/cpu/andes45/cpu.c b/arch/riscv/cpu/andes45/cpu.c
+index 95a96816f0..3bc77af012 100644
+--- a/arch/riscv/cpu/andes45/cpu.c
++++ b/arch/riscv/cpu/andes45/cpu.c
+@@ -111,7 +111,8 @@ void harts_early_init(void)
+ 		if(csr_read(CSR_MHARTID) == 4)
+ 			while(1);
+ 
+-		mcache_ctl_val |= (V5_MCACHE_CTL_DC_COHEN_EN | V5_MCACHE_CTL_CCTL_SUEN | \
++		mcache_ctl_val |= (V5_MCACHE_CTL_DC_COHEN_EN | V5_MCACHE_CTL_IC_EN | \
++			V5_MCACHE_CTL_DC_EN | V5_MCACHE_CTL_CCTL_SUEN | \
+ 			V5_MCACHE_CTL_L1I_PREFETCH_EN | V5_MCACHE_CTL_L1D_PREFETCH_EN | \
+ 			V5_MCACHE_CTL_DC_WAROUND_1_EN | V5_MCACHE_CTL_L2C_WAROUND_1_EN);
+ 
+-- 
+2.34.1
+
