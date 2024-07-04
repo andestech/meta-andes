@@ -1,0 +1,248 @@
+From 9cbc095a46f711c420cc821551480a977554f1e2 Mon Sep 17 00:00:00 2001
+From: Locus Wei-Han Chen <locus84@andestech.com>
+Date: Thu, 25 Apr 2024 15:29:14 +0800
+Subject: [PATCH 5/7] riscv: qilai: setup PMA region as device, non-bufferable
+ for PCIe
+
+Set the PCIe region on Qilai as device region noncached and
+nonbufferable. Normally the PCIe slave is mapped as memory region.
+The read/write operation on the memory region may use the burst
+read/write. It will cause the data to be incorrect and unexpected.
+
+fix RESERVED_ENTRY issue
+
+Signed-off-by: Locus Wei-Han Chen <locus84@andestech.com>
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ platform/generic/andes/pma.c         | 121 ++++++++++++++++++++++++++-
+ platform/generic/andes/qilai.c       |   7 +-
+ platform/generic/include/andes/pma.h |  10 ++-
+ 3 files changed, 131 insertions(+), 7 deletions(-)
+
+diff --git a/platform/generic/andes/pma.c b/platform/generic/andes/pma.c
+index d4f570f..e8649ce 100644
+--- a/platform/generic/andes/pma.c
++++ b/platform/generic/andes/pma.c
+@@ -19,6 +19,16 @@
+ #include <andes/andesv5.h>
+ #include <andes/pma.h>
+ 
++#define PCIE_DM0	0
++#define PCIE_DM1	1
++#define PCIE_DM2	2
++
++#ifdef CONFIG_PLATFORM_ANDES_QILAI
++#define RESERVED_ENTRY	3
++#else
++#define RESERVED_ENTRY	0
++#endif
++
+ static unsigned long pma_features_offset;
+ extern u64 rmem_base, rmem_size;
+ 
+@@ -156,7 +166,7 @@ static bool is_va_alias(unsigned long va)
+ 	 * Check if the va conflicts with the existing one in
+ 	 * pma_user_table[]
+ 	 */
+-	for (int i = 0; i < PMA_ENTRY_NR; i++) {
++	for (int i = RESERVED_ENTRY; i < PMA_ENTRY_NR; i++) {
+ 		if (get_pma_table(i) != va)
+ 			continue;
+ 		sbi_printf_highlight("ERROR %s(): va %#lx conflicts\n", __func__,
+@@ -179,7 +189,7 @@ static int allocate_pma_entry(unsigned long va, int *entry_id)
+ 	if(is_va_alias(va))
+ 		goto fail;
+ 
+-	for (int i = 0; i < PMA_ENTRY_NR; i++) {
++	for (int i = RESERVED_ENTRY; i < PMA_ENTRY_NR; i++) {
+ 		if (pmaxcfg_etyp(i) != PMACFG_ETYP_OFF)
+ 			continue;
+ 		set_pma_table(i, va);
+@@ -246,7 +256,7 @@ static bool has_pma_region_conflict(unsigned long start, unsigned long size, int
+ 
+ 	end = start + size - 1;
+ 
+-	for (int i = 0; i < PMA_ENTRY_NR; i++) {
++	for (int i = RESERVED_ENTRY; i < PMA_ENTRY_NR; i++) {
+ 		if (pmaxcfg_etyp(i) == PMACFG_ETYP_OFF)
+ 			continue;
+ 
+@@ -344,7 +354,7 @@ int mcall_free_pma(unsigned long va)
+ 	int pma_cfg;
+ 	char *pmaxcfg;
+ 
+-	for (int i = 0; i < PMA_ENTRY_NR; i++) {
++	for (int i = RESERVED_ENTRY; i < PMA_ENTRY_NR; i++) {
+ 		if (get_pma_table(i) != va)
+ 			continue;
+ 
+@@ -379,6 +389,54 @@ int mcall_free_pma(unsigned long va)
+ 	return 0;
+ }
+ 
++void write_pcie_pmacfg(int cfg_slot, int type)
++{
++	/* please don't change value of cfg */
++	int cfg = 0;
++	unsigned long pmacfg;
++	unsigned long pmacfg_val;
++	unsigned long clear_mask;
++	struct sbi_scratch *scratch = sbi_scratch_thishart_ptr();
++	struct andes_pma_data *pma_data =
++		sbi_scratch_offset_ptr(scratch, pma_features_offset);
++
++
++	//pma_used_table[cfg_slot] = 1;
++	pma_data->pma_user_table[cfg_slot] = 1;
++	pmacfg_val = csr_read(CSR_PMACFG0);
++	clear_mask =  ~(0xFF << (8 * (cfg_slot % 8)));
++	pmacfg_val &= clear_mask;
++
++	pmacfg = pmacfg_val | ((type | PMA_NAPOT) << (8 * (cfg_slot % 8)));
++	write_pmacfg(cfg, pmacfg);
++}
++
++void init_pma_for_pcie(void)
++{
++	unsigned long pmaaddr;
++
++	/* DM0 */
++	write_pcie_pmacfg(PCIE_DM0, PMA_DEVICE_NONBUFFER);
++
++	/* PMA region is: 0x2000000000 ~ 0x4000000000 */
++	pmaaddr = 0xbffffffff;
++	write_pmaaddr(PCIE_DM0, pmaaddr);
++
++	/* DM1 */
++	write_pcie_pmacfg(PCIE_DM1, PMA_DEVICE_NONBUFFER);
++
++	/* PMA region is: 0x1000000000 ~ 0x1800000000 */
++	pmaaddr = 0x4ffffffff;
++	write_pmaaddr(PCIE_DM1, pmaaddr);
++
++	/* DM2 */
++	write_pcie_pmacfg(PCIE_DM2, PMA_DEVICE_NONBUFFER);
++
++	/* PMA region is: 0x1800000000 ~ 0x2000000000 */
++	pmaaddr = 0x6ffffffff;
++	write_pmaaddr(PCIE_DM2, pmaaddr);
++}
++
+ int pma_init(void)
+ {
+ 	/*
+@@ -391,3 +449,58 @@ int pma_init(void)
+ 
+ 	return SBI_OK;
+ }
++
++inline void write_pmacfg(int i, unsigned long val)
++{
++#if __riscv_xlen == 64
++	if (i == 0)
++		csr_write(CSR_PMACFG0, val);
++	else if (i == 1)
++		csr_write(CSR_PMACFG2, val);
++#else
++	 if (i == 0)
++		 csr_write(CSR_PMACFG0, val);
++	 else if (i == 1)
++		 csr_write(CSR_PMACFG1, val);
++	 else if (i == 2)
++		 csr_write(CSR_PMACFG2, val);
++	 else if (i == 3)
++		 csr_write(CSR_PMACFG3, val);
++#endif
++}
++
++inline void write_pmaaddr(int i, unsigned long val)
++{
++	if (i == 0)
++		csr_write(CSR_PMAADDR0, val);
++	else if (i == 1)
++		csr_write(CSR_PMAADDR1, val);
++	else if (i == 2)
++		csr_write(CSR_PMAADDR2, val);
++	else if (i == 3)
++		csr_write(CSR_PMAADDR3, val);
++	else if (i == 4)
++		csr_write(CSR_PMAADDR4, val);
++	else if (i == 5)
++		csr_write(CSR_PMAADDR5, val);
++	else if (i == 6)
++		csr_write(CSR_PMAADDR6, val);
++	else if (i == 7)
++		csr_write(CSR_PMAADDR7, val);
++	else if (i == 8)
++		csr_write(CSR_PMAADDR8, val);
++	else if (i == 9)
++		csr_write(CSR_PMAADDR9, val);
++	else if (i == 10)
++		csr_write(CSR_PMAADDR10, val);
++	else if (i == 11)
++		csr_write(CSR_PMAADDR11, val);
++	else if (i == 12)
++		csr_write(CSR_PMAADDR12, val);
++	else if (i == 13)
++		csr_write(CSR_PMAADDR13, val);
++	else if (i == 14)
++		csr_write(CSR_PMAADDR14, val);
++	else if (i == 15)
++		csr_write(CSR_PMAADDR15, val);
++}
+diff --git a/platform/generic/andes/qilai.c b/platform/generic/andes/qilai.c
+index 9ea4eee..7d639ed 100644
+--- a/platform/generic/andes/qilai.c
++++ b/platform/generic/andes/qilai.c
+@@ -67,15 +67,18 @@ static int ae350_final_init(bool cold_boot, const struct fdt_match *match)
+ {
+ 	void *fdt;
+ 
+-	if (!cold_boot)
++	if (!cold_boot) {
++		init_pma_for_pcie();
+ 		return 0;
++	}
+ 
+-	pma_init();
+ 	ae350_hsm_device_init();
+ 	fdt = fdt_get_address();
+ 	fdt_fixups(fdt);
+ 	fdt_andes_remoteproc(fdt);
+ 	trigger_init();
++	pma_init();
++	init_pma_for_pcie();
+ 	fdt_cache_init();
+ 
+ 	return 0;
+diff --git a/platform/generic/include/andes/pma.h b/platform/generic/include/andes/pma.h
+index c799450..7ad3861 100644
+--- a/platform/generic/include/andes/pma.h
++++ b/platform/generic/include/andes/pma.h
+@@ -25,6 +25,12 @@
+ #define PMACFG_MTYP_MASK                (0xf << PMACFG_MTYP_SHIFT)
+ #define PMACFG_MTYP_NOCACHE_BUFFER      (0x3 << PMACFG_MTYP_SHIFT)
+ 
++#define PMA_DEVICE_NONBUFFER	(0x0 << 2)
++#define PMA_DEVICE_BUFFER		(0x1 << 2)
++#define PMA_NOCACHE_NONBUFFER	(0x2 << 2)
++#define PMA_NOCACHE_BUFFER		(0x3 << 2)
++#define PMA_NAPOT		0x3
++
+ #ifndef __ASSEMBLER__
+ 
+ #define max(a, b) (((a) > (b)) ? (a) : (b))
+@@ -76,7 +82,9 @@ int mcall_free_pma(unsigned long va);
+  * @return SBI_ENOMEM if scratch region is full
+  */
+ int pma_init(void);
+-
++void init_pma_for_pcie(void);
++void write_pmacfg(int i, unsigned long val);
++void write_pmaaddr(int i, unsigned long val);
+ #else
+ 
+ static inline bool mcall_probe_pma(void) {
+-- 
+2.34.1
+

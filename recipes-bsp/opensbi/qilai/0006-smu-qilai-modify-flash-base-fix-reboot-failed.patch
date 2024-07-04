@@ -1,0 +1,32 @@
+From 399aadbaadf81a0b6fefad7b6b75818dc428f378 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Wed, 8 May 2024 16:34:51 +0800
+Subject: [PATCH 6/7] smu: qilai: modify flash base (fix reboot failed)
+
+The Qilai flash base is different from AE350.
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ include/sbi_utils/sys/atcsmu.h | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/include/sbi_utils/sys/atcsmu.h b/include/sbi_utils/sys/atcsmu.h
+index d5be142..b457db0 100644
+--- a/include/sbi_utils/sys/atcsmu.h
++++ b/include/sbi_utils/sys/atcsmu.h
+@@ -96,7 +96,12 @@
+     (RESET_VEC_HI_OFFSET +          \
+     ((n) < 4 ? 0 : RESET_VEC_8CORE_OFFSET) + ((n) * 0x4))
+ #define PCS_MAX_NR                  8
++
++#ifdef CONFIG_PLATFORM_ANDES_QILAI
++#define FLASH_BASE                  0x8000000ULL
++#else
+ #define FLASH_BASE                  0x80000000ULL
++#endif
+ 
+ #ifndef __ASSEMBLER__
+ 
+-- 
+2.34.1
+

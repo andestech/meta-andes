@@ -1,0 +1,52 @@
+From 4bae0611adeed97bb2cbcea264cf2cf0012911de Mon Sep 17 00:00:00 2001
+From: Ben Zong-You Xie <ben717@andestech.com>
+Date: Tue, 26 Dec 2023 11:04:08 +0800
+Subject: [PATCH 3/7] platform: generic: andes: Fix an error for
+ print_detailed_cause() on imprecise exception (#85)
+
+To print error messages for imprecise exception, extract the field mdcause
+in the CSR mdcause instead of reading the whole register.
+
+Signed-off-by: Ben Zong-You Xie <ben717@andestech.com>
+Reviewed-on: https://gitea.andestech.com/RD-SW/opensbi/pulls/85
+Reviewed-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+Reviewed-by: Tim Shih-Ting OuYang <tim609@andestech.com>
+Reviewed-by: Peter Yu-Chien Lin <peterlin@andestech.com>
+Reviewed-by: Dylan Dai-Rong Jhong <dylan@andestech.com>
+Co-authored-by: Ben Zong-You Xie <ben717@andestech.com>
+Co-committed-by: Ben Zong-You Xie <ben717@andestech.com>
+---
+ platform/generic/andes/dcause.c          | 2 ++
+ platform/generic/include/andes/andesv5.h | 3 +++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/platform/generic/andes/dcause.c b/platform/generic/andes/dcause.c
+index db580c5..a97b9a0 100644
+--- a/platform/generic/andes/dcause.c
++++ b/platform/generic/andes/dcause.c
+@@ -129,6 +129,8 @@ void print_detailed_cause(long mcause, ulong mdcause)
+ 		}
+ 	} else {
+ 		mcause &= ~(1UL << (__riscv_xlen - 1));
++		mdcause &= CSR_MDCAUSE_MASK;
++		
+ 		switch (mcause) {
+ 		case CAUSE_IMPRECISE_ECC:
+ 			sbi_printf("The detailed trap cause: %s\n",
+diff --git a/platform/generic/include/andes/andesv5.h b/platform/generic/include/andes/andesv5.h
+index 707daa7..4d3a353 100644
+--- a/platform/generic/include/andes/andesv5.h
++++ b/platform/generic/include/andes/andesv5.h
+@@ -64,6 +64,9 @@
+ #define CSR_MSAVEDCAUSE1    0x7db
+ #define CSR_MSAVEDCAUSE2    0x7dc
+ 
++/* Trap related CSR mask */
++#define CSR_MDCAUSE_MASK	0x1f
++
+ /* Trap/Imprecise exception causes */
+ #define CAUSE_IMPRECISE_ECC		0x10
+ #define CAUSE_BUS_RW_TRANSACTION	0x11
+-- 
+2.34.1
+

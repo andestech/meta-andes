@@ -1,0 +1,820 @@
+From 1cf1e27431659c7bbaf264a90e1e29eccab4dd56 Mon Sep 17 00:00:00 2001
+From: Locus Wei-Han Chen <locus84@andestech.com>
+Date: Thu, 18 Apr 2024 14:05:28 +0800
+Subject: [PATCH 4/7] riscv: andes: Support Qilai
+
+1. Add relevant features to OpenSBI to support the required
+   functionality for Qilai.
+
+2. The hart1 enable bit adds 1 bit, indicating that
+   the sp(slave processor) sends IPI to mp(master processor).
+
+Signed-off-by: Locus Wei-Han Chen <locus84@andestech.com>
+---
+ include/sbi/sbi_ipi.h                      |   4 +
+ include/sbi_utils/ipi/qilai_plicsw.h       |  44 +++++++
+ lib/sbi/sbi_ipi.c                          |  28 +++-
+ lib/utils/fdt/fdt_helper.c                 |   2 +-
+ lib/utils/ipi/fdt_ipi_plicsw.c             |   2 +-
+ lib/utils/ipi/objects.mk                   |   2 +-
+ lib/utils/ipi/qilai_plicsw.c               | 143 ++++++++++++++++++++
+ platform/generic/Kconfig                   |   6 +
+ platform/generic/andes/Kconfig             |   5 +
+ platform/generic/andes/andes_sbi.c         |   8 ++
+ platform/generic/andes/objects.mk          |   3 +
+ platform/generic/andes/openamp.c           | 145 +++++++++++++++++++++
+ platform/generic/andes/pma.c               |  30 +++--
+ platform/generic/andes/qilai.c             |  96 ++++++++++++++
+ platform/generic/configs/defconfig         |   2 +-
+ platform/generic/include/andes/andes_sbi.h |   2 +
+ platform/generic/include/andes/dcause.h    |   4 +-
+ platform/generic/include/andes/openamp.h   |  18 +++
+ platform/generic/objects.mk                |   2 +-
+ 19 files changed, 526 insertions(+), 20 deletions(-)
+ create mode 100644 include/sbi_utils/ipi/qilai_plicsw.h
+ create mode 100644 lib/utils/ipi/qilai_plicsw.c
+ create mode 100644 platform/generic/andes/openamp.c
+ create mode 100644 platform/generic/andes/qilai.c
+ create mode 100755 platform/generic/include/andes/openamp.h
+
+diff --git a/include/sbi/sbi_ipi.h b/include/sbi/sbi_ipi.h
+index f6ac807..0cd60b5 100644
+--- a/include/sbi/sbi_ipi.h
++++ b/include/sbi/sbi_ipi.h
+@@ -18,6 +18,8 @@
+ 
+ /* clang-format on */
+ 
++extern u32 ipi_smode_event;
++
+ /** IPI hardware device */
+ struct sbi_ipi_device {
+ 	/** Name of the IPI device */
+@@ -85,4 +87,6 @@ int sbi_ipi_init(struct sbi_scratch *scratch, bool cold_boot);
+ 
+ void sbi_ipi_exit(struct sbi_scratch *scratch);
+ 
++int sbi_ipi_remote_event(u32 event, u32 remote_hartid);
++
+ #endif
+diff --git a/include/sbi_utils/ipi/qilai_plicsw.h b/include/sbi_utils/ipi/qilai_plicsw.h
+new file mode 100644
+index 0000000..94a7a56
+--- /dev/null
++++ b/include/sbi_utils/ipi/qilai_plicsw.h
+@@ -0,0 +1,44 @@
++/*
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * Copyright (c) 2022 Andes Technology Corporation
++ *
++ * Authors:
++ *   Zong Li <zong@andestech.com>
++ *   Nylon Chen <nylon7@andestech.com>
++ *   Leo Yu-Chi Liang <ycliang@andestech.com>
++ *   Yu Chien Peter Lin <peterlin@andestech.com>
++ */
++
++#ifndef _IPI_QILAI_PLICSW_H_
++#define _IPI_QILAI_PLICSW_H_
++
++#define PLICSW_PRIORITY_BASE    0x4
++
++#define PLICSW_PENDING_BASE     0x1000
++
++#define PLICSW_ENABLE_BASE      0x2000
++#define PLICSW_ENABLE_STRIDE    0x80
++
++#define PLICSW_CONTEXT_BASE     0x00200000
++#define PLICSW_CONTEXT_STRIDE   0x1000
++#define PLICSW_CONTEXT_CLAIM    0x4
++
++#define PLICSW_REGION_ALIGN     0x1000
++
++#define BITS_PER_REG            32
++#define BYTES_PER_REG           4
++
++struct plicsw_data {
++	unsigned long   addr;
++	unsigned long   size;
++	uint32_t        hart_count;
++};
++
++void plicsw_ipi_send(u32 target_hart);
++void plicsw_ipi_openamp_enable(u32 idx);
++void plicsw_ipi_clear(u32 target_hart);
++int plicsw_warm_ipi_init(void);
++int plicsw_cold_ipi_init(struct plicsw_data *plicsw);
++
++#endif /* _IPI_QILAI_PLICSW_H_ */
+diff --git a/lib/sbi/sbi_ipi.c b/lib/sbi/sbi_ipi.c
+index 7aafbbd..42e07c8 100644
+--- a/lib/sbi/sbi_ipi.c
++++ b/lib/sbi/sbi_ipi.c
+@@ -149,7 +149,7 @@ static struct sbi_ipi_event_ops ipi_smode_ops = {
+ 	.process = sbi_ipi_process_smode,
+ };
+ 
+-static u32 ipi_smode_event = SBI_IPI_EVENT_MAX;
++u32 ipi_smode_event = SBI_IPI_EVENT_MAX;
+ 
+ int sbi_ipi_send_smode(ulong hmask, ulong hbase)
+ {
+@@ -283,3 +283,29 @@ void sbi_ipi_exit(struct sbi_scratch *scratch)
+ 	/* Platform exit */
+ 	sbi_platform_ipi_exit(sbi_platform_ptr(scratch));
+ }
++
++int sbi_ipi_remote_event(u32 event, u32 remote_hartid)
++{
++	struct sbi_scratch *remote_scratch = NULL;
++	struct sbi_ipi_data *ipi_data;
++
++	if ((SBI_IPI_EVENT_MAX <= event) ||
++	    !ipi_ops_array[event])
++		return SBI_EINVAL;
++
++	remote_scratch = sbi_hartid_to_scratch(remote_hartid);
++	if (!remote_scratch)
++		return SBI_EINVAL;
++
++	ipi_data = sbi_scratch_offset_ptr(remote_scratch, ipi_data_off);
++
++	/*
++	 * Set IPI type on remote hart's scratch area and
++	 * trigger the interrupt
++	 */
++	atomic_raw_set_bit(event, &ipi_data->ipi_type);
++
++	smp_wmb();
++
++	return 0;
++}
+diff --git a/lib/utils/fdt/fdt_helper.c b/lib/utils/fdt/fdt_helper.c
+index b64aba9..1f54374 100644
+--- a/lib/utils/fdt/fdt_helper.c
++++ b/lib/utils/fdt/fdt_helper.c
+@@ -18,7 +18,7 @@
+ #include <sbi_utils/irqchip/plic.h>
+ 
+ #define DEFAULT_UART_FREQ		0
+-#ifdef CONFIG_PLATFORM_ANDES_AE350
++#ifdef CONFIG_PLATFORM_ANDES_QILAI
+ #define DEFAULT_UART_BAUD		38400
+ #else
+ #define DEFAULT_UART_BAUD		115200
+diff --git a/lib/utils/ipi/fdt_ipi_plicsw.c b/lib/utils/ipi/fdt_ipi_plicsw.c
+index 638701a..193d557 100644
+--- a/lib/utils/ipi/fdt_ipi_plicsw.c
++++ b/lib/utils/ipi/fdt_ipi_plicsw.c
+@@ -13,7 +13,7 @@
+ #include <sbi/riscv_io.h>
+ #include <sbi_utils/fdt/fdt_helper.h>
+ #include <sbi_utils/ipi/fdt_ipi.h>
+-#include <sbi_utils/ipi/andes_plicsw.h>
++#include <sbi_utils/ipi/qilai_plicsw.h>
+ 
+ extern struct plicsw_data plicsw;
+ 
+diff --git a/lib/utils/ipi/objects.mk b/lib/utils/ipi/objects.mk
+index 999e7bd..0786d91 100644
+--- a/lib/utils/ipi/objects.mk
++++ b/lib/utils/ipi/objects.mk
+@@ -8,7 +8,7 @@
+ #
+ 
+ libsbiutils-objs-$(CONFIG_IPI_MSWI) += ipi/aclint_mswi.o
+-libsbiutils-objs-$(CONFIG_IPI_PLICSW) += ipi/andes_plicsw.o
++libsbiutils-objs-$(CONFIG_IPI_PLICSW) += ipi/qilai_plicsw.o
+ 
+ libsbiutils-objs-$(CONFIG_FDT_IPI) += ipi/fdt_ipi.o
+ libsbiutils-objs-$(CONFIG_FDT_IPI) += ipi/fdt_ipi_drivers.o
+diff --git a/lib/utils/ipi/qilai_plicsw.c b/lib/utils/ipi/qilai_plicsw.c
+new file mode 100644
+index 0000000..c141d62
+--- /dev/null
++++ b/lib/utils/ipi/qilai_plicsw.c
+@@ -0,0 +1,143 @@
++/*
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * Copyright (c) 2022, 2023 Andes Technology Corporation
++ *
++ * Authors:
++ *   Zong Li <zong@andestech.com>
++ *   Nylon Chen <nylon7@andestech.com>
++ *   Leo Yu-Chi Liang <ycliang@andestech.com>
++ *   Yu Chien Peter Lin <peterlin@andestech.com>
++ */
++
++#include <andes/andesv5.h>
++#include <sbi/riscv_asm.h>
++#include <sbi/riscv_io.h>
++#include <sbi/sbi_console.h>
++#include <sbi/sbi_domain.h>
++#include <sbi/sbi_hart.h>
++#include <sbi/sbi_ipi.h>
++#include <sbi_utils/ipi/qilai_plicsw.h>
++#include <andes/openamp.h>
++
++struct plicsw_data plicsw;
++static u8 plicsw_sp_enable = 0;
++
++static inline void plic_sw_pending(u32 target_hart)
++{
++	/*
++	 * The pending array registers are w1s type.
++	 *
++	 * We allocate a single bit for each hart.
++	 * Bit 0 is hardwired to 0, thus unavailable.
++	 * Bit(X+1) indicates that IPI is sent to hartX.
++	 *
++	 * AE350 platform guarantees only 31 interrupt sources,
++	 * so target hart ID ranges from 0 to 30, else ebreak.
++	 */
++	if (target_hart + 1 > AE350_HART_COUNT_MAX) {
++		sbi_printf("%s: Number of harts is larger than AE350_HART_COUNT_MAX (%d)\n",
++			__func__, AE350_HART_COUNT_MAX);
++		sbi_hart_hang();
++	}
++
++	u32 pending_reg_index = (target_hart + 1) / BITS_PER_REG;
++	u32 offset            = pending_reg_index * BYTES_PER_REG;
++	u32 val               = 1 << ((target_hart + 1) % BITS_PER_REG);
++
++	/*if (plicsw_sp_enable)
++		hartid = swplic_mp_hartid;
++	else
++		hartid = current_hartid();*/
++
++	writel(val, (void *)plicsw.addr + PLICSW_PENDING_BASE + offset);
++}
++
++void plicsw_ipi_openamp_enable(u32 idx)
++{
++	if (idx) {
++		plicsw.hart_count += 2;
++		plicsw_sp_enable = 1;
++	} else {
++		plicsw.hart_count -= 2;
++		plicsw_sp_enable = 0;
++	}
++}
++
++void plicsw_ipi_send(u32 target_hart)
++{
++	if (plicsw.hart_count <= target_hart)
++		ebreak();
++
++	/* Set PLICSW IPI */
++	plic_sw_pending(target_hart);
++}
++
++void plicsw_ipi_clear(u32 target_hart)
++{
++	u32 hartid = current_hartid();
++
++	if (plicsw.hart_count <= target_hart)
++		ebreak();
++
++	/* Claim */
++	u32 source = readl((void *)plicsw.addr + PLICSW_CONTEXT_BASE +
++				PLICSW_CONTEXT_CLAIM + PLICSW_CONTEXT_STRIDE * hartid);
++	if (plicsw_sp_enable)
++		plicsw_notity_mpipi(hartid, source);
++
++	/* Complete */
++	writel(source, (void *)plicsw.addr + PLICSW_CONTEXT_BASE +
++		PLICSW_CONTEXT_CLAIM + PLICSW_CONTEXT_STRIDE * hartid);
++}
++
++static struct sbi_ipi_device plicsw_ipi = {
++	.name      = "andes_plicsw",
++	.ipi_send  = plicsw_ipi_send,
++	.ipi_clear = plicsw_ipi_clear
++};
++
++int plicsw_warm_ipi_init(void)
++{
++	u32 hartid = current_hartid();
++
++	/* Clear PLICSW IPI */
++	plicsw_ipi_clear(hartid);
++
++	return 0;
++}
++
++int plicsw_cold_ipi_init(struct plicsw_data *plicsw)
++{
++	int rc;
++
++	/* Setup source priority */
++	uint32_t *priority = (void *)plicsw->addr + PLICSW_PRIORITY_BASE;
++
++	for (int i = 0; i < plicsw->hart_count; i++)
++		writel(1, &priority[i]);
++
++	/* Setup target enable, bit 0 is unavailable */
++	uint32_t enable_mask = 0x2;
++
++	for (int i = 0; i < plicsw->hart_count; i++) {
++		uint32_t *enable = (void *)plicsw->addr + PLICSW_ENABLE_BASE +
++				   PLICSW_ENABLE_STRIDE * i;
++		if (i == 1)
++			writel((enable_mask | (1 << 6)), enable);
++		else
++			writel(enable_mask, enable);
++		enable_mask <<= 1;
++	}
++
++	/* Add PLICSW region to the root domain */
++	rc = sbi_domain_root_add_memrange(plicsw->addr, plicsw->size,
++					  PLICSW_REGION_ALIGN,
++					  SBI_DOMAIN_MEMREGION_MMIO);
++	if (rc)
++		return rc;
++
++	sbi_ipi_set_device(&plicsw_ipi);
++
++	return 0;
++}
+diff --git a/platform/generic/Kconfig b/platform/generic/Kconfig
+index 76fa119..72dfe2f 100644
+--- a/platform/generic/Kconfig
++++ b/platform/generic/Kconfig
+@@ -34,6 +34,12 @@ config PLATFORM_ANDES_AE350
+ 	select ANDES_SBI
+ 	default n
+ 
++config PLATFORM_ANDES_QILAI
++	bool "Andes QILAI support"
++	select SYS_ATCSMU
++	select ANDES_SBI
++	default n
++
+ config PLATFORM_RENESAS_RZFIVE
+ 	bool "Renesas RZ/Five support"
+ 	default n
+diff --git a/platform/generic/andes/Kconfig b/platform/generic/andes/Kconfig
+index fa273b6..84ee6e8 100644
+--- a/platform/generic/andes/Kconfig
++++ b/platform/generic/andes/Kconfig
+@@ -8,9 +8,14 @@ config ANDES_PMA
+ 	bool "Andes PMA support"
+ 	default n
+ 
++config ANDES_OPENAMP
++	bool "Andes OpenAMP support"
++	default n
++
+ config ANDES_SBI
+ 	bool "Andes SBI support"
+ 	select ANDES_TRIGGER
+ 	select ANDES_PMA
+ 	select FDT_CACHE
++	select ANDES_OPENAMP
+ 	default n
+diff --git a/platform/generic/andes/andes_sbi.c b/platform/generic/andes/andes_sbi.c
+index a3f9039..c71590f 100644
+--- a/platform/generic/andes/andes_sbi.c
++++ b/platform/generic/andes/andes_sbi.c
+@@ -16,11 +16,13 @@
+ #include <sbi/sbi_hart.h>
+ #include <sbi/sbi_platform.h>
+ #include <sbi/sbi_types.h>
++#include <andes/openamp.h>
+ #include <andes/pma.h>
+ #include <andes/trigger.h>
+ #include <andes/andes_sbi.h>
+ #include <andes/andesv5.h>
+ #include <sbi_utils/cache/cache.h>
++#include <sbi_utils/ipi/qilai_plicsw.h>
+ #include <sbi_utils/sys/atcsmu.h>
+ 
+ extern void __ae350_disable_coherency(void);
+@@ -270,6 +272,12 @@ int andes_sbi_vendor_ext_provider(long extid, long funcid,
+ 	case SBI_EXT_ANDES_HPM:
+ 		*out_value = andes_hpm();
+ 		break;
++	case SBI_EXT_ANDES_OPENAMP_IDX:
++		plicsw_ipi_openamp_enable(regs->a0);
++		break;
++	case SBI_EXT_ANDES_OPENAMP_SEND_IPI:
++		plicsw_ipi_send(regs->a0);
++		break;
+ 	default:
+ 		sbi_panic("%s(): funcid: %#lx is not supported\n", __func__, funcid);
+ 		break;
+diff --git a/platform/generic/andes/objects.mk b/platform/generic/andes/objects.mk
+index 29161f9..3ac03e0 100644
+--- a/platform/generic/andes/objects.mk
++++ b/platform/generic/andes/objects.mk
+@@ -3,7 +3,10 @@
+ #
+ 
+ carray-platform_override_modules-$(CONFIG_PLATFORM_ANDES_AE350) += andes_ae350
++carray-platform_override_modules-$(CONFIG_PLATFORM_ANDES_QILAI) += andes_qilai
+ platform-objs-$(CONFIG_PLATFORM_ANDES_AE350) += andes/ae350.o andes/sleep.o andes/pmu.o andes/l2c_hpm.o andes/andes_hpm.o andes/dcause.o
++platform-objs-$(CONFIG_PLATFORM_ANDES_QILAI) += andes/qilai.o andes/sleep.o andes/pmu.o andes/l2c_hpm.o andes/andes_hpm.o andes/dcause.o
+ platform-objs-$(CONFIG_ANDES_TRIGGER) += andes/trigger.o
+ platform-objs-$(CONFIG_ANDES_PMA) += andes/pma.o
+ platform-objs-$(CONFIG_ANDES_SBI) += andes/andes_sbi.o
++platform-objs-$(CONFIG_ANDES_OPENAMP) += andes/openamp.o
+diff --git a/platform/generic/andes/openamp.c b/platform/generic/andes/openamp.c
+new file mode 100644
+index 0000000..1910e02
+--- /dev/null
++++ b/platform/generic/andes/openamp.c
+@@ -0,0 +1,145 @@
++#include <libfdt.h>
++#include <sbi/sbi_console.h>
++#include <sbi/sbi_platform.h>
++#include <sbi/sbi_system.h>
++#include <sbi/sbi_trap.h>
++#include <sbi_utils/fdt/fdt_helper.h>
++#include <sbi_utils/fdt/fdt_fixup.h>
++#include <sbi_utils/ipi/qilai_plicsw.h>
++#include <andes/openamp.h>
++
++u32 swplic_mp_hartid;
++u32 swplic_sp_hartid;
++u32 swplic_sp_sourceid;
++u64 swplic_swmbox;
++u64 rmem_base, rmem_size;
++
++extern u32 ipi_smode_event;
++
++/* SW definition message box for sp and for opensbi */
++struct swmsg_box {
++	u32 sp_mbox;
++	u32 opensbi_mbox;
++	u32 mp_status;
++	u32 sp_status;
++};
++
++void plicsw_sp_sid(u32 mp_hartid, u32 sp_hartid)
++{
++	swplic_sp_sourceid = (PLICSW_PENDING_BASE * swplic_sp_hartid + swplic_mp_hartid);
++	sbi_printf("%s sp sourceid: 0x%x\n", ANDES_AMP, swplic_sp_sourceid);
++}
++
++void plicsw_notity_mpipi(u32 target_hart, u32 source)
++{
++	if (target_hart == swplic_mp_hartid && source == SP_SEND_IPI_TO_MP) {
++		if (ipi_smode_event != SBI_IPI_EVENT_MAX) {
++			if (!swplic_swmbox) {
++				sbi_printf("%s get IPI event from SP core, but no swmbox\n", ANDES_AMP);
++				return;
++			}
++
++			writel(1, (unsigned int *)(swplic_swmbox + offsetof(struct swmsg_box, opensbi_mbox)));
++			sbi_ipi_remote_event(ipi_smode_event, target_hart);
++		}
++	}
++}
++
++int fdt_andes_swmbox(void *fdt)
++{
++	uint64_t reg_addr, reg_size;
++	int parent;
++	int subnode;
++	int rc;
++	const char *swmbox = "andes_swmbox";
++
++	if (!fdt)
++		goto warning;
++
++	parent = fdt_path_offset(fdt, "/reserved-memory");
++	if (parent < 0)
++		return parent;
++
++	fdt_for_each_subnode(subnode, fdt, parent) {
++		if (subnode < 0)
++			goto warning;
++
++		rc = fdt_get_node_addr_size(fdt, subnode, 0, &reg_addr, &reg_size);
++
++		if (rc < 0 || !reg_addr || !reg_size)
++			goto warning;
++
++		const char *name = fdt_get_name(fdt, subnode, NULL);
++
++		if(strncmp(swmbox, name, sizeof(swmbox)) == 0) {
++			sbi_printf("%s %s Addr:0x%lx Size:0x%lx\n", ANDES_AMP, swmbox, reg_addr, reg_size);
++			swplic_swmbox = reg_addr;
++			return 0;
++		}
++	}
++
++warning:
++	sbi_printf("andes_remoteproc memory parameter missing\n");
++	return SBI_EINVAL;
++}
++
++
++int fdt_andes_remoteproc(void *fdt)
++{
++	uint64_t reg_addr, reg_size;
++	int parent;
++	int len;
++	u64 val64;
++	const fdt32_t *val;
++
++	if (!fdt)
++		goto warning;
++
++	parent = fdt_path_offset(fdt, "/andes_remoteproc");
++	if (parent < 0)
++		goto warning;
++
++	val= 0;
++	val = fdt_getprop(fdt, parent, "mp_hartid", &len);
++	if (val < 0)
++		goto warning;
++	swplic_mp_hartid = fdt32_to_cpu(*val);
++	sbi_printf("%s mp hartid: %x\n", ANDES_AMP, swplic_mp_hartid);
++
++	val= 0;
++	val = fdt_getprop(fdt, parent, "sp_hartid", &len);
++	if (val < 0)
++		goto warning;
++	swplic_sp_hartid = fdt32_to_cpu(*val);
++	sbi_printf("%s sp hartid: %x\n", ANDES_AMP, swplic_sp_hartid);
++
++	plicsw_sp_sid(swplic_mp_hartid, swplic_sp_hartid);
++
++	/* Read "rmem_base" DT property */
++	val = fdt_getprop(fdt, parent, "rmem_base", &len);
++	if (!val && len >= 8)
++		return SBI_EINVAL;
++	val64 = fdt32_to_cpu(val[0]);
++	val64 = (val64 << 32) | fdt32_to_cpu(val[1]);
++	reg_addr = val64;
++	rmem_base = reg_addr;
++
++	/* Read "rmem_size" DT property */
++	val = fdt_getprop(fdt, parent, "rmem_size", &len);
++	if (!val && len >= 8)
++		return SBI_EINVAL;
++	val64 = fdt32_to_cpu(val[0]);
++	val64 = (val64 << 32) | fdt32_to_cpu(val[1]);
++	reg_size = val64;
++	rmem_size = reg_size;
++
++	fdt_andes_swmbox(fdt);
++
++	sbi_printf("%s Reserved Memory Addr:0x%lx Size:0x%lx\n",
++		ANDES_AMP, reg_addr, reg_size);
++
++	return 0;
++warning:
++	sbi_printf("andes_remoteproc parameter missing\n");
++	return SBI_EINVAL;
++}
+diff --git a/platform/generic/andes/pma.c b/platform/generic/andes/pma.c
+index 51693ba..d4f570f 100644
+--- a/platform/generic/andes/pma.c
++++ b/platform/generic/andes/pma.c
+@@ -20,6 +20,7 @@
+ #include <andes/pma.h>
+ 
+ static unsigned long pma_features_offset;
++extern u64 rmem_base, rmem_size;
+ 
+ static inline virtual_addr_t get_pma_table(int pma_idx)
+ {
+@@ -256,8 +257,10 @@ static bool has_pma_region_conflict(unsigned long start, unsigned long size, int
+ 		_end = _start + _size - 1;
+ 
+ 		if (max(start, _start) <= min(end, _end)) {
+-			sbi_printf_highlight("ERROR %s(): desired region %#lx - %#lx (size: %#lx) conflicts with the existing PMA%d: %#lx - %#lx (size: %#lx)\n",
+-					__func__, start, end, size, i, _start, _end, _size);
++			if (start > (rmem_base + rmem_size ) || start < rmem_base) {
++				sbi_printf_highlight("ERROR %s(): desired region %#lx - %#lx (size: %#lx) conflicts with the existing PMA%d: %#lx - %#lx (size: %#lx)\n",
++						__func__, start, end, size, i, _start, _end, _size);
++			}
+ 			*conflict_id = i;
+ 			return true;
+ 		}
+@@ -279,21 +282,22 @@ int mcall_set_pma(unsigned long pa, unsigned long va, unsigned long size)
+ 		goto fail;
+ 	}
+ 
+-	if (size < 4096 || !is_napot(pa, size)) {
+-		sbi_printf_highlight("ERROR %s(): %#lx - %#lx (size: %#lx) is not a 4KiB granularity NAPOT region\n",
+-			  __func__, pa, pa + size - 1, size);
+-		goto fail;
+-	}
+-
+ 	/* Not allow region overlapping */
+ 	if (has_pma_region_conflict(pa, size, &conflict_id)) {
+-		sbi_printf_highlight(
+-			"ERROR %s(): PMA region overlaps with PMA%d used by va=%#lx\n",
+-			__func__, conflict_id,
+-			get_pma_table(conflict_id));
++		if (pa > (rmem_base + rmem_size ) || pa < rmem_base) {
++			sbi_printf_highlight(
++				"ERROR %s(): PMA region overlaps with PMA%d used by va=%#lx\n",
++				__func__, conflict_id,
++				get_pma_table(conflict_id));
++		}
+ 		goto fail;
+ 	}
+ 
++	if (size < 4096 || !is_napot(pa, size)) {
++		sbi_printf_highlight("ERROR %s(): %#lx - %#lx (size: %#lx) is not a 4KiB granularity NAPOT region\n",
++			  __func__, pa, pa + size - 1, size);
++		goto fail;
++	}
+ 	/* Encode the start address and size */
+ 	pmaaddr_val = (pa >> 2) + (size >> 3) - 1;
+ 
+@@ -386,4 +390,4 @@ int pma_init(void)
+ 		return SBI_ENOMEM;
+ 
+ 	return SBI_OK;
+-}
+\ No newline at end of file
++}
+diff --git a/platform/generic/andes/qilai.c b/platform/generic/andes/qilai.c
+new file mode 100644
+index 0000000..9ea4eee
+--- /dev/null
++++ b/platform/generic/andes/qilai.c
+@@ -0,0 +1,96 @@
++/*
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * Copyright (c) 2022 Andes Technology Corporation
++ *
++ * Authors:
++ *   Yu Chien Peter Lin <peterlin@andestech.com>
++ */
++
++#include <platform_override.h>
++#include <sbi_utils/cache/fdt_cache.h>
++#include <sbi_utils/fdt/fdt_fixup.h>
++#include <sbi_utils/fdt/fdt_helper.h>
++#include <sbi_utils/sys/atcsmu.h>
++#include <sbi/sbi_bitops.h>
++#include <sbi/sbi_error.h>
++#include <sbi/sbi_hsm.h>
++#include <sbi/sbi_ipi.h>
++#include <sbi/sbi_init.h>
++#include <sbi/sbi_platform.h>
++#include <sbi/sbi_pmu.h>
++#include <andes/andesv5.h>
++#include <andes/andes_sbi.h>
++#include <andes/openamp.h>
++#include <andes/pma.h>
++#include <andes/pmu.h>
++#include <andes/trigger.h>
++
++struct smu_data smu = { 0 };
++
++extern void __ae350_enable_coherency_warmboot(void);
++extern void __ae350_disable_coherency(void);
++static const struct sbi_hsm_device andes_smu = {
++	.name = "andes_smu",
++};
++
++static void ae350_hsm_device_init(void)
++{
++	int rc;
++	void *fdt;
++
++	fdt = fdt_get_address();
++
++	rc = fdt_parse_compat_addr(fdt, (uint64_t *)&smu.addr,
++				   "andestech,atcsmu");
++
++	if (!rc) {
++		sbi_hsm_set_device(&andes_smu);
++	}
++}
++
++static int ae350_early_init(bool cold_boot, const struct fdt_match *match)
++{
++	int rc;
++
++	rc = ae350_pmu_init(cold_boot);
++	if (rc)
++		return rc;
++
++	if (!cold_boot)
++		return 0;
++
++	return 0;
++}
++
++static int ae350_final_init(bool cold_boot, const struct fdt_match *match)
++{
++	void *fdt;
++
++	if (!cold_boot)
++		return 0;
++
++	pma_init();
++	ae350_hsm_device_init();
++	fdt = fdt_get_address();
++	fdt_fixups(fdt);
++	fdt_andes_remoteproc(fdt);
++	trigger_init();
++	fdt_cache_init();
++
++	return 0;
++}
++
++static const struct fdt_match andes_ae350_match[] = {
++	{ .compatible = "andestech,ae350" },
++	{ .compatible = "andestech,ax25" },
++	{ .compatible = "andestech,a25" },
++	{ },
++};
++
++const struct platform_override andes_qilai = {
++	.match_table = andes_ae350_match,
++	.early_init  = ae350_early_init,
++	.final_init  = ae350_final_init,
++	.vendor_ext_provider = andes_sbi_vendor_ext_provider,
++};
+diff --git a/platform/generic/configs/defconfig b/platform/generic/configs/defconfig
+index ce4adb9..ccc13bd 100644
+--- a/platform/generic/configs/defconfig
++++ b/platform/generic/configs/defconfig
+@@ -1,4 +1,4 @@
+-CONFIG_PLATFORM_ANDES_AE350=y
++CONFIG_PLATFORM_ANDES_QILAI=y
+ CONFIG_FDT_CACHE=y
+ CONFIG_FDT_CACHE_ANDES_L2C=y
+ CONFIG_FDT_IPI=y
+diff --git a/platform/generic/include/andes/andes_sbi.h b/platform/generic/include/andes/andes_sbi.h
+index 0cebd99..55bd0de 100644
+--- a/platform/generic/include/andes/andes_sbi.h
++++ b/platform/generic/include/andes/andes_sbi.h
+@@ -41,6 +41,8 @@ enum sbi_ext_andes_fid {
+ 	SBI_EXT_ANDES_PROBE_PMA,
+ 	SBI_EXT_ANDES_DCACHE_WBINVAL_ALL,
+ 	SBI_EXT_ANDES_HPM,
++	SBI_EXT_ANDES_OPENAMP_IDX,
++	SBI_EXT_ANDES_OPENAMP_SEND_IPI,
+ };
+ 
+ int ae350_set_suspend_mode(u32 suspend_mode);
+diff --git a/platform/generic/include/andes/dcause.h b/platform/generic/include/andes/dcause.h
+index 7f5a2ad..b81f292 100644
+--- a/platform/generic/include/andes/dcause.h
++++ b/platform/generic/include/andes/dcause.h
+@@ -9,8 +9,10 @@
+ 
+ #ifdef CONFIG_PLATFORM_ANDES_AE350
+ void print_detailed_cause(long mcause, unsigned long mdcause);
++#elif CONFIG_PLATFORM_ANDES_QILAI
++void print_detailed_cause(long mcause, unsigned long mdcause);
+ #else
+ static void print_detailed_cause(long mcause, unsigned long mdcause) {};
+ #endif /* CONFIG_PLATFORM_ANDES_AE350 */
+ 
+-#endif /* _DCAUSE_H_ */
+\ No newline at end of file
++#endif /* _DCAUSE_H_ */
+diff --git a/platform/generic/include/andes/openamp.h b/platform/generic/include/andes/openamp.h
+new file mode 100755
+index 0000000..d340822
+--- /dev/null
++++ b/platform/generic/include/andes/openamp.h
+@@ -0,0 +1,18 @@
++#ifndef _QILAI_OPENAMP_H_
++#define _QILAI_OPENAMP_H_
++
++#include <sbi/riscv_asm.h>
++#include <sbi/riscv_io.h>
++#include <sbi/sbi_ipi.h>
++
++#define ANDES_AMP "Andes OpenAMP"
++#define SP_SEND_IPI_TO_MP 0x6
++
++extern u32 swplic_mp_hartid;
++extern u32 swplic_sp_hartid;
++extern u64 swplic_swmbox;
++
++int fdt_andes_remoteproc(void *fdt);
++void plicsw_sp_sid(u32 mp_hartid, u32 sp_hartid);
++void plicsw_notity_mpipi(u32 target_hart, u32 source);
++#endif
+diff --git a/platform/generic/objects.mk b/platform/generic/objects.mk
+index 1e96d92..b818319 100644
+--- a/platform/generic/objects.mk
++++ b/platform/generic/objects.mk
+@@ -22,7 +22,7 @@ platform-objs-y += platform.o
+ platform-objs-y += platform_override_modules.o
+ 
+ # Blobs to build
+-FW_TEXT_START=0x00000000
++FW_TEXT_START=0x400000000
+ FW_DYNAMIC=y
+ FW_JUMP=n
+ ifeq ($(PLATFORM_RISCV_XLEN), 32)
+-- 
+2.34.1
+
