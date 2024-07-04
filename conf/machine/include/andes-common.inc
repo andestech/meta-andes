@@ -36,7 +36,7 @@ WKS_FILE_DEPENDS ?= " \
     u-boot-ast530 \
     opensbi-ast530 \
     e2fsprogs-native \
-    bmap-tools-native \
+    bmaptool-native \
 "
 IMAGE_FSTYPES += "wic.gz wic.bmap ext4"
 IMAGE_BOOT_FILES ?= " \

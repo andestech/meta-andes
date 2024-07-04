@@ -5,12 +5,12 @@ repos:
   meta-riscv:
     url: https://github.com/riscv/meta-riscv
     path: layers/meta-riscv
-    commit: d6166341e85205871c45099211582a1f2321ea8c # master
+    commit: d330dfe4011a873d379cdf6228fa1f243cf5a6db # master
 
   poky:
     url: https://git.yoctoproject.org/git/poky
     path: layers/poky
-    commit: 61a59d00a0484fb3c0c64ca8eaa3a24c7f23fd24 # nanbield
+    commit: 7fb368604c5c7295a910ffd2d8dba7b9f00b8462 # scarthgap
     layers:
       meta:
       meta-poky:
@@ -19,7 +19,7 @@ repos:
   meta-openembedded:
     url: https://git.openembedded.org/meta-openembedded
     path: layers/meta-openembedded
-    commit: 2da6e1b0e43a8993fd422fee3f83940100b59f4c # nanbield
+    commit: 78a14731cf0cf38a19ff8bd0e9255b319afaf3a7 # scarthgap
     layers:
       meta-oe:
       meta-networking:
