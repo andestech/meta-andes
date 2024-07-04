@@ -1,0 +1,57 @@
+From 8ec199ec24149e83e66eb161b9b09777f4c3ce45 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Thu, 22 Feb 2024 20:11:22 +0800
+Subject: [PATCH 165/191] workaround: Reserved 3 PMA entry for early seeting in
+ OpenSBI
+
+By default, The Linux kernel ecall for setting PMA only supports the
+type, Memory, Noncacheable, Bufferable. Reserved 3 PMA entry for setting
+other type in the init pma in OpenSBI.
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ drivers/soc/andes/ppma.c | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/soc/andes/ppma.c b/drivers/soc/andes/ppma.c
+index f752ecc2fe15..48419d11bab4 100644
+--- a/drivers/soc/andes/ppma.c
++++ b/drivers/soc/andes/ppma.c
+@@ -11,6 +11,16 @@
+ #include <asm/page.h>
+ #include <soc/andes/sbi.h>
+ 
++/*
++ * Reserved 3 PMA entry in the OpenSBI to support the type,
++ * device noncached and nonbufferable. This is for PCIe setting.
++ */
++#ifdef CONFIG_SOC_QILAI
++#define RESERVED_PMA_CNT 3
++#else
++#define RESERVED_PMA_CNT 0
++#endif
++
+ struct ppma_arg_t ppma_arg;
+ 
+ long andes_probe_ppma(void)
+@@ -51,7 +61,7 @@ void andes_set_ppma(phys_addr_t phys_addr, void *va_addr, size_t size)
+ 	 * FIXME: we need online CPU mask, not the number
+ 	 */
+ 	id = get_cpu();
+-	for (i = 0; i < cpu_num; i++) {
++	for (i = RESERVED_PMA_CNT; i < cpu_num; i++) {
+ 		if (i == id)
+ 			continue;
+ 
+@@ -80,7 +90,7 @@ void andes_free_ppma(void *addr)
+ 	 * FIXME: we need online CPU mask, not the number
+ 	 */
+ 	id = get_cpu();
+-	for (i = 0; i < cpu_num; i++) {
++	for (i = RESERVED_PMA_CNT; i < cpu_num; i++) {
+ 		if (i == id)
+ 			continue;
+ 
+-- 
+2.34.1
+

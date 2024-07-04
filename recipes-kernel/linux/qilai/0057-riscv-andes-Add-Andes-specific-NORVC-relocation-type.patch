@@ -1,0 +1,50 @@
+From 09a0b90707e9fc00919cb01adf278909014af92e Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Fri, 26 May 2023 16:39:12 +0800
+Subject: [PATCH 057/191] riscv: andes: Add Andes-specific NORVC relocation
+ type
+
+When the ".option norvc" directive is used, the assembler
+generates two custom relocation types defined by Andes:
+R_RISCV_NO_RVC_REGION_BEGIN and R_RISCV_NO_RVC_REGION_END.
+This relocation type marks the no rvc region, indicating to
+the linker that this region should not be optimized into
+RVC instructions.
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ arch/riscv/include/uapi/asm/elf.h | 4 +++-
+ arch/riscv/kernel/module.c        | 2 +-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/arch/riscv/include/uapi/asm/elf.h b/arch/riscv/include/uapi/asm/elf.h
+index 73f14235e52c..0ea1771c3c7b 100644
+--- a/arch/riscv/include/uapi/asm/elf.h
++++ b/arch/riscv/include/uapi/asm/elf.h
+@@ -94,7 +94,9 @@ typedef union __riscv_fp_state elf_fpregset_t;
+ #define R_RISCV_SET32		56
+ #define R_RISCV_32_PCREL	57
+ 
+-/* Andes V5 */
++/* Relocation types numbered 200 and above are defined by Andes */
++#define R_RISCV_NO_RVC_REGION_BEGIN	237
++#define R_RISCV_NO_RVC_REGION_END	238
+ #define R_RISCV_ALIGN_BTB	240
+ #define R_RISCV_10_PCREL	241
+ #define R_RISCV_DATA		242
+diff --git a/arch/riscv/kernel/module.c b/arch/riscv/kernel/module.c
+index 1f7be2651b29..b4c6853e3abf 100644
+--- a/arch/riscv/kernel/module.c
++++ b/arch/riscv/kernel/module.c
+@@ -346,7 +346,7 @@ static int (*reloc_handlers_rela_nds(unsigned int type)) (struct module *me,
+ {
+ 	if (type == R_RISCV_10_PCREL)
+ 		return apply_r_riscv_10_pcrel_rela;
+-	else if (type >= R_RISCV_ALIGN_BTB && type <= R_RISCV_RELAX_REGION_END)
++	else if (type >= R_RISCV_NO_RVC_REGION_BEGIN && type <= R_RISCV_RELAX_REGION_END)
+ 		return apply_r_riscv_ignore_rela;
+ 	else
+ 		return NULL;
+-- 
+2.34.1
+

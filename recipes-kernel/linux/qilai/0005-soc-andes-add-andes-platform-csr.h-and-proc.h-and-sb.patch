@@ -1,0 +1,291 @@
+From 9183016f2a0a95a588274409d754840b05384c87 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Tue, 13 Dec 2022 18:42:17 +0800
+Subject: [PATCH 005/191] soc: andes: add andes platform csr.h and proc.h and
+ sbi.h
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ include/soc/andes/csr.h  | 150 +++++++++++++++++++++++++++++++++++++++
+ include/soc/andes/proc.h |  57 +++++++++++++++
+ include/soc/andes/sbi.h  |  47 ++++++++++++
+ 3 files changed, 254 insertions(+)
+ create mode 100644 include/soc/andes/csr.h
+ create mode 100644 include/soc/andes/proc.h
+ create mode 100644 include/soc/andes/sbi.h
+
+diff --git a/include/soc/andes/csr.h b/include/soc/andes/csr.h
+new file mode 100644
+index 000000000000..b6569c0755c7
+--- /dev/null
++++ b/include/soc/andes/csr.h
+@@ -0,0 +1,150 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++#ifndef __SOC_ANDES_CSR_H
++#define __SOC_ANDES_CSR_H
++
++#include <linux/types.h>
++/* mdcm_cfg: Data Cache/Memory Configuration Register */
++#define MDCM_CFG_DEST_OFFSET		0
++#define MDCM_CFG_DWAY_OFFSET		3
++#define MDCM_CFG_DSZ_OFFSET		6
++#define MDCM_CFG_DLCK_OFFSET		9
++#define MDCM_CFG_DC_ECC_OFFSET		10
++#define MDCM_CFG_DLMB_OFFSET		12
++#define MDCM_CFG_DLMSZ_OFFSET		15
++#define MDCM_CFG_ULM_2BANK_OFFSET	20
++#define MDCM_CFG_DLM_ECC_OFFSET		21
++
++#define MDCM_CFG_DEST_MASK	(0x7  << MDCM_CFG_DEST_OFFSET)
++#define MDCM_CFG_DWAY_MASK	(0x7  << MDCM_CFG_DWAY_OFFSET)
++#define MDCM_CFG_DSZ_MASK	(0x7  << MDCM_CFG_DSZ_OFFSET)
++#define MDCM_CFG_DLCK_MASK	(0x1  << MDCM_CFG_DLCK_OFFSET)
++#define MDCM_CFG_DC_ECC_MASK	(0x3  << MDCM_CFG_DC_ECC_OFFSET)
++#define MDCM_CFG_DLMB_MASK	(0x7  << MDCM_CFG_DLMB_OFFSET)
++#define MDCM_CFG_DLMSZ_MASK	(0x1f << MDCM_CFG_DLMSZ_OFFSET)
++#define MDCM_CFG_ULM_2BANK_MASK	(0x1  << MDCM_CFG_ULM_2BANK_OFFSET)
++#define MDCM_CFG_DLM_ECC_MASK	(0x3  << MDCM_CFG_DLM_ECC_OFFSET)
++
++/* User mode control registers */
++#define CSR_UITB					   0x800
++#define CSR_UCODE					   0x801
++#define CSR_UDCAUSE					   0x809
++#define CCTL_REG_UCCTLBEGINADDR_NUM    0x80b
++#define CCTL_REG_UCCTLCOMMAND_NUM      0x80c
++#define CSR_WFE						   0x810
++#define CSR_SLEEPVALUE				   0x811
++#define CSR_TXEVT					   0x812
++
++#define custom_csr_write(csr_num, val) csr_write(csr_num, val)
++/* ucctlcommand */
++/* D-cache operation */
++#define CCTL_L1D_VA_INVAL	0
++#define CCTL_L1D_VA_WB		1
++#define CCTL_L1D_VA_WBINVAL	2
++
++/* non-blocking & write around */
++#define MMISC_CTL_NON_BLOCKING_ENABLE  (0x1  << MMISC_CTL_NON_BLOCKING_OFFSET)
++#define MMISC_CTL_NON_BLOCKING_OFFSET  0x8
++
++#define MCACHE_CTL_L1I_PREFETCH_OFFSET  9
++#define MCACHE_CTL_L1D_PREFETCH_OFFSET  10
++#define MCACHE_CTL_DC_WAROUND_OFFSET_1  13
++#define MCACHE_CTL_DC_WAROUND_OFFSET_2  14
++#define MCACHE_CTL_L1I_PREFETCH_EN  (0x1  << MCACHE_CTL_L1I_PREFETCH_OFFSET)
++#define MCACHE_CTL_L1D_PREFETCH_EN  (0x1  << MCACHE_CTL_L1D_PREFETCH_OFFSET)
++#define MCACHE_CTL_DC_WAROUND_1_EN  (0x1  << MCACHE_CTL_DC_WAROUND_OFFSET_1)
++#define MCACHE_CTL_DC_WAROUND_2_EN  (0x1  << MCACHE_CTL_DC_WAROUND_OFFSET_2)
++#define WRITE_AROUND_ENABLE  (MCACHE_CTL_L1I_PREFETCH_EN | MCACHE_CTL_L1D_PREFETCH_EN | MCACHE_CTL_DC_WAROUND_1_EN)
++
++/* L1 I-cache , D-cache */
++#define CACHE_CTL_offIC_EN  0   /* Enable I-cache */
++#define CACHE_CTL_offDC_EN  1   /* Enable D-cache */
++#define CACHE_CTL_mskIC_EN  (0x1  << CACHE_CTL_offIC_EN)
++#define CACHE_CTL_mskDC_EN  (0x1  << CACHE_CTL_offDC_EN)
++
++/* L2 cache */
++#define L2_CACHE_CTL_mskCEN 1
++/* L2 cache registers */
++#define L2C_REG_CFG_OFFSET	0
++#define L2C_REG_CTL_OFFSET	0x8
++#define L2C_HPM_C0_CTL_OFFSET	0x10
++#define L2C_HPM_C1_CTL_OFFSET	0x18
++#define L2C_HPM_C2_CTL_OFFSET	0x20
++#define L2C_HPM_C3_CTL_OFFSET	0x28
++#define L2C_REG_C0_CMD_OFFSET	0x40
++#define L2C_REG_C0_ACC_OFFSET	0x48
++#define L2C_REG_C1_CMD_OFFSET	0x50
++#define L2C_REG_C1_ACC_OFFSET	0x58
++#define L2C_REG_C2_CMD_OFFSET	0x60
++#define L2C_REG_C2_ACC_OFFSET	0x68
++#define L2C_REG_C3_CMD_OFFSET	0x70
++#define L2C_REG_C3_ACC_OFFSET	0x78
++#define L2C_REG_C0_STATUS_OFFSET	0x80
++#define L2C_REG_C0_HPM_OFFSET	0x200
++
++/* L2 cache configuration register */
++#define V5_L2C_CFG_MAP_OFFSET       20
++#define V5_L2C_CFG_MAP_MASK         (1UL << V5_L2C_CFG_MAP_OFFSET)
++
++/* L2 CCTL status */
++#define CCTL_L2_STATUS_IDLE	0
++#define CCTL_L2_STATUS_PROCESS	1
++#define CCTL_L2_STATUS_ILLEGAL	2
++/* L2 CCTL status cores mask */
++#define CCTL_L2_STATUS_C0_MASK	0xF
++#define CCTL_L2_STATUS_C1_MASK	0xF0
++#define CCTL_L2_STATUS_C2_MASK	0xF00
++#define CCTL_L2_STATUS_C3_MASK	0xF000
++
++/* L2 cache operation */
++#define CCTL_L2_PA_INVAL	0x8
++#define CCTL_L2_PA_WB		0x9
++#define CCTL_L2_PA_WBINVAL	0xA
++#define CCTL_L2_WBINVAL_ALL	0x12
++
++#define L2C_HPM_PER_CORE_OFFSET		0x8
++#ifndef __ASSEMBLER__
++extern u32 L2C_REG_PER_CORE_OFFSET;
++extern u32 CCTL_L2_STATUS_PER_CORE_OFFSET;
++#endif
++#define L2C_REG_CN_CMD_OFFSET(n)	\
++	(L2C_REG_C0_CMD_OFFSET + (n * L2C_REG_PER_CORE_OFFSET))
++#define L2C_REG_CN_ACC_OFFSET(n)	\
++	(L2C_REG_C0_ACC_OFFSET + (n * L2C_REG_PER_CORE_OFFSET))
++#define CCTL_L2_STATUS_CN_MASK(n)	\
++	(CCTL_L2_STATUS_C0_MASK << (n * CCTL_L2_STATUS_PER_CORE_OFFSET))
++#define L2C_HPM_CN_CTL_OFFSET(n)	\
++	(L2C_HPM_C0_CTL_OFFSET + (n * L2C_HPM_PER_CORE_OFFSET))
++#define L2C_REG_CN_HPM_OFFSET(n)	\
++	(L2C_REG_C0_HPM_OFFSET + (n * L2C_HPM_PER_CORE_OFFSET))
++
++/* Debug/Trace Registers (shared with Debug Mode) */
++#define CSR_SCONTEXT            0x7aa
++
++/* Supervisor trap registers */
++#define CSR_SLIE				0x9c4
++#define CSR_SLIP				0x9c5
++#define CSR_SDCAUSE				0x9c9
++
++/* Supervisor counter registers */
++#define CSR_SCOUNTERINTEN		0x9cf
++#define CSR_SCOUNTERMASK_M		0x9d1
++#define CSR_SCOUNTERMASK_S		0x9d2
++#define CSR_SCOUNTERMASK_U		0x9d3
++#define CSR_SCOUNTEROVF			0x9d4
++#define CSR_SCOUNTINHIBIT		0x9e0
++#define CSR_SHPMEVENT3			0x9e3
++#define CSR_SHPMEVENT4			0x9e4
++#define CSR_SHPMEVENT5			0x9e5
++#define CSR_SHPMEVENT6			0x9e6
++
++/* Supervisor control registers */
++#define CSR_SCCTLDATA			0x9cd
++#define CSR_SMISC_CTL			0x9d0
++
++#define IRQ_HPM_OVF		18
++#define SLIP_PMOVI		(_AC(0x1, UL) << IRQ_HPM_OVF)
++
++#endif /* !__SOC_ANDES_CSR_H */
+diff --git a/include/soc/andes/proc.h b/include/soc/andes/proc.h
+new file mode 100644
+index 000000000000..9a96c26e6192
+--- /dev/null
++++ b/include/soc/andes/proc.h
+@@ -0,0 +1,57 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++#ifndef __SOC_ANDES_PROC_H
++#define __SOC_ANDES_PROC_H
++
++#include <asm/io.h>
++#include <asm/page.h>
++
++long sbi_andes_cpu_l1c_status(void);
++void sbi_andes_cpu_icache_enable(void *info);
++void sbi_andes_cpu_icache_disable(void *info);
++void sbi_andes_cpu_dcache_enable(void *info);
++void sbi_andes_cpu_dcache_disable(void *info);
++uint32_t cpu_l2c_ctl_status(void);
++void cpu_l2c_disable(void);
++
++long sbi_andes_get_non_blocking_status(void);
++long sbi_andes_get_write_around_status(void);
++void sbi_andes_enable_non_blocking_load_store(void);
++void sbi_andes_disable_non_blocking_load_store(void);
++void sbi_andes_enable_write_around(void);
++void sbi_andes_disable_write_around(void);
++
++void sbi_andes_enable_l1i_cache(void);
++void sbi_andes_disable_l1i_cache(void);
++void sbi_andes_enable_l1d_cache(void);
++void sbi_andes_disable_l1d_cache(void);
++
++void sbi_andes_set_mcache_ctl(unsigned long input);
++void sbi_andes_set_mmisc_ctl(unsigned long input);
++
++void cpu_dma_inval_range(void *info);
++void cpu_dma_wb_range(void *info);
++void cpu_l2c_inval_range(unsigned long pa, unsigned long size);
++void cpu_l2c_wb_range(unsigned long pa, unsigned long size);
++
++/*
++ * struct andesv5_cache_info
++ * The member of this struct is dupilcated to some content of struct cacheinfo
++ * to reduce the latence of searching dcache inforamtion in andesv5/cache.c.
++ * At current only dcache-line-size is needed. when the content of
++ * andesv5_cache_info has been initilized by function fill_cpu_cache_info(),
++ * member init_done is set as true
++ */
++struct andesv5_cache_info {
++	bool init_done;
++	int dcache_line_size;
++};
++
++struct range_info {
++	unsigned long start;
++	unsigned long end;
++	struct page *page;
++};
++#endif /* !__SOC_ANDES_PROC_H */
+diff --git a/include/soc/andes/sbi.h b/include/soc/andes/sbi.h
+new file mode 100644
+index 000000000000..7f6701cfeb33
+--- /dev/null
++++ b/include/soc/andes/sbi.h
+@@ -0,0 +1,47 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++#ifndef __SOC_ANDES_SBI_H
++#define __SOC_ANDES_SBI_H
++
++#include <asm/sbi.h>
++#include <asm/vendorid_list.h>
++
++#define SBI_EXT_ANDES (SBI_EXT_VENDOR_START | ANDES_VENDOR_ID)
++
++enum sbi_ext_andes_fid {
++
++	/* CCTL */
++	SBI_EXT_ANDES_GET_MCACHE_CTL_STATUS = 0,
++	SBI_EXT_ANDES_GET_MMISC_CTL_STATUS,
++	SBI_EXT_ANDES_SET_MCACHE_CTL,
++	SBI_EXT_ANDES_SET_MMISC_CTL,
++	SBI_EXT_ANDES_ICACHE_OP,
++	SBI_EXT_ANDES_DCACHE_OP,
++	SBI_EXT_ANDES_L1CACHE_I_PREFETCH,
++	SBI_EXT_ANDES_L1CACHE_D_PREFETCH,
++	SBI_EXT_ANDES_NON_BLOCKING_LOAD_STORE,
++	SBI_EXT_ANDES_WRITE_AROUND,
++
++	/* Trace */
++	SBI_EXT_ANDES_TRIGGER,
++	SBI_EXT_ANDES_SET_PFM,
++
++	/* CPU freq */
++	SBI_EXT_ANDES_READ_POWERBRAKE,
++	SBI_EXT_ANDES_WRITE_POWERBRAKE,
++
++	/* CPU idle (ATCSMU) */
++	SBI_EXT_ANDES_SUSPEND_PREPARE,
++	SBI_EXT_ANDES_SUSPEND_MEM,
++	SBI_EXT_ANDES_SET_SUSPEND_MODE,
++	SBI_EXT_ANDES_ENTER_SUSPEND_MODE,
++
++	/* Reset (ATCSMU) */
++	SBI_EXT_ANDES_RESTART,
++	SBI_EXT_ANDES_SET_RESET_VEC,
++
++	SBI_EXT_ANDES_DCACHE_WBINVAL_ALL,
++};
++#endif /* !__SOC_ANDES_SBI_H */
+-- 
+2.34.1
+

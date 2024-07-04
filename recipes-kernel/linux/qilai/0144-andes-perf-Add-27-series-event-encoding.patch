@@ -1,0 +1,741 @@
+From ddb53ab069c59559e64d3a321874c2dc51467d80 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Wed, 1 Nov 2023 11:02:39 +0800
+Subject: [PATCH 144/191] andes: perf: Add 27-series event encoding
+
+Andes 27-series CPUs follow the same event encoding with 25-series,
+we also remove A{25|45} folders as they can share with json files
+with AX{25|45}.
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ .../arch/riscv/andes/A25/firmware.json        |  74 -----
+ .../arch/riscv/andes/A25/riscvstd.json        | 257 -----------------
+ .../arch/riscv/andes/A45/firmware.json        |  74 -----
+ .../arch/riscv/andes/A45/riscvstd.json        | 267 ------------------
+ tools/perf/pmu-events/arch/riscv/mapfile.csv  |  12 +-
+ 5 files changed, 7 insertions(+), 677 deletions(-)
+ delete mode 100644 tools/perf/pmu-events/arch/riscv/andes/A25/firmware.json
+ delete mode 100644 tools/perf/pmu-events/arch/riscv/andes/A25/riscvstd.json
+ delete mode 100644 tools/perf/pmu-events/arch/riscv/andes/A45/firmware.json
+ delete mode 100644 tools/perf/pmu-events/arch/riscv/andes/A45/riscvstd.json
+
+diff --git a/tools/perf/pmu-events/arch/riscv/andes/A25/firmware.json b/tools/perf/pmu-events/arch/riscv/andes/A25/firmware.json
+deleted file mode 100644
+index 61e42c1813fa..000000000000
+--- a/tools/perf/pmu-events/arch/riscv/andes/A25/firmware.json
++++ /dev/null
+@@ -1,74 +0,0 @@
+-[
+-  {
+-    "ArchStdEvent": "FW_MISALIGNED_LOAD"
+-  },
+-  {
+-    "ArchStdEvent": "FW_MISALIGNED_STORE"
+-  },
+-  {
+-    "ArchStdEvent": "FW_ACCESS_LOAD"
+-  },
+-  {
+-    "ArchStdEvent": "FW_ACCESS_STORE"
+-  },
+-  {
+-    "ArchStdEvent": "FW_ILLEGAL_INSN"
+-  },
+-  {
+-    "ArchStdEvent": "FW_SET_TIMER"
+-  },
+-  {
+-    "ArchStdEvent": "FW_IPI_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_IPI_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_FENCE_I_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_FENCE_I_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_SFENCE_VMA_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_SFENCE_VMA_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_SFENCE_VMA_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_SFENCE_VMA_ASID_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_GVMA_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_GVMA_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_GVMA_VMID_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_GVMA_VMID_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_VVMA_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_VVMA_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_VVMA_ASID_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_VVMA_ASID_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "ANDES_L2C_ACCESSES"
+-  },
+-  {
+-    "ArchStdEvent": "ANDES_L2C_ACCESS_MISSES"
+-  }
+-]
+diff --git a/tools/perf/pmu-events/arch/riscv/andes/A25/riscvstd.json b/tools/perf/pmu-events/arch/riscv/andes/A25/riscvstd.json
+deleted file mode 100644
+index cafc84b0a787..000000000000
+--- a/tools/perf/pmu-events/arch/riscv/andes/A25/riscvstd.json
++++ /dev/null
+@@ -1,257 +0,0 @@
+-[
+-	{
+-	"EventCode": "0x10",
+-	"EventName": "cycle_count",
+-	"BriefDescription": "Cycle counts"
+-	},
+-	{
+-	"EventCode": "0x20",
+-	"EventName": "inst_count",
+-	"BriefDescription": "Retired instruction counts"
+-	},
+-	{
+-	"EventCode": "0x30",
+-	"EventName": "int_load_inst",
+-	"BriefDescription": "Integer load instructions"
+-	},
+-	{
+-	"EventCode": "0x40",
+-	"EventName": "int_store_inst",
+-	"BriefDescription": "Integer store instructions"
+-	},
+-	{
+-	"EventCode": "0x50",
+-	"EventName": "atomic_mem_op",
+-	"BriefDescription": "Atomic memory operation"
+-	},
+-	{
+-	"EventCode": "0x60",
+-	"EventName": "sys_inst",
+-	"BriefDescription": "System instructions"
+-	},
+-	{
+-	"EventCode": "0x70",
+-	"EventName": "int_compute_inst",
+-	"BriefDescription": "Integer computational instruction"
+-	},
+-	{
+-	"EventCode": "0x80",
+-	"EventName": "condition_br",
+-	"BriefDescription": "Conditional branch"
+-	},
+-	{
+-	"EventCode": "0x90",
+-	"EventName": "taken_condition_br",
+-	"BriefDescription": "Taken conditional branch"
+-	},
+-	{
+-	"EventCode": "0xA0",
+-	"EventName": "jal_inst",
+-	"BriefDescription": "JAL instruction"
+-	},
+-	{
+-	"EventCode": "0xB0",
+-	"EventName": "jalr_inst",
+-	"BriefDescription": "JALR instruction"
+-	},
+-	{
+-	"EventCode": "0xC0",
+-	"EventName": "ret_inst",
+-	"BriefDescription": "Return instruction"
+-	},
+-	{
+-	"EventCode": "0xD0",
+-	"EventName": "control_trans_inst",
+-	"BriefDescription": "Control transfer instruction"
+-	},
+-	{
+-	"EventCode": "0xE0",
+-	"EventName": "ex9_inst",
+-	"BriefDescription": "EX9 instruction"
+-	},
+-	{
+-	"EventCode": "0xF0",
+-	"EventName": "int_mul_inst",
+-	"BriefDescription": "Integer multiplication instruction"
+-	},
+-	{
+-	"EventCode": "0x100",
+-	"EventName": "int_div_rem_inst",
+-	"BriefDescription": "Integer division/remainder instruction"
+-	},
+-	{
+-	"EventCode": "0x110",
+-	"EventName": "float_load_inst",
+-	"BriefDescription": "Floating-point load instruction"
+-	},
+-	{
+-	"EventCode": "0x120",
+-	"EventName": "float_store_inst",
+-	"BriefDescription": "Floating-point store instruction"
+-	},
+-	{
+-	"EventCode": "0x130",
+-	"EventName": "float_add_sub_inst",
+-	"BriefDescription": "Floating-point addition/subtraction"
+-	},
+-	{
+-	"EventCode": "0x140",
+-	"EventName": "float_mul_inst",
+-	"BriefDescription": "Floating-point multiplication"
+-	},
+-	{
+-	"EventCode": "0x150",
+-	"EventName": "float_fused_muladd_inst",
+-	"BriefDescription": "Floating-point fused multiply-add"
+-	},
+-	{
+-	"EventCode": "0x160",
+-	"EventName": "float_div_sqrt_inst",
+-	"BriefDescription": "Floating-point division or square-root"
+-	},
+-	{
+-	"EventCode": "0x170",
+-	"EventName": "other_float_inst",
+-	"BriefDescription": "Other floating-point instruction"
+-	},
+-	{
+-	"EventCode": "0x180",
+-	"EventName": "integer_mul_and_sub_inst_count",
+-	"BriefDescription": "Integer multiplication and add/sub instruction count"
+-	},
+-	{
+-	"EventCode": "0x01",
+-	"EventName": "ilm_access",
+-	"BriefDescription": "ILM access"
+-	},
+-	{
+-	"EventCode": "0x11",
+-	"EventName": "dlm_access",
+-	"BriefDescription": "DLM access"
+-	},
+-	{
+-	"EventCode": "0x21",
+-	"EventName": "icache_access",
+-	"BriefDescription": "ICACHE access"
+-	},
+-	{
+-	"EventCode": "0x31",
+-	"EventName": "icache_miss",
+-	"BriefDescription": "ICACHE miss"
+-	},
+-	{
+-	"EventCode": "0x41",
+-	"EventName": "dcache_access",
+-	"BriefDescription": "DCACHE access"
+-	},
+-	{
+-	"EventCode": "0x51",
+-	"EventName": "dcache_miss",
+-	"BriefDescription": "DCACHE miss"
+-	},
+-	{
+-	"EventCode": "0x61",
+-	"EventName": "dcache_load_access",
+-	"BriefDescription": "DCACHE load access"
+-	},
+-	{
+-	"EventCode": "0x71",
+-	"EventName": "dcache_load_miss",
+-	"BriefDescription": "DCACHE load miss"
+-	},
+-	{
+-	"EventCode": "0x81",
+-	"EventName": "dcache_store_access",
+-	"BriefDescription": "DCACHE store access"
+-	},
+-	{
+-	"EventCode": "0x91",
+-	"EventName": "dcache_store_miss",
+-	"BriefDescription": "DCACHE store miss"
+-	},
+-	{
+-	"EventCode": "0xA1",
+-	"EventName": "dcache_wb",
+-	"BriefDescription": "DCACHE writeback"
+-	},
+-	{
+-	"EventCode": "0xB1",
+-	"EventName": "cycle_wait_icache_fill",
+-	"BriefDescription": "Cycles waiting for ICACHE fill data"
+-	},
+-	{
+-	"EventCode": "0xC1",
+-	"EventName": "cycle_wait_dcache_fill",
+-	"BriefDescription": "Cycles waiting for DCACHE fill data"
+-	},
+-	{
+-	"EventCode": "0xD1",
+-	"EventName": "uncached_ifetch_from_bus",
+-	"BriefDescription": "Uncached ifetch data access from bus"
+-	},
+-	{
+-	"EventCode": "0xE1",
+-	"EventName": "uncached_load_from_bus",
+-	"BriefDescription": "Uncached load data access from bus"
+-	},
+-	{
+-	"EventCode": "0xF1",
+-	"EventName": "cycle_wait_uncached_ifetch",
+-	"BriefDescription": "Cycles waiting for uncached ifetch data from bus"
+-	},
+-	{
+-	"EventCode": "0x101",
+-	"EventName": "cycle_wait_uncached_load",
+-	"BriefDescription": "Cycles waiting for uncached load data from bus"
+-	},
+-	{
+-	"EventCode": "0x111",
+-	"EventName": "main_itlb_access",
+-	"BriefDescription": "Main ITLB access"
+-	},
+-	{
+-	"EventCode": "0x121",
+-	"EventName": "main_itlb_miss",
+-	"BriefDescription": "Main ITLB miss"
+-	},
+-	{
+-	"EventCode": "0x131",
+-	"EventName": "main_dtlb_access",
+-	"BriefDescription": "Main DTLB access"
+-	},
+-	{
+-	"EventCode": "0x141",
+-	"EventName": "main_dtlb_miss",
+-	"BriefDescription": "Main DTLB miss"
+-	},
+-	{
+-	"EventCode": "0x151",
+-	"EventName": "cycle_wait_itlb_fill",
+-	"BriefDescription": "Cycles waiting for Main ITLB fill data"
+-	},
+-	{
+-	"EventCode": "0x161",
+-	"EventName": "pipe_stall_cycle_dtlb_miss",
+-	"BriefDescription": "Pipeline stall cycles caused by Main DTLB miss"
+-	},
+-	{
+-	"EventCode": "0x02",
+-	"EventName": "mispredict_condition_br",
+-	"BriefDescription": "Misprediction of conditional branches"
+-	},
+-	{
+-	"EventCode": "0x12",
+-	"EventName": "mispredict_take_condition_br",
+-	"BriefDescription": "Misprediction of taken conditional branches"
+-	},
+-	{
+-	"EventCode": "0x22",
+-	"EventName": "mispredict_target_ret_inst",
+-	"BriefDescription": "Misprediction of targets of Return instructions"
+-	},
+-	{
+-	"EventCode": "0x32",
+-	"EventName": "replay_las_sas",
+-	"BriefDescription": "Replay for load-after-store or store-after-store cases"
+-	}
+-]
+diff --git a/tools/perf/pmu-events/arch/riscv/andes/A45/firmware.json b/tools/perf/pmu-events/arch/riscv/andes/A45/firmware.json
+deleted file mode 100644
+index 61e42c1813fa..000000000000
+--- a/tools/perf/pmu-events/arch/riscv/andes/A45/firmware.json
++++ /dev/null
+@@ -1,74 +0,0 @@
+-[
+-  {
+-    "ArchStdEvent": "FW_MISALIGNED_LOAD"
+-  },
+-  {
+-    "ArchStdEvent": "FW_MISALIGNED_STORE"
+-  },
+-  {
+-    "ArchStdEvent": "FW_ACCESS_LOAD"
+-  },
+-  {
+-    "ArchStdEvent": "FW_ACCESS_STORE"
+-  },
+-  {
+-    "ArchStdEvent": "FW_ILLEGAL_INSN"
+-  },
+-  {
+-    "ArchStdEvent": "FW_SET_TIMER"
+-  },
+-  {
+-    "ArchStdEvent": "FW_IPI_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_IPI_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_FENCE_I_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_FENCE_I_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_SFENCE_VMA_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_SFENCE_VMA_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_SFENCE_VMA_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_SFENCE_VMA_ASID_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_GVMA_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_GVMA_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_GVMA_VMID_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_GVMA_VMID_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_VVMA_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_VVMA_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_VVMA_ASID_SENT"
+-  },
+-  {
+-    "ArchStdEvent": "FW_HFENCE_VVMA_ASID_RECEIVED"
+-  },
+-  {
+-    "ArchStdEvent": "ANDES_L2C_ACCESSES"
+-  },
+-  {
+-    "ArchStdEvent": "ANDES_L2C_ACCESS_MISSES"
+-  }
+-]
+diff --git a/tools/perf/pmu-events/arch/riscv/andes/A45/riscvstd.json b/tools/perf/pmu-events/arch/riscv/andes/A45/riscvstd.json
+deleted file mode 100644
+index def7e88cfc77..000000000000
+--- a/tools/perf/pmu-events/arch/riscv/andes/A45/riscvstd.json
++++ /dev/null
+@@ -1,267 +0,0 @@
+-[
+-	{
+-	"EventCode": "0x10",
+-	"EventName": "cycle_count",
+-	"BriefDescription": "Cycle counts"
+-	},
+-	{
+-	"EventCode": "0x20",
+-	"EventName": "inst_count",
+-	"BriefDescription": "Retired instruction counts"
+-	},
+-	{
+-	"EventCode": "0x30",
+-	"EventName": "int_load_inst",
+-	"BriefDescription": "Integer load instructions"
+-	},
+-	{
+-	"EventCode": "0x40",
+-	"EventName": "int_store_inst",
+-	"BriefDescription": "Integer store instructions"
+-	},
+-	{
+-	"EventCode": "0x50",
+-	"EventName": "atomic_mem_op",
+-	"BriefDescription": "Atomic memory operation"
+-	},
+-	{
+-	"EventCode": "0x60",
+-	"EventName": "sys_inst",
+-	"BriefDescription": "System instructions"
+-	},
+-	{
+-	"EventCode": "0x70",
+-	"EventName": "int_compute_inst",
+-	"BriefDescription": "Integer computational instruction"
+-	},
+-	{
+-	"EventCode": "0x80",
+-	"EventName": "condition_br",
+-	"BriefDescription": "Conditional branch"
+-	},
+-	{
+-	"EventCode": "0x90",
+-	"EventName": "taken_condition_br",
+-	"BriefDescription": "Taken conditional branch"
+-	},
+-	{
+-	"EventCode": "0xA0",
+-	"EventName": "jal_inst",
+-	"BriefDescription": "JAL instruction"
+-	},
+-	{
+-	"EventCode": "0xB0",
+-	"EventName": "jalr_inst",
+-	"BriefDescription": "JALR instruction"
+-	},
+-	{
+-	"EventCode": "0xC0",
+-	"EventName": "ret_inst",
+-	"BriefDescription": "Return instruction"
+-	},
+-	{
+-	"EventCode": "0xD0",
+-	"EventName": "control_trans_inst",
+-	"BriefDescription": "Control transfer instruction"
+-	},
+-	{
+-	"EventCode": "0xE0",
+-	"EventName": "ex9_inst",
+-	"BriefDescription": "EX9 instruction"
+-	},
+-	{
+-	"EventCode": "0xF0",
+-	"EventName": "int_mul_inst",
+-	"BriefDescription": "Integer multiplication instruction"
+-	},
+-	{
+-	"EventCode": "0x100",
+-	"EventName": "int_div_rem_inst",
+-	"BriefDescription": "Integer division/remainder instruction"
+-	},
+-	{
+-	"EventCode": "0x110",
+-	"EventName": "float_load_inst",
+-	"BriefDescription": "Floating-point load instruction"
+-	},
+-	{
+-	"EventCode": "0x120",
+-	"EventName": "float_store_inst",
+-	"BriefDescription": "Floating-point store instruction"
+-	},
+-	{
+-	"EventCode": "0x130",
+-	"EventName": "float_add_sub_inst",
+-	"BriefDescription": "Floating-point addition/subtraction"
+-	},
+-	{
+-	"EventCode": "0x140",
+-	"EventName": "float_mul_inst",
+-	"BriefDescription": "Floating-point multiplication"
+-	},
+-	{
+-	"EventCode": "0x150",
+-	"EventName": "float_fused_muladd_inst",
+-	"BriefDescription": "Floating-point fused multiply-add"
+-	},
+-	{
+-	"EventCode": "0x160",
+-	"EventName": "float_div_sqrt_inst",
+-	"BriefDescription": "Floating-point division or square-root"
+-	},
+-	{
+-	"EventCode": "0x170",
+-	"EventName": "other_float_inst",
+-	"BriefDescription": "Other floating-point instruction"
+-	},
+-	{
+-	"EventCode": "0x180",
+-	"EventName": "integer_mul_and_sub_inst_count",
+-	"BriefDescription": "Integer multiplication and add/sub instruction count"
+-	},
+-	{
+-	"EventCode": "0x190",
+-	"EventName": "op_count",
+-	"BriefDescription": "Retired operation count"
+-	},
+-	{
+-	"EventCode": "0x01",
+-	"EventName": "ilm_access",
+-	"BriefDescription": "ILM access"
+-	},
+-	{
+-	"EventCode": "0x11",
+-	"EventName": "dlm_access",
+-	"BriefDescription": "DLM access"
+-	},
+-	{
+-	"EventCode": "0x21",
+-	"EventName": "icache_access",
+-	"BriefDescription": "ICACHE access"
+-	},
+-	{
+-	"EventCode": "0x31",
+-	"EventName": "icache_miss",
+-	"BriefDescription": "ICACHE miss"
+-	},
+-	{
+-	"EventCode": "0x41",
+-	"EventName": "dcache_access",
+-	"BriefDescription": "DCACHE access"
+-	},
+-	{
+-	"EventCode": "0x51",
+-	"EventName": "dcache_miss",
+-	"BriefDescription": "DCACHE miss"
+-	},
+-	{
+-	"EventCode": "0x61",
+-	"EventName": "dcache_load_access",
+-	"BriefDescription": "DCACHE load access"
+-	},
+-	{
+-	"EventCode": "0x71",
+-	"EventName": "dcache_load_miss",
+-	"BriefDescription": "DCACHE load miss"
+-	},
+-	{
+-	"EventCode": "0x81",
+-	"EventName": "dcache_store_access",
+-	"BriefDescription": "DCACHE store access"
+-	},
+-	{
+-	"EventCode": "0x91",
+-	"EventName": "dcache_store_miss",
+-	"BriefDescription": "DCACHE store miss"
+-	},
+-	{
+-	"EventCode": "0xA1",
+-	"EventName": "dcache_wb",
+-	"BriefDescription": "DCACHE writeback"
+-	},
+-	{
+-	"EventCode": "0xB1",
+-	"EventName": "cycle_wait_icache_fill",
+-	"BriefDescription": "Cycles waiting for ICACHE fill data"
+-	},
+-	{
+-	"EventCode": "0xC1",
+-	"EventName": "cycle_wait_dcache_fill",
+-	"BriefDescription": "Cycles waiting for DCACHE fill data"
+-	},
+-	{
+-	"EventCode": "0xD1",
+-	"EventName": "uncached_ifetch_from_bus",
+-	"BriefDescription": "Uncached ifetch data access from bus"
+-	},
+-	{
+-	"EventCode": "0xE1",
+-	"EventName": "uncached_load_from_bus",
+-	"BriefDescription": "Uncached load data access from bus"
+-	},
+-	{
+-	"EventCode": "0xF1",
+-	"EventName": "cycle_wait_uncached_ifetch",
+-	"BriefDescription": "Cycles waiting for uncached ifetch data from bus"
+-	},
+-	{
+-	"EventCode": "0x101",
+-	"EventName": "cycle_wait_uncached_load",
+-	"BriefDescription": "Cycles waiting for uncached load data from bus"
+-	},
+-	{
+-	"EventCode": "0x111",
+-	"EventName": "main_itlb_access",
+-	"BriefDescription": "Main ITLB access"
+-	},
+-	{
+-	"EventCode": "0x121",
+-	"EventName": "main_itlb_miss",
+-	"BriefDescription": "Main ITLB miss"
+-	},
+-	{
+-	"EventCode": "0x131",
+-	"EventName": "main_dtlb_access",
+-	"BriefDescription": "Main DTLB access"
+-	},
+-	{
+-	"EventCode": "0x141",
+-	"EventName": "main_dtlb_miss",
+-	"BriefDescription": "Main DTLB miss"
+-	},
+-	{
+-	"EventCode": "0x151",
+-	"EventName": "cycle_wait_itlb_fill",
+-	"BriefDescription": "Cycles waiting for Main ITLB fill data"
+-	},
+-	{
+-	"EventCode": "0x161",
+-	"EventName": "pipe_stall_cycle_dtlb_miss",
+-	"BriefDescription": "Pipeline stall cycles caused by Main DTLB miss"
+-	},
+-	{
+-	"EventCode": "0x171",
+-	"EventName": "prefetch_bus_access",
+-	"BriefDescription": "Hardware prefetch bus access"
+-	},
+-	{
+-	"EventCode": "0x181",
+-	"EventName": "cycle_wait_for_operand",
+-	"BriefDescription": "Cycles waiting for source operand ready in the integer register file scoreboard"
+-	},
+-	{
+-	"EventCode": "0x02",
+-	"EventName": "mispredict_condition_br",
+-	"BriefDescription": "Misprediction of conditional branches"
+-	},
+-	{
+-	"EventCode": "0x12",
+-	"EventName": "mispredict_take_condition_br",
+-	"BriefDescription": "Misprediction of taken conditional branches"
+-	},
+-	{
+-	"EventCode": "0x22",
+-	"EventName": "mispredict_target_ret_inst",
+-	"BriefDescription": "Misprediction of targets of Return instructions"
+-	}
+-]
+diff --git a/tools/perf/pmu-events/arch/riscv/mapfile.csv b/tools/perf/pmu-events/arch/riscv/mapfile.csv
+index 631257eefbeb..b986ce9a5878 100644
+--- a/tools/perf/pmu-events/arch/riscv/mapfile.csv
++++ b/tools/perf/pmu-events/arch/riscv/mapfile.csv
+@@ -15,8 +15,10 @@
+ #
+ #MVENDORID-MARCHID-MIMPID,Version,Filename,EventType
+ 0x489-0x8000000000000007-0x[[:xdigit:]]+,v1,sifive/u74,core
+-0x31e-0x8000000000008a45-0x[[:xdigit:]]+,V5,andes/AX45,core
+-0x31e-0x8000000000000a45-0x[[:xdigit:]]+,V5,andes/A45,core
+-0x31e-0x8000000000008a25-0x[[:xdigit:]]+,V5,andes/AX25,core
+-0x31e-0x8000000000000a25-0x[[:xdigit:]]+,V5,andes/A25,core
+-0x31e-0x8000000000008a65-0x[[:xdigit:]]+,V5,andes/AX65,core
++0x31e-0x8000000000008a25-0x[[:xdigit:]]+,v1,andes/AX25,core
++0x31e-0x8000000000000a25-0x[[:xdigit:]]+,v1,andes/AX25,core
++0x31e-0x8000000000008a27-0x[[:xdigit:]]+,v1,andes/AX25,core
++0x31e-0x8000000000000a27-0x[[:xdigit:]]+,v1,andes/AX25,core
++0x31e-0x8000000000008a45-0x[[:xdigit:]]+,v1,andes/AX45,core
++0x31e-0x8000000000000a45-0x[[:xdigit:]]+,v1,andes/AX45,core
++0x31e-0x8000000000008a65-0x[[:xdigit:]]+,v1,andes/AX65,core
+-- 
+2.34.1
+

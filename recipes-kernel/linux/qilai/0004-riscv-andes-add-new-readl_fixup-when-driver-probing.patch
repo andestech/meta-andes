@@ -1,0 +1,108 @@
+From bece38eaefded12aafbd91fa0f238c6cc02e31c2 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Tue, 2 Aug 2022 09:39:00 +0800
+Subject: [PATCH 004/191] riscv: andes: add new readl_fixup() when driver
+ probing
+
+Reformed from the following patches on RISCV-Linux-5.4:
+- (77573fb3af94) riscv: Add new readl_fixup() when driver probing
+- (21033a8b8069) riscv: Add shift_bits parameter on readl_fixup()
+- (86c6918870fe) riscv: Fix readl_fixup undefined problem
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/include/asm/uaccess.h |  2 ++
+ arch/riscv/kernel/riscv_ksyms.c  |  1 +
+ arch/riscv/lib/Makefile          |  1 +
+ arch/riscv/lib/driver_access.S   | 44 ++++++++++++++++++++++++++++++++
+ 4 files changed, 48 insertions(+)
+ create mode 100644 arch/riscv/lib/driver_access.S
+
+diff --git a/arch/riscv/include/asm/uaccess.h b/arch/riscv/include/asm/uaccess.h
+index ec0cab9fbddd..51d59423eb77 100644
+--- a/arch/riscv/include/asm/uaccess.h
++++ b/arch/riscv/include/asm/uaccess.h
+@@ -285,6 +285,8 @@ do {								\
+ })
+ 
+ 
++extern asmlinkage int readl_fixup(void __iomem *addr, unsigned int val,
++	unsigned int shift_bits);
+ unsigned long __must_check __asm_copy_to_user(void __user *to,
+ 	const void *from, unsigned long n);
+ unsigned long __must_check __asm_copy_from_user(void *to,
+diff --git a/arch/riscv/kernel/riscv_ksyms.c b/arch/riscv/kernel/riscv_ksyms.c
+index 5ab1c7e1a6ed..f9f69bc14a1b 100644
+--- a/arch/riscv/kernel/riscv_ksyms.c
++++ b/arch/riscv/kernel/riscv_ksyms.c
+@@ -15,3 +15,4 @@ EXPORT_SYMBOL(memmove);
+ EXPORT_SYMBOL(__memset);
+ EXPORT_SYMBOL(__memcpy);
+ EXPORT_SYMBOL(__memmove);
++EXPORT_SYMBOL(readl_fixup);
+diff --git a/arch/riscv/lib/Makefile b/arch/riscv/lib/Makefile
+index 25d5c9664e57..6c38bda9f479 100644
+--- a/arch/riscv/lib/Makefile
++++ b/arch/riscv/lib/Makefile
+@@ -3,6 +3,7 @@ lib-y			+= delay.o
+ lib-y			+= memcpy.o
+ lib-y			+= memset.o
+ lib-y			+= memmove.o
++lib-y			+= driver_access.o
+ lib-$(CONFIG_MMU)	+= uaccess.o
+ lib-$(CONFIG_64BIT)	+= tishift.o
+ 
+diff --git a/arch/riscv/lib/driver_access.S b/arch/riscv/lib/driver_access.S
+new file mode 100644
+index 000000000000..6fffafd7c79d
+--- /dev/null
++++ b/arch/riscv/lib/driver_access.S
+@@ -0,0 +1,44 @@
++#include <linux/linkage.h>
++#include <asm/asm.h>
++#include <asm/csr.h>
++
++	.altmacro
++	.macro fixup op reg addr lbl
++	LOCAL _epc
++_epc:
++	\op \reg, \addr
++	.section __ex_table,"a"
++	.balign RISCV_SZPTR
++	RISCV_PTR _epc, \lbl
++	.previous
++	.endm
++
++/*
++	a0: driver register address
++	a1: correct value
++	a2: shift bits
++	if register value is not equal a1
++	return 0
++*/
++ENTRY(readl_fixup)
++
++	fixup lw	t0, (a0), 2f
++	fence	i, r
++	srl	t0, t0, a2
++	bne	t0, a1, error
++	li	a0, 1
++	ret
++
++error:
++	li	a0, 0
++	ret
++
++ENDPROC(readl_fixup)
++
++	.section .fixup,"ax"
++	.balign 4
++	/* Fixup code for readl_fixup */
++2:
++	li	a0, 0
++	ret
++	.previous
+-- 
+2.34.1
+

@@ -1,0 +1,41 @@
+From 0588a82b4b4a159414c3356455c0e5e4d6a04a55 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Wed, 8 May 2024 12:32:04 +0800
+Subject: [PATCH 178/191] rtc: disable the on cpu rtc atcrtc100
+
+To disable the on cpu RTC, the system will automatically use the
+external RTC.
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ arch/riscv/boot/dts/andes/qilai.dts     | 1 +
+ arch/riscv/boot/dts/andes/qilai_gpu.dts | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/arch/riscv/boot/dts/andes/qilai.dts b/arch/riscv/boot/dts/andes/qilai.dts
+index 8554a92a2efa..c464496819a1 100644
+--- a/arch/riscv/boot/dts/andes/qilai.dts
++++ b/arch/riscv/boot/dts/andes/qilai.dts
+@@ -379,6 +379,7 @@ rtc@30600000 {
+ 		interrupts = <0x1 0x4 0x2 0x4>;
+ 		interrupt-parent = <0x6>;
+ 		wakeup-source;
++		status = "disabled";
+ 	};
+ 
+ 	mmc@30c00000 {
+diff --git a/arch/riscv/boot/dts/andes/qilai_gpu.dts b/arch/riscv/boot/dts/andes/qilai_gpu.dts
+index 4ef7531e2899..f6a5c3a64674 100644
+--- a/arch/riscv/boot/dts/andes/qilai_gpu.dts
++++ b/arch/riscv/boot/dts/andes/qilai_gpu.dts
+@@ -380,6 +380,7 @@ rtc@30600000 {
+ 		interrupts = <0x1 0x4 0x2 0x4>;
+ 		interrupt-parent = <0x6>;
+ 		wakeup-source;
++		status = "disabled";
+ 	};
+ 
+ 	mmc@30c00000 {
+-- 
+2.34.1
+

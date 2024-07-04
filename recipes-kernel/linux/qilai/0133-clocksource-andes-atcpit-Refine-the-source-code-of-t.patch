@@ -1,0 +1,83 @@
+From 62f1808bcd9b5474a2504a44af040c3930be2f7e Mon Sep 17 00:00:00 2001
+From: CL Wang <cl634@andestech.com>
+Date: Thu, 31 Aug 2023 14:14:59 +0800
+Subject: [PATCH 133/191] clocksource: andes: atcpit: Refine the source code of
+ the atcpit driver.
+
+Follow Tim's suggestion to refine the source code of the driver
+Please refer to the following link for the detailed reason for the change.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/clocksource/timer-atcpit.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/clocksource/timer-atcpit.c b/drivers/clocksource/timer-atcpit.c
+index 1fd6ce321230..35b947c71cde 100755
+--- a/drivers/clocksource/timer-atcpit.c
++++ b/drivers/clocksource/timer-atcpit.c
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+- * Copyright (C) 2023 Andes Corporation
++ * Copyright (C) 2023 Andes Technology Corporation
+  */
+ 
+ #include <linux/clk.h>
+@@ -110,7 +110,7 @@ static void atcpit_ch_en(void __iomem *base, u8 ch, u8 timer_id, u8 en)
+ 	u32 pit_en;
+ 
+ 	pit_en = readl(base + CH_EN_REG);
+-	if (en == 1)
++	if (en)
+ 		pit_en |= CH_EN_TIME(ch, timer_id);
+ 	else
+ 		pit_en &= ~(CH_EN_TIME(ch, timer_id));
+@@ -124,7 +124,7 @@ static void atcpit_ch_int_en(void __iomem *base, u8 ch, u8 timer_id, u8 en)
+ 
+ 	pit_int_en = readl(base + INT_EN);
+ 
+-	if (en == 1)
++	if (en)
+ 		pit_int_en |= CH_INT_EN(ch, timer_id);
+ 	else
+ 		pit_int_en &= ~(CH_INT_EN(ch, timer_id));
+@@ -155,7 +155,7 @@ static inline void atcpit_clkevt_time_stop(struct atcpit_data *pit_data)
+ 
+ static int atcpit_clkevt_set_periodic(struct clock_event_device *evt)
+ {
+-	struct atcpit_data *pit_data = NULL;
++	struct atcpit_data *pit_data;
+ 	struct timer_of *to = to_timer_of(evt);
+ 
+ 	pit_data = to_atcpit_data_clkevt(evt);
+@@ -169,7 +169,7 @@ static int atcpit_clkevt_set_periodic(struct clock_event_device *evt)
+ 
+ static int atcpit_clkevt_shutdown(struct clock_event_device *evt)
+ {
+-	struct atcpit_data *pit_data = NULL;
++	struct atcpit_data *pit_data;
+ 
+ 	pit_data = to_atcpit_data_clkevt(evt);
+ 	atcpit_clkevt_time_stop(pit_data);
+@@ -192,7 +192,7 @@ static irqreturn_t atcpit_timer_interrupt(int irq, void *dev_id)
+ 
+ static u64 atcpit_clksrc_read(struct clocksource *clksrc)
+ {
+-	struct atcpit_data *atcpit = NULL;
++	struct atcpit_data *atcpit;
+ 
+ 	atcpit = to_atcpit_data_clksrc(clksrc);
+ 
+@@ -268,7 +268,7 @@ static int __init atcpit_clocksource_init(struct device_node *node, struct atcpi
+ static int __init atcpit_timer_init(struct device_node *node)
+ {
+ 	int (*read_fixup)(void __iomem *addr, unsigned int val, unsigned int shift_bits);
+-	struct atcpit_data *pit_data = NULL;
++	struct atcpit_data *pit_data;
+ 	int                ret = 0;
+ 	u32                val;
+ 
+-- 
+2.34.1
+

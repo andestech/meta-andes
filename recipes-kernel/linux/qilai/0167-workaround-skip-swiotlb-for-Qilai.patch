@@ -1,0 +1,28 @@
+From 94d86b8d005c69f219b485daeea9f0057aaf0d36 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Thu, 22 Feb 2024 20:14:35 +0800
+Subject: [PATCH 167/191] workaround: skip swiotlb for Qilai
+
+Error in the Qilai SOC platform
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ arch/riscv/Kconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 30c414f83925..5057327ff277 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -285,7 +285,7 @@ config ARCH_RV64I
+ 	select HAVE_FTRACE_MCOUNT_RECORD if !XIP_KERNEL
+ 	select HAVE_FUNCTION_GRAPH_TRACER
+ 	select HAVE_FUNCTION_TRACER if !XIP_KERNEL && !PREEMPTION
+-	select SWIOTLB if MMU
++	select SWIOTLB if MMU && !SOC_QILAI
+ 
+ endchoice
+ 
+-- 
+2.34.1
+

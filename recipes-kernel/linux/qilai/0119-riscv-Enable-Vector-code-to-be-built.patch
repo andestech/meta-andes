@@ -1,0 +1,91 @@
+From 8ffb5ac0e4d67e5f7d35ed3afc8862a7ab24d45d Mon Sep 17 00:00:00 2001
+From: Guo Ren <guoren@linux.alibaba.com>
+Date: Mon, 5 Jun 2023 11:07:21 +0000
+Subject: [PATCH 119/191] riscv: Enable Vector code to be built
+
+This patch adds configs for building Vector code. First it detects the
+reqired toolchain support for building the code. Then it provides an
+option setting whether Vector is implicitly enabled to userspace.
+
+Signed-off-by: Guo Ren <guoren@linux.alibaba.com>
+Co-developed-by: Greentime Hu <greentime.hu@sifive.com>
+Signed-off-by: Greentime Hu <greentime.hu@sifive.com>
+Co-developed-by: Andy Chiu <andy.chiu@sifive.com>
+Signed-off-by: Andy Chiu <andy.chiu@sifive.com>
+Reviewed-by: Conor Dooley <conor.dooley@microchip.com>
+Link: https://lore.kernel.org/r/20230605110724.21391-25-andy.chiu@sifive.com
+Signed-off-by: Palmer Dabbelt <palmer@rivosinc.com>
+---
+ arch/riscv/Kconfig  | 31 +++++++++++++++++++++++++++++++
+ arch/riscv/Makefile |  6 +++++-
+ 2 files changed, 36 insertions(+), 1 deletion(-)
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index a37d42ca4d0b..7db6b7587861 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -436,6 +436,37 @@ config RISCV_ISA_SVPBMT
+ 
+ 	   If you don't know what to do here, say Y.
+ 
++config TOOLCHAIN_HAS_V
++	bool
++	default y
++	depends on !64BIT || $(cc-option,-mabi=lp64 -march=rv64iv)
++	depends on !32BIT || $(cc-option,-mabi=ilp32 -march=rv32iv)
++	depends on LLD_VERSION >= 140000 || LD_VERSION >= 23800
++	depends on AS_HAS_OPTION_ARCH
++
++config RISCV_ISA_V
++	bool "VECTOR extension support"
++	depends on TOOLCHAIN_HAS_V
++	depends on FPU
++	select DYNAMIC_SIGFRAME
++	default y
++	help
++	  Say N here if you want to disable all vector related procedure
++	  in the kernel.
++
++	  If you don't know what to do here, say Y.
++
++config RISCV_ISA_V_DEFAULT_ENABLE
++	bool "Enable userspace Vector by default"
++	depends on RISCV_ISA_V
++	default y
++	help
++	  Say Y here if you want to enable Vector in userspace by default.
++	  Otherwise, userspace has to make explicit prctl() call to enable
++	  Vector, or enable it via the sysctl interface.
++
++	  If you don't know what to do here, say Y.
++
+ config TOOLCHAIN_HAS_ZICBOM
+ 	bool
+ 	default y
+diff --git a/arch/riscv/Makefile b/arch/riscv/Makefile
+index b9e17ba9976f..73e975cddd03 100644
+--- a/arch/riscv/Makefile
++++ b/arch/riscv/Makefile
+@@ -60,6 +60,7 @@ riscv-march-$(CONFIG_ARCH_RV32I)	:= rv32ima
+ riscv-march-$(CONFIG_ARCH_RV64I)	:= rv64ima
+ riscv-march-$(CONFIG_FPU)		:= $(riscv-march-y)fd
+ riscv-march-$(CONFIG_RISCV_ISA_C)	:= $(riscv-march-y)c
++riscv-march-$(CONFIG_RISCV_ISA_V)	:= $(riscv-march-y)v
+ 
+ ifdef CONFIG_TOOLCHAIN_NEEDS_OLD_ISA_SPEC
+ KBUILD_CFLAGS += -Wa,-misa-spec=2.2
+@@ -74,7 +75,10 @@ riscv-march-$(CONFIG_TOOLCHAIN_HAS_ZICBOM) := $(riscv-march-y)_zicbom
+ # Check if the toolchain supports Zihintpause extension
+ riscv-march-$(CONFIG_TOOLCHAIN_HAS_ZIHINTPAUSE) := $(riscv-march-y)_zihintpause
+ 
+-KBUILD_CFLAGS += -march=$(subst fd,,$(riscv-march-y))
++# Remove F,D,V from isa string for all. Keep extensions between "fd" and "v" by
++# matching non-v and non-multi-letter extensions out with the filter ([^v_]*)
++KBUILD_CFLAGS += -march=$(shell echo $(riscv-march-y) | sed -E 's/(rv32ima|rv64ima)fd([^v_]*)v?/\1\2/')
++
+ KBUILD_AFLAGS += -march=$(riscv-march-y)
+ 
+ KBUILD_CFLAGS += -mno-save-restore
+-- 
+2.34.1
+

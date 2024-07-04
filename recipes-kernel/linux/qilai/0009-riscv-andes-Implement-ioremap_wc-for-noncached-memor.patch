@@ -1,0 +1,84 @@
+From 1619ef29a9b300e9600c4959349db56d017a0a80 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Tue, 7 Mar 2023 15:37:07 +0800
+Subject: [PATCH 009/191] riscv: andes: Implement ioremap_wc for noncached
+ memory remapping support
+
+In the RISCV-Linux-5.4 branch, ioremap_nocache() is the function
+that Andes uses to support noncache memory mapping.
+
+But the Linux kernel ioremap_nocache() has been deprecated.
+- (4bdc0d676a64) remove ioremap_nocache and devm_ioremap_nocache
+
+And the generic RISCV ioremap() flow has also changed.
+- (38af57825313) riscv: use the generic ioremap code
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/include/asm/io.h |  6 ++++++
+ arch/riscv/mm/Makefile      |  3 +++
+ arch/riscv/mm/ioremap.c     | 21 +++++++++++++++++++++
+ 3 files changed, 30 insertions(+)
+ create mode 100644 arch/riscv/mm/ioremap.c
+
+diff --git a/arch/riscv/include/asm/io.h b/arch/riscv/include/asm/io.h
+index 42497d487a17..76af2a7920b5 100644
+--- a/arch/riscv/include/asm/io.h
++++ b/arch/riscv/include/asm/io.h
+@@ -133,6 +133,12 @@ __io_writes_outs(outs, u64, q, __io_pbr(), __io_paw())
+ #define outsq(addr, buffer, count) __outsq(PCI_IOBASE + (addr), buffer, count)
+ #endif
+ 
++#ifdef CONFIG_MMU
++extern void __iomem *ioremap_wc(phys_addr_t phys_addr, size_t size);
++#define ioremap_wc ioremap_wc
++#define ioremap_wt ioremap_wc
++#endif /* CONFIG_MMU */
++
+ #include <asm-generic/io.h>
+ 
+ #ifdef CONFIG_MMU
+diff --git a/arch/riscv/mm/Makefile b/arch/riscv/mm/Makefile
+index d76aabf4b94d..3eeb632fd2e7 100644
+--- a/arch/riscv/mm/Makefile
++++ b/arch/riscv/mm/Makefile
+@@ -13,6 +13,9 @@ obj-y += extable.o
+ obj-$(CONFIG_MMU) += fault.o pageattr.o
+ obj-y += cacheflush.o
+ obj-y += context.o
++ifeq ($(CONFIG_ERRATA_ANDES),y)
++obj-y += ioremap.o
++endif
+ 
+ ifeq ($(CONFIG_MMU),y)
+ obj-$(CONFIG_SMP) += tlbflush.o
+diff --git a/arch/riscv/mm/ioremap.c b/arch/riscv/mm/ioremap.c
+new file mode 100644
+index 000000000000..6cdc8cac8ceb
+--- /dev/null
++++ b/arch/riscv/mm/ioremap.c
+@@ -0,0 +1,21 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++#include <linux/module.h>
++#include <linux/export.h>
++#include <linux/io.h>
++#include <linux/pgtable.h>
++
++void __iomem *ioremap_wc(phys_addr_t phys_addr, size_t size)
++{
++	void __iomem *ret;
++	pgprot_t prot;
++
++	prot = pgprot_writecombine(PAGE_KERNEL);
++
++	ret = ioremap_prot(phys_addr, size, pgprot_val(prot));
++
++	return ret;
++}
++EXPORT_SYMBOL(ioremap_wc);
+-- 
+2.34.1
+

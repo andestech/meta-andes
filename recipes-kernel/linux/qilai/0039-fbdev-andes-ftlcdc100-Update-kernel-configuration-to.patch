@@ -1,0 +1,2161 @@
+From a20e8360a5ea7f9a8c3b8824d5e91041cb76df39 Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Thu, 27 Apr 2023 15:51:47 +0800
+Subject: [PATCH 039/191] fbdev: andes: ftlcdc100: Update kernel configuration
+ to support the framebuffer feature.
+
+1. Support framebuffer function.
+2. Fix kernel panic problem when running "cat /dev/fb > /mnt/fb_img".
+3. Source code is modified to match Linux coding style.
+4. Update kernel configuration to support the ALSA feature.
+5. Adjust the video buffer size to meet PPMA requirements.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ arch/riscv/configs/andes-support.config       |   5 +
+ arch/riscv/configs/andes_defconfig            |   4 +
+ drivers/video/fbdev/Kconfig                   |   1 +
+ drivers/video/fbdev/Makefile                  |   1 +
+ drivers/video/fbdev/ftlcdc100/Kconfig         |  74 ++
+ drivers/video/fbdev/ftlcdc100/Makefile        |   1 +
+ .../video/fbdev/ftlcdc100/faradayfb-main.c    | 867 ++++++++++++++++++
+ drivers/video/fbdev/ftlcdc100/faradayfb.h     | 217 +++++
+ drivers/video/fbdev/ftlcdc100/lcd-info.c      | 266 ++++++
+ .../video/fbdev/ftlcdc100/pingpong-module.c   | 614 +++++++++++++
+ 10 files changed, 2050 insertions(+)
+ create mode 100644 drivers/video/fbdev/ftlcdc100/Kconfig
+ create mode 100644 drivers/video/fbdev/ftlcdc100/Makefile
+ create mode 100644 drivers/video/fbdev/ftlcdc100/faradayfb-main.c
+ create mode 100644 drivers/video/fbdev/ftlcdc100/faradayfb.h
+ create mode 100644 drivers/video/fbdev/ftlcdc100/lcd-info.c
+ create mode 100644 drivers/video/fbdev/ftlcdc100/pingpong-module.c
+
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+index d5adc060c4ce..4db18a169178 100644
+--- a/arch/riscv/configs/andes-support.config
++++ b/arch/riscv/configs/andes-support.config
+@@ -24,5 +24,10 @@ CONFIG_I2C_CHARDEV=y
+ CONFIG_I2C_ATCIIC100=y
+ CONFIG_ATCIIC_IRQ=y
+ 
++CONFIG_FB_FTLCDC100=y
++CONFIG_PANEL_LW500AC9601=y
++CONFIG_FFB_MODE_RGB=y
++CONFIG_FFB_MODE_24BPP=y
++
+ CONFIG_SND_FTSSP010=y
+ CONFIG_SND_FTSSP010_AC97=y
+diff --git a/arch/riscv/configs/andes_defconfig b/arch/riscv/configs/andes_defconfig
+index fb9401afe72d..71bbb5c5359c 100644
+--- a/arch/riscv/configs/andes_defconfig
++++ b/arch/riscv/configs/andes_defconfig
+@@ -176,6 +176,10 @@ CONFIG_RCU_EQS_DEBUG=y
+ # CONFIG_RUNTIME_TESTING_MENU is not set
+ CONFIG_MEMTEST=y
+ 
++CONFIG_FB_CFB_FILLRECT=y
++CONFIG_FB_CFB_COPYAREA=y
++CONFIG_FB_CFB_IMAGEBLIT=y
++
+ CONFIG_SOUND=y
+ CONFIG_SOUND_OSS_CORE=y
+ CONFIG_SOUND_OSS_CORE_PRECLAIM=y
+diff --git a/drivers/video/fbdev/Kconfig b/drivers/video/fbdev/Kconfig
+index 974e862cd20d..b2a9bc4c2cea 100644
+--- a/drivers/video/fbdev/Kconfig
++++ b/drivers/video/fbdev/Kconfig
+@@ -2240,3 +2240,4 @@ config FB_SM712
+ source "drivers/video/fbdev/omap/Kconfig"
+ source "drivers/video/fbdev/omap2/Kconfig"
+ source "drivers/video/fbdev/mmp/Kconfig"
++source "drivers/video/fbdev/ftlcdc100/Kconfig"
+diff --git a/drivers/video/fbdev/Makefile b/drivers/video/fbdev/Makefile
+index 7795c4126706..cc9bd386c376 100644
+--- a/drivers/video/fbdev/Makefile
++++ b/drivers/video/fbdev/Makefile
+@@ -115,6 +115,7 @@ obj-y                             += omap2/
+ obj-$(CONFIG_XEN_FBDEV_FRONTEND)  += xen-fbfront.o
+ obj-$(CONFIG_FB_CARMINE)          += carminefb.o
+ obj-$(CONFIG_FB_MB862XX)	  += mb862xx/
++obj-$(CONFIG_FB_FTLCDC100)        += ftlcdc100/
+ obj-$(CONFIG_FB_HYPERV)		  += hyperv_fb.o
+ obj-$(CONFIG_FB_OPENCORES)	  += ocfb.o
+ obj-$(CONFIG_FB_SM712)		  += sm712fb.o
+diff --git a/drivers/video/fbdev/ftlcdc100/Kconfig b/drivers/video/fbdev/ftlcdc100/Kconfig
+new file mode 100644
+index 000000000000..1393d530684d
+--- /dev/null
++++ b/drivers/video/fbdev/ftlcdc100/Kconfig
+@@ -0,0 +1,74 @@
++config FB_FTLCDC100
++        tristate "Faraday FTLCDC100 driver"
++        depends on FB
++        select FB_CFB_FILLRECT
++        select FB_CFB_COPYAREA
++        select FB_CFB_IMAGEBLIT
++
++	choice
++		prompt "Default LCD Panel"
++		depends on FB_FTLCDC100
++		default PANEL_AUA036QN01
++		help
++		  This option select a default panel setting for the LCD controller
++
++		config PANEL_AUA036QN01
++			bool "AU 3.5 inch LCD Panel"
++
++		config PANEL_CH7013A
++			bool "Chrontel Digital PC to TV Encoder"
++			select I2C
++			select I2C_FARADAY
++			select CH7013A
++
++		config PANEL_AUA070VW04
++			bool "AU 7.0 inch LCD Panel"
++
++		config PANEL_LW500AC9601
++			bool "CHIMEI 5.0 inch LCD panel"
++
++	endchoice
++
++	# config FTLCD_OSD
++	# 	bool "Enable OSD (On Screen Display)"
++	# 	depends on FB_FTLCDC100
++	# 	default n
++	# 	---help---
++	# 	This enables access to the OSD (On Screen Display) for Faraday
++	# 	FTLCDC100 LCD control.  Disabling OSD will reduce the size of
++	# 	the kernel by approximately 6kb.
++	#
++
++	choice
++	        prompt "Default Color Mode"
++	        depends on FB_FTLCDC100
++	        default FFB_MODE_RGB
++	        help
++	          This option select default color mode
++
++		config FFB_MODE_RGB
++			bool "RGB Mode"
++		config FFB_MODE_YUV422
++			bool "YUV422 Mode"
++		config FFB_MODE_YUV420
++			bool "YUV420 Mode"
++	endchoice
++
++	choice
++	        prompt "Default BPP"
++	        depends on FB_FTLCDC100
++	        default FFB_MODE_16BPP
++	        help
++	          This option select default BPP (bits-per-pixel)
++
++		config FFB_MODE_8BPP
++			depends on FFB_MODE_RGB || FFB_MODE_YUV420
++			bool "8 bits-per-pixel"
++		config FFB_MODE_16BPP
++			depends on FFB_MODE_RGB || FFB_MODE_YUV422
++			bool "16 bits-per-pixel"
++		config FFB_MODE_24BPP
++			depends on FFB_MODE_RGB
++			bool "24 bits-per-pixel"
++	endchoice
++
+diff --git a/drivers/video/fbdev/ftlcdc100/Makefile b/drivers/video/fbdev/ftlcdc100/Makefile
+new file mode 100644
+index 000000000000..3f206f6db0d7
+--- /dev/null
++++ b/drivers/video/fbdev/ftlcdc100/Makefile
+@@ -0,0 +1 @@
++obj-$(CONFIG_FB_FTLCDC100) += faradayfb-main.o
+diff --git a/drivers/video/fbdev/ftlcdc100/faradayfb-main.c b/drivers/video/fbdev/ftlcdc100/faradayfb-main.c
+new file mode 100644
+index 000000000000..33ebf1132773
+--- /dev/null
++++ b/drivers/video/fbdev/ftlcdc100/faradayfb-main.c
+@@ -0,0 +1,867 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++
++#include <linux/module.h>
++#include <linux/fb.h>
++#include <linux/delay.h>
++#include <linux/device.h>
++#include <linux/dma-mapping.h>
++#include <linux/interrupt.h>
++#include <linux/platform_device.h>
++#include <asm/uaccess.h>
++#include <asm/atomic.h>
++#include "faradayfb.h"
++#include "lcd-info.c"
++#include "pingpong-module.c"
++
++#define REG32(a)        (*(unsigned int *)(a))
++static resource_size_t	lcd_base;
++
++static u32 faradayfb_pseudo_palette[32];
++static inline void faradayfb_lcd_power(struct fb_info *info, int on)
++{
++	struct faradayfb_info *fbi = info->par;
++	LCD_Register *plcd = (LCD_Register *)fbi->io_base;
++
++	if (on)
++		fbi->control |= (1UL << 11);
++	else
++		fbi->control &= ~(1UL << 11);
++
++	plcd->Control = fbi->control;
++}
++
++static void faradayfb_setup_gpio(struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++	LCD_Register *plcd = (LCD_Register *)fbi->io_base;
++
++	plcd->GPIO = 0x010000;
++}
++
++static void faradayfb_enable_controller(struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++	LCD_Register *plcd = (LCD_Register *)fbi->io_base;
++
++	plcd->Timing0 = fbi->time0;
++	plcd->Timing1 = fbi->time1;
++	plcd->Timing2 = fbi->time2;
++	plcd->Control = fbi->control & ~0x01;
++	plcd->UPBase  = fbi->screen_dma | fbi->frame420_size;
++	plcd->Control |= 0x01;
++	DEBUG(0, 1, "Time0   = 0x%08x\n", plcd->Timing0);
++	DEBUG(0, 1, "Time1   = 0x%08x\n", plcd->Timing1);
++	DEBUG(0, 1, "Time2   = 0x%08x\n", plcd->Timing2);
++	DEBUG(0, 1, "Control = 0x%08x\n", plcd->Control);
++	DEBUG(0, 1, "UPBase  = 0x%08x\n", plcd->UPBase);
++}
++
++static void faradayfb_disable_controller(struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++	LCD_Register *plcd = (LCD_Register *)fbi->io_base;
++	DECLARE_WAITQUEUE(wait, current);
++
++	set_current_state(TASK_UNINTERRUPTIBLE);
++	add_wait_queue(&fbi->ctrlr_wait, &wait);
++	fbi->control &= ~0x0001;
++	plcd->Control = fbi->control;
++	schedule_timeout(20 * HZ / 1000);
++	remove_wait_queue(&fbi->ctrlr_wait, &wait);
++}
++
++static void faradayfb_enable_int(struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++	LCD_Register *plcd = (LCD_Register *)fbi->io_base;
++
++	plcd->INTREnable = fbi->int_mask;
++}
++
++static void faradayfb_disable_int(struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++	LCD_Register *plcd = (LCD_Register *)fbi->io_base;
++
++	fbi->int_mask    = plcd->INTREnable;
++	plcd->INTREnable = 0;
++	plcd->Status     = 0x1e;
++}
++
++static struct faradayfb_rgb def_rgb_8 = {
++
++	.red    = { .offset = 0, .length = 4 },
++	.green  = { .offset = 0, .length = 4 },
++	.blue   = { .offset = 0, .length = 4 },
++	.transp = { .offset = 0, .length = 0 },
++};
++
++static struct faradayfb_rgb def_rgb_16 = {
++
++	.red    = { .offset = 11, .length = 5, .msb_right = 0 },
++	.green  = { .offset = 5,  .length = 6, .msb_right = 0 },
++	.blue   = { .offset = 0,  .length = 5, .msb_right = 0 },
++	.transp = { .offset = 15, .length = 0, .msb_right = 0 },
++};
++
++static struct faradayfb_rgb def_rgb_24 = {
++
++	.red    = { .offset = 16, .length = 8, .msb_right = 0 },
++	.green  = { .offset = 8,  .length = 8, .msb_right = 0 },
++	.blue   = { .offset = 0,  .length = 8, .msb_right = 0 },
++	.transp = { .offset = 0,  .length = 0, .msb_right = 0 },
++};
++
++static inline void faradayfb_schedule_work(struct fb_info *info, unsigned int state)
++{
++	struct faradayfb_info *fbi = info->par;
++	unsigned long flags;
++
++	local_irq_save(flags);
++
++	/*
++	 * We need to handle two requests being made at the same time.
++	 * There are two important cases:
++	 *  1. When we are changing VT (C_REENABLE) while unblanking (C_ENABLE)
++	 *     We must perform the unblanking, which will do our REENABLE for us.
++	 *  2. When we are blanking, but immediately unblank before we have
++	 *     blanked.  We do the "REENABLE" thing here as well, just to be sure.
++	 */
++	if (fbi->task_state == C_ENABLE && state == C_REENABLE)
++		state = (unsigned int) -1;
++
++	if (fbi->task_state == C_DISABLE && state == C_ENABLE)
++		state = C_REENABLE;
++
++	if (state != (unsigned int) -1) {
++
++		fbi->task_state = state;
++		schedule_work(&fbi->task);
++	}
++
++	local_irq_restore(flags);
++}
++
++static int faradayfb_setpalettereg(unsigned int regno, unsigned int red,
++		unsigned int green, unsigned int blue, unsigned int trans,
++		struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++
++	if (regno < fbi->palette_size) {
++
++		fbi->palette_cpu[regno] = ((red >> 0) & (0x1fUL << 11)) |
++			((green >> 5) & (0x3F << 5)) |
++			((blue >> 11) & (0x1f << 0));
++
++		return 0;
++	}
++
++	return 1;
++}
++
++static int faradayfb_setcolreg(unsigned int regno, unsigned int red, unsigned int green,
++		unsigned int blue, unsigned int trans, struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++	int ret = 1;
++	/*
++	 * If inverse mode was selected, invert all the colours
++	 * rather than the register number.  The register number
++	 * is what you poke into the framebuffer to produce the
++	 * colour you requested.
++	 */
++	if (fbi->cmap_inverse) {
++
++		red   = 0xffff - red;
++		green = 0xffff - green;
++		blue  = 0xffff - blue;
++	}
++
++	/*
++	 * If greyscale is true, then we convert the RGB value
++	 * to greyscale no mater what visual we are using.
++	 */
++	if (info->var.grayscale)
++		red = green = blue = (19595 * red + 38470 * green + 7471 * blue) >> 16;
++
++	switch (info->fix.visual) {
++
++	case FB_VISUAL_TRUECOLOR:
++		/*
++		 * 12 or 16-bit True Colour.  We encode the RGB value
++		 * according to the RGB bitfield information.
++		 */
++		if (regno < 16) {
++			u32 col;
++
++			red	>>= (16 - info->var.red.length);
++			green	>>= (16 - info->var.green.length);
++			blue	>>= (16 - info->var.blue.length);
++			col = (red << info->var.red.offset) |
++				(green << info->var.green.offset) |
++				(blue << info->var.blue.offset);
++
++			switch (info->var.bits_per_pixel) {
++
++				/* is the following code correct?? */
++			case 16:
++			case 32:
++				((u32 *)(info->pseudo_palette))[regno] = col;
++				ret = 0;
++				break;
++			}
++		}
++		break;
++
++	case FB_VISUAL_STATIC_PSEUDOCOLOR:
++	case FB_VISUAL_PSEUDOCOLOR:
++		if (fbi->smode == FFB_MODE_RGB)
++			ret = faradayfb_setpalettereg(regno, red, green, blue, trans, info);
++		break;
++	}
++
++	return ret;
++}
++
++/*
++ * Round up in the following order: bits_per_pixel, xres,
++ * yres, xres_virtual, yres_virtual, xoffset, yoffset, grayscale,
++ * bitfields, horizontal timing, vertical timing.
++ */
++static int faradayfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++	int rgbidx;
++
++	var->xres = min_t(unsigned int, var->xres, MIN_XRES);
++	var->yres = min_t(unsigned int, var->yres, MIN_YRES);
++	var->xres = max(var->xres, fbi->xres);
++	var->yres = max(var->yres, fbi->yres);
++	var->xres_virtual = max(var->xres_virtual, var->xres);
++	var->yres_virtual = max(var->yres_virtual, var->yres);
++
++	DEBUG(0, 1, "var->bits_per_pixel = %d\n", var->bits_per_pixel);
++
++	switch (var->bits_per_pixel) {
++
++	case 1:
++	case 2:
++	case 4:
++	case 8:
++		rgbidx = RGB_8;
++		break;
++
++	case 16:
++		rgbidx = RGB_16;
++		break;
++
++	case 32:
++		rgbidx = RGB_24;
++		break;
++
++	default:
++		return -EINVAL;
++	}
++
++	/*
++	 * Copy the RGB parameters for this display
++	 * from the machine specific parameters.
++	 */
++	var->red	= fbi->rgb[rgbidx]->red;
++	var->green	= fbi->rgb[rgbidx]->green;
++	var->blue	= fbi->rgb[rgbidx]->blue;
++	var->transp	= fbi->rgb[rgbidx]->transp;
++
++	DEBUG(0, 1, "RGBT length = %d:%d:%d:%d\n",
++			var->red.length, var->green.length, var->blue.length, var->transp.length);
++
++	DEBUG(0, 1, "RGBT offset = %d:%d:%d:%d\n",
++			var->red.offset, var->green.offset, var->blue.offset, var->transp.offset);
++
++	DEBUG(0, 1, "Leave\n");
++
++	return 0;
++}
++
++/*
++ * Configures LCD Controller based on entries in var parameter.  Settings are
++ * only written to the controller if changes were made.
++ */
++static int faradayfb_activate_var(struct fb_var_screeninfo *var, struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++	LCD_Register *plcd = (LCD_Register *)fbi->io_base;
++
++	DEBUG(0, 1, "var: xres=%d hslen=%d lm=%d rm=%d\n", var->xres, var->hsync_len, var->left_margin, var->right_margin);
++	DEBUG(0, 1, "var: yres=%d vslen=%d um=%d bm=%d\n", var->yres, var->vsync_len, var->upper_margin, var->lower_margin);
++
++	fbi->time0 = FARADAY_LCDTIME0_HFP(var->left_margin)
++		| FARADAY_LCDTIME0_HBP(var->right_margin)
++		| FARADAY_LCDTIME0_HW(var->hsync_len)
++		| FARADAY_LCDTIME0_PL(var->xres);
++
++	fbi->time1 = FARADAY_LCDTIME1_VBP(var->upper_margin)
++		| FARADAY_LCDTIME1_VFP(var->lower_margin)
++		| FARADAY_LCDTIME1_VW(var->vsync_len)
++		| FARADAY_LCDTIME1_LF(var->yres);
++
++	if ((plcd->Timing0 != fbi->time0)
++			|| (plcd->Timing1 != fbi->time1)
++			|| (plcd->Timing2 != fbi->time2)
++			|| (plcd->Control != fbi->control)) {
++
++		faradayfb_schedule_work(info, C_REENABLE);
++	}
++
++	return 0;
++}
++
++/* Set the user defined part of the display for the specified console */
++static int faradayfb_set_par(struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++	struct fb_var_screeninfo *var = &info->var;
++	unsigned long palette_mem_size;
++
++	if (var->bits_per_pixel == 16 || var->bits_per_pixel == 32)
++		info->fix.visual = FB_VISUAL_TRUECOLOR;
++	else if (!fbi->cmap_static)
++		info->fix.visual = FB_VISUAL_PSEUDOCOLOR;
++	else {
++		/*
++		 * Some people have weird ideas about wanting static
++		 * pseudocolor maps.  I suspect their user space
++		 * applications are broken.
++		 */
++		info->fix.visual = FB_VISUAL_STATIC_PSEUDOCOLOR;
++	}
++
++	info->fix.line_length = var->xres_virtual * var->bits_per_pixel / 8;
++
++	fbi->palette_size = var->bits_per_pixel == 8 ? 256 : 16;
++
++	palette_mem_size = fbi->palette_size * sizeof(u32);
++
++	DEBUG(0, 1, "info->fix.line_length = %d\n", info->fix.line_length);
++	DEBUG(0, 1, "palette_mem_size = 0x%08lx\n", (unsigned long) palette_mem_size);
++
++	fbi->palette_cpu = (u32 *)(fbi->map_cpu + PAGE_SIZE - palette_mem_size);
++
++	fbi->palette_dma = fbi->map_dma + PAGE_SIZE - palette_mem_size;
++
++	/* Set (any) board control register to handle new color depth */
++	faradayfb_activate_var(var, info);
++
++	DEBUG(0, 1, "Leave\n");
++
++	return 0;
++}
++
++static irqreturn_t faradayfb_handle_irq(int irq, void *dev_id)
++{
++	struct fb_info *info = (struct fb_info *)dev_id;
++	struct faradayfb_info *fbi = info->par;
++	LCD_Register *plcd = (LCD_Register *)fbi->io_base;
++	u32 status = plcd->Interrupt;
++
++	pr_err("%s, irq %d\n", __func__, irq);
++
++	DEBUG(0, 1, "status 0x%x\n", status);
++
++	return IRQ_HANDLED;
++}
++
++/*
++ * This function must be called from task context only, since it will
++ * sleep when disabling the LCD controller, or if we get two contending
++ * processes trying to alter state.
++ */
++static void set_ctrlr_state(struct fb_info *info, unsigned int state)
++{
++	struct faradayfb_info *fbi = info->par;
++	unsigned int old_state;
++
++	down(&fbi->ctrlr_sem);
++
++	old_state = fbi->state;
++
++	/* Hack around fbcon initialisation.  */
++	if (old_state == C_STARTUP && state == C_REENABLE)
++		state = C_ENABLE;
++
++	switch (state) {
++	case C_DISABLE_PM:
++		/* Disable controller */
++		if (old_state != C_DISABLE) {
++
++			fbi->state = state;
++			faradayfb_disable_int(info);
++			faradayfb_lcd_power(info, 0);
++			faradayfb_disable_controller(info);
++		}
++		break;
++
++	case C_DISABLE:
++		/* Disable controller */
++		if (old_state != C_DISABLE) {
++
++			fbi->state = state;
++			faradayfb_disable_int(info);
++			faradayfb_lcd_power(info, 0);
++			//				faradayfb_disable_controller(info);
++		}
++		break;
++
++	case C_REENABLE:
++		/*
++		 * Re-enable the controller only if it was already
++		 * enabled.  This is so we reprogram the control
++		 * registers.
++		 */
++		if (old_state == C_ENABLE) {
++
++			faradayfb_disable_int(info);
++			faradayfb_lcd_power(info, 0);
++			faradayfb_disable_controller(info);
++
++			faradayfb_setup_gpio(info);
++			faradayfb_lcd_power(info, 1);
++			faradayfb_enable_controller(info);
++			faradayfb_enable_int(info);
++		}
++		break;
++
++	case C_ENABLE_PM:
++		/*
++		 * Re-enable the controller after PM.  This is not
++		 * perfect - think about the case where we were doing
++		 * a clock change, and we suspended half-way through.
++		 */
++		if (old_state != C_DISABLE_PM) {
++			fbi->state = C_ENABLE;
++			faradayfb_setup_gpio(info);
++			faradayfb_lcd_power(info, 1);
++			faradayfb_enable_controller(info);
++			faradayfb_enable_int(info);
++		}
++		break;
++		/* fall through */
++
++	case C_ENABLE:
++		/*
++		 * Power up the LCD screen, enable controller, and
++		 * turn on the backlight.
++		 */
++		if (old_state != C_ENABLE) {
++
++			fbi->state = C_ENABLE;
++			faradayfb_setup_gpio(info);
++			faradayfb_lcd_power(info, 1);
++			faradayfb_enable_controller(info);
++			faradayfb_enable_int(info);
++		}
++		break;
++	}
++	up(&fbi->ctrlr_sem);
++}
++
++/*
++ * Blank the display by setting all palette values to zero.  Note, the
++ * 12 and 16 bpp modes don't really use the palette, so this will not
++ * blank the display in all modes.
++ */
++static int faradayfb_blank(int blank, struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++	int i;
++
++	switch (blank) {
++	case FB_BLANK_POWERDOWN:
++	case FB_BLANK_VSYNC_SUSPEND:
++	case FB_BLANK_HSYNC_SUSPEND:
++	case FB_BLANK_NORMAL:
++
++		if (info->fix.visual == FB_VISUAL_PSEUDOCOLOR ||
++				info->fix.visual == FB_VISUAL_STATIC_PSEUDOCOLOR) {
++
++			for (i = 0; i < fbi->palette_size; i++)
++				faradayfb_setpalettereg(i, 0, 0, 0, 0, info);
++		}
++
++		faradayfb_schedule_work(info, C_DISABLE);
++
++		break;
++
++	case FB_BLANK_UNBLANK:
++
++		if (info->fix.visual == FB_VISUAL_PSEUDOCOLOR ||
++				info->fix.visual == FB_VISUAL_STATIC_PSEUDOCOLOR)
++			fb_set_cmap(&info->cmap, info);
++
++		faradayfb_schedule_work(info, C_ENABLE);
++
++		break;
++	}
++
++	return 0;
++}
++
++/*
++ * Our LCD controller task (which is called when we blank or unblank)
++ * via keventd.
++ */
++static void faradayfb_task(struct work_struct *dummy)
++{
++	struct faradayfb_info *fbi = container_of(dummy, struct faradayfb_info, task);
++	struct fb_info *info = fbi->info;
++	unsigned int state;
++
++	state = xchg(&fbi->task_state, -1);
++	set_ctrlr_state(info, state);
++}
++
++/* Fake monspecs to fill in fbinfo structure */
++static struct fb_monspecs monspecs = {
++
++	.hfmin	= 30000,
++	.hfmax	= 70000,
++	.vfmin	= 50,
++	.vfmax	= 65,
++};
++
++static int ffb_get_mach_param(struct faradayfb_mach_info *inf, struct fb_info *info, unsigned long smode)
++{
++	struct faradayfb_info *fbi = info->par;
++	struct lcd_param *tparam;
++	unsigned long bpp_mode;
++
++	tparam = get_lcd_time(inf->time0, inf->num_time0, smode);
++	if (!(tparam))
++		return -1;
++
++	fbi->time0 = tparam->value;
++	tparam = get_lcd_time(inf->time1, inf->num_time1, smode);
++	if (!(tparam))
++		return -1;
++
++	fbi->time1 = tparam->value;
++	tparam = get_lcd_time(inf->time2, inf->num_time2, smode);
++	if (!(tparam))
++		return -1;
++
++	fbi->time2 = tparam->value;
++
++	switch (info->var.bits_per_pixel) {
++	case 1:
++	case 2:
++	case 4:
++	case 8:
++		bpp_mode = FFB_MODE_8BPP;
++		break;
++
++	case 16:
++		bpp_mode = FFB_MODE_16BPP;
++		break;
++
++	case 32:
++		bpp_mode = FFB_MODE_24BPP;
++		break;
++
++	default:
++		DEBUG(1, 1, "Unsupported BPP, set default BPP to 16\n");
++		bpp_mode = FFB_MODE_16BPP;
++		break;
++	}
++
++	tparam = get_lcd_ctrl(inf->control, inf->num_control, smode | bpp_mode);
++
++	if (!(tparam))
++		return -1;
++
++	fbi->control = tparam->value;
++
++	fbi->xres = inf->xres;
++	fbi->yres = inf->yres;
++
++	return 0;
++}
++
++static int faradayfb_set_var(struct fb_info *info, struct faradayfb_mach_info *inf, unsigned long type)
++{
++	struct faradayfb_info *fbi = info->par;
++	unsigned long t_smode = 0;
++
++	if (!type)
++		t_smode = fbi->smode;
++	else
++		t_smode = type;
++
++	if (ffb_get_mach_param(inf, info, t_smode)) {
++
++		DEBUG(1, 1, "Not support mode(%lx)\n", t_smode);
++		return -1;
++	}
++
++	info->var.xres		= fbi->xres;
++	info->var.xres_virtual	= fbi->xres;
++	info->var.yres		= fbi->yres;
++	info->var.yres_virtual	= fbi->yres;
++
++	info->var.upper_margin	= FARADAY_LCDTIME1_GET_VBP(fbi->time1);
++	info->var.lower_margin	= FARADAY_LCDTIME1_GET_VFP(fbi->time1);
++	info->var.vsync_len	= FARADAY_LCDTIME1_GET_VW(fbi->time1);
++	info->var.left_margin	= FARADAY_LCDTIME0_GET_HFP(fbi->time0);
++	info->var.right_margin	= FARADAY_LCDTIME0_GET_HBP(fbi->time0);
++	info->var.hsync_len	= FARADAY_LCDTIME0_GET_HW(fbi->time0);
++
++	fbi->int_mask = 0;
++
++	if (t_smode & FFB_MODE_YUV420)
++		fbi->frame420_size	= (((info->var.xres * info->var.yres + 0xffff) & 0xffff0000) >> 16) << 2;
++	else
++		fbi->frame420_size	= 0;
++
++	return 0;
++}
++
++static const struct fb_ops faradayfb_ops = {
++
++	.owner		= THIS_MODULE,
++	.fb_check_var	= faradayfb_check_var,
++	.fb_set_par	= faradayfb_set_par,
++	.fb_setcolreg	= faradayfb_setcolreg,
++	.fb_fillrect	= cfb_fillrect,
++	.fb_copyarea	= cfb_copyarea,
++	.fb_imageblit	= cfb_imageblit,
++	.fb_blank	= faradayfb_blank,
++	.fb_mmap	= faradayfb_mmap,
++	.fb_ioctl	= faradayfb_ioctl,
++};
++
++static struct fb_info *faradayfb_init_fbinfo(struct device *dev)
++{
++	struct faradayfb_mach_info *inf;
++	struct fb_info *info;
++	struct faradayfb_info *fbi;
++
++	info = framebuffer_alloc(sizeof(struct faradayfb_info), dev);
++	if (!(info))
++		return NULL;
++
++	fbi = info->par;
++	fbi->info = info;
++	fbi->io_base		= lcd_base;
++	strcpy(info->fix.id, FARADAYFB_MODULE_NAME);
++
++	info->fix.type		= FB_TYPE_PACKED_PIXELS;
++	info->fix.type_aux	= 0;
++	info->fix.xpanstep	= 0;
++	info->fix.ypanstep	= 0;
++	info->fix.ywrapstep	= 0;
++	info->fix.accel		= FB_ACCEL_NONE;
++
++	info->var.nonstd	= 0;
++	info->var.activate	= FB_ACTIVATE_NOW;
++	info->var.height	= -1;
++	info->var.width		= -1;
++	info->var.accel_flags	= 0;
++	info->var.vmode		= FB_VMODE_NONINTERLACED;
++
++	info->fbops		= &faradayfb_ops;
++	info->flags		= FBINFO_DEFAULT;
++	info->monspecs		= monspecs;
++	info->pseudo_palette	= &faradayfb_pseudo_palette;
++
++	fbi->rgb[RGB_8]		= &def_rgb_8;
++	fbi->rgb[RGB_16]	= &def_rgb_16;
++	fbi->rgb[RGB_24]	= &def_rgb_24;
++
++	inf = (struct faradayfb_mach_info *)dev->platform_data;
++
++	/*
++	 * People just don't seem to get this.  We don't support
++	 * anything but correct entries now, so panic if someone
++	 * does something stupid.
++	 */
++
++	fbi->xres			= inf->xres;
++	fbi->yres			= inf->yres;
++	fbi->max_bpp			= 32;
++#if defined(CONFIG_FFB_MODE_8BPP)
++	info->var.bits_per_pixel	= min((u32)8, inf->max_bpp);
++#elif defined(CONFIG_FFB_MODE_16BPP)
++	info->var.bits_per_pixel	= min((u32)16, inf->max_bpp);
++#elif defined(CONFIG_FFB_MODE_24BPP)
++	info->var.bits_per_pixel	= min((u32)32, inf->max_bpp);
++	info->var.bits_per_pixel	= 32;
++#endif
++
++	info->var.pixclock		= inf->pixclock;
++	info->var.sync			= inf->sync;
++	info->var.grayscale		= inf->cmap_greyscale;
++	fbi->cmap_inverse		= inf->cmap_inverse;
++	fbi->cmap_static		= inf->cmap_static;
++	fbi->smode			= FFB_DEFAULT_MODE;
++	if (faradayfb_set_var(info, inf, 0))
++		goto err;
++	fbi->state			= C_STARTUP;
++	fbi->task_state			= (unsigned char) -1;
++
++	/* The size of the palette should not be included in info->fix.smem_len. */
++	info->fix.smem_len		= faradayfb_cal_frame_buf_size(fbi) - PAGE_SIZE;
++	init_waitqueue_head(&fbi->ctrlr_wait);
++	INIT_WORK(&fbi->task, faradayfb_task);
++	sema_init(&fbi->ctrlr_sem, 1);
++	return info;
++err:
++	kfree(fbi);
++	kfree(info);
++
++	return NULL;
++}
++
++static int faradayfb_probe(struct platform_device *pdev)
++{
++	struct fb_info *info = NULL;
++	struct faradayfb_info *fbi;
++	int irq = -EINVAL;
++	int ret = -ENODEV;
++	struct resource	*io;
++
++	io = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (io == NULL) {
++		dev_err(&pdev->dev, "Failed to get memory resource\n");
++		goto err_exit;
++	}
++
++	irq = platform_get_irq(pdev, 0);
++	if (irq <= 0) {
++		dev_err(&pdev->dev, "Failed to get irq\n");
++		goto err_exit;
++	}
++
++	lcd_base = (resource_size_t)(unsigned long)devm_ioremap_resource(&pdev->dev, io);
++	pdev->dev.platform_data	= &ffb_mach_info;
++
++	info = faradayfb_init_fbinfo(&pdev->dev);
++	if (info == NULL) {
++		dev_err(&pdev->dev, "Failed to init info\n");
++		goto err_exit;
++	}
++
++	fbi = info->par;
++
++	/* Initialize video memory */
++	ret = faradayfb_map_video_memory(info);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "Failed to map video memory\n");
++		goto err_free_mem;
++	}
++
++	ret = -EINVAL;
++	if (request_irq(irq, faradayfb_handle_irq, 0, "LCD", info)) {
++		dev_err(&pdev->dev, "Failed to request irq\n");
++		goto err_free_map;
++	}
++
++	/*
++	 * This makes sure that our colour bitfield
++	 * descriptors are correctly initialised.
++	 */
++	faradayfb_check_var(&info->var, info);
++	faradayfb_set_par(info);
++	dev_set_drvdata(&pdev->dev, info);
++	ret = register_framebuffer(info);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "Failed to register framebuffer\n");
++		goto err_free_irq;
++	}
++	faradayfb_clean_screen(info);
++
++	return 0;
++
++err_free_irq:
++	dev_set_drvdata(&pdev->dev, NULL);
++	free_irq(irq, info);
++err_free_map:
++	faradayfb_unmap_video_memory(info);
++err_free_mem:
++	kfree(info->par);
++	kfree(info);
++err_exit:
++
++	return ret;
++}
++
++/* Called when the device is being detached from the driver */
++static int faradayfb_remove(struct platform_device *pdev)
++{
++	struct fb_info  *info = platform_get_drvdata(pdev);
++	int irq;
++
++	set_ctrlr_state(info, C_DISABLE);
++
++	irq = platform_get_irq(pdev, 0);
++	free_irq(irq, info);
++
++	unregister_framebuffer(info);
++	faradayfb_unmap_video_memory(info);
++	dev_set_drvdata(&pdev->dev, NULL);
++	kfree(info->par);
++	kfree(info);
++
++	return 0;
++}
++
++#ifdef CONFIG_PM
++static int faradayfb_suspend(struct platform_device *pdev, pm_message_t state)
++{
++	struct fb_info  *info;
++
++	info = platform_get_drvdata(pdev);
++
++	set_ctrlr_state(info, C_DISABLE_PM);
++
++	return 0;
++}
++
++static int faradayfb_resume(struct platform_device *pdev)
++{
++	struct fb_info  *info;
++
++	info = platform_get_drvdata(pdev);
++
++	set_ctrlr_state(info, C_ENABLE_PM);
++
++	return 0;
++}
++#endif /* CONFIG_PM */
++
++static const struct of_device_id atflcd_of_match[] = {
++	{ .compatible = "andestech,atflcdc100", },
++	{},
++};
++
++MODULE_DEVICE_TABLE(of, atflcd_of_match);
++static struct platform_driver atflcd_of_driver = {
++	.probe = faradayfb_probe,
++	.remove = faradayfb_remove,
++	.driver = {
++		.name = "faraday-lcd",
++		.owner = THIS_MODULE,
++		.of_match_table = atflcd_of_match,
++	},
++#ifdef CONFIG_PM
++	.suspend = faradayfb_suspend,
++	.resume = faradayfb_resume,
++#endif /* CONFIG_PM */
++};
++
++module_platform_driver(atflcd_of_driver);
++MODULE_DESCRIPTION("Faraday LCD driver");
++MODULE_AUTHOR("Francis Huang <francish@faraday-tech.com>");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/video/fbdev/ftlcdc100/faradayfb.h b/drivers/video/fbdev/ftlcdc100/faradayfb.h
+new file mode 100644
+index 000000000000..316ac4674687
+--- /dev/null
++++ b/drivers/video/fbdev/ftlcdc100/faradayfb.h
+@@ -0,0 +1,217 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++
++#ifndef __FARADAYFB_H
++#define __FARADAYFB_H
++
++#define FARADAYFB_MODULE_NAME  "faradayfb"
++#define DEBUG(enabled, tagged, ...)		\
++	do {		\
++		if (enabled) {					\
++			if (tagged)		\
++				pr_err("[ %30s() ] ", __func__);		\
++			pr_err(__VA_ARGS__);		\
++		}		\
++	} while (0)
++
++#if defined(CONFIG_FFB_MODE_RGB)
++#  define DEFAULT_COLOR  FFB_MODE_RGB
++#elif defined(CONFIG_FFB_MODE_YUV422)
++#  define DEFAULT_COLOR  FFB_MODE_YUV422
++#elif defined(CONFIG_FFB_MODE_YUV420)
++#  define DEFAULT_COLOR  FFB_MODE_YUV420
++#endif
++
++#if defined(CONFIG_FFB_MODE_8BPP)
++#  define DEFAULT_BPP  FFB_MODE_8BPP
++#elif defined(CONFIG_FFB_MODE_16BPP)
++#  define DEFAULT_BPP  FFB_MODE_16BPP
++#elif defined(CONFIG_FFB_MODE_24BPP)
++#  define DEFAULT_BPP  FFB_MODE_24BPP
++#endif
++
++#define FFB_DEFAULT_MODE        (DEFAULT_COLOR | DEFAULT_BPP)
++
++struct lcd_param {
++
++	unsigned long value;
++	unsigned long flags;
++};
++
++inline struct lcd_param *get_lcd_time(struct lcd_param *array, unsigned long num_array, unsigned long type)
++{
++	int i;
++
++	for (i = 0; i < num_array; i++) {
++
++		struct lcd_param *r = &array[i];
++
++		if (r->flags & type & 0xff)
++			return r;
++	}
++
++	return NULL;
++}
++
++inline struct lcd_param *get_lcd_ctrl(struct lcd_param *array, unsigned long num_array, unsigned long type)
++{
++	int i;
++
++	for (i = 0; i < num_array; i++) {
++
++		struct lcd_param *r = &array[i];
++
++		if ((r->flags & type & 0xff) && (r->flags & type & 0xff00))
++			return r;
++	}
++
++	return NULL;
++}
++
++enum { RGB_8, RGB_16, RGB_24, NR_RGB};
++
++struct faradayfb_rgb {
++
++	struct fb_bitfield	red;
++	struct fb_bitfield	green;
++	struct fb_bitfield	blue;
++	struct fb_bitfield	transp;
++};
++
++/* This structure describes the machine which we are running on.  */
++struct faradayfb_mach_info {
++
++	unsigned long		num_time0;
++	struct lcd_param *time0;
++
++	unsigned long		num_time1;
++	struct lcd_param *time1;
++
++	unsigned long		num_time2;
++	struct lcd_param *time2;
++
++	unsigned long		num_control;
++	struct lcd_param *control;
++
++	unsigned long		pixclock;
++
++	unsigned long		xres;
++	unsigned long		yres;
++
++	unsigned int		max_bpp;
++	unsigned int		sync;
++
++	unsigned int		cmap_greyscale:1,
++				cmap_inverse:1,
++				cmap_static:1,
++				unused:29;
++};
++
++struct faradayfb_info {
++
++	struct fb_info		*info;
++	struct faradayfb_rgb	*rgb[NR_RGB];
++
++	unsigned int		xres;
++	unsigned int		yres;
++	unsigned int		max_bpp;
++
++	/*
++	 * These are the addresses we mapped
++	 * the framebuffer memory region to.
++	 */
++	dma_addr_t		map_dma;
++	unsigned char *map_cpu;
++	unsigned int		map_size;
++
++	unsigned char *screen_cpu;
++	dma_addr_t		screen_dma;
++	u32           *palette_cpu;
++	dma_addr_t		palette_dma;
++	unsigned int		palette_size;
++
++	unsigned int		cmap_inverse:1,
++				cmap_static:1,
++				unused:30;
++
++	unsigned long		time0;
++	unsigned long		time1;
++	unsigned long		time2;
++	unsigned long		control;
++	unsigned long		int_mask;
++	unsigned long		io_base;
++
++	unsigned int		state;
++	unsigned int		task_state;
++	struct semaphore	ctrlr_sem;
++	wait_queue_head_t	ctrlr_wait;
++	struct work_struct	task;
++
++	unsigned long		smode;
++	unsigned long		frame420_size;
++};
++
++/*
++ * These are the actions for set_ctrlr_state
++ */
++#define C_DISABLE		0
++#define C_ENABLE		1
++#define C_DISABLE_CLKCHANGE	2
++#define C_ENABLE_CLKCHANGE	3
++#define C_REENABLE		4
++#define C_DISABLE_PM		5
++#define C_ENABLE_PM		6
++#define C_STARTUP		7
++
++#define FARADAY_LCDTIME0_GET_HBP(x) ((((x) >> 24) & 0xFF) + 1)
++#define FARADAY_LCDTIME0_GET_HFP(x) ((((x) >> 16) & 0xFF) + 1)
++#define FARADAY_LCDTIME0_GET_HW(x)  ((((x) >>  8) & 0xFF) + 1)
++#define FARADAY_LCDTIME1_GET_VBP(x) ((((x) >> 24) & 0xFF))
++#define FARADAY_LCDTIME1_GET_VFP(x) ((((x) >> 16) & 0xFF))
++#define FARADAY_LCDTIME1_GET_VW(x)  ((((x) >>  8) & 0xFF) + 1)
++
++#define FARADAY_LCDTIME0_HBP(x)     ((((x) - 1) & 0xFF) << 24)
++#define FARADAY_LCDTIME0_HFP(x)     ((((x) - 1) & 0xFF) << 16)
++#define FARADAY_LCDTIME0_HW(x)      ((((x) - 1) & 0xFF) <<  8)
++#define FARADAY_LCDTIME0_PL(x)      (((((x) >> 4) - 1) & 0x3F) <<  2)
++#define FARADAY_LCDTIME1_VBP(x)     ((((x)) & 0xFF) << 24)
++#define FARADAY_LCDTIME1_VFP(x)     ((((x)) & 0xFF) << 16)
++#define FARADAY_LCDTIME1_VW(x)      ((((x) - 1) & 0xFF) <<  8)
++#define FARADAY_LCDTIME1_LF(x)      ((((x) - 1) & 0x3FF))
++
++#define FFB_MODE_RGB	0x00000001
++#define FFB_MODE_YUV420	0x00000002
++#define FFB_MODE_YUV422	0x00000004
++
++#define FFB_MODE_8BPP	0x00000100
++#define FFB_MODE_16BPP	0x00000200
++#define FFB_MODE_24BPP	0x00000400
++
++/* Minimum X and Y resolutions */
++#define MIN_XRES	64
++#define MIN_YRES	64
++
++typedef struct LCDTag {
++
++	u32 Timing0;			/* 0x00        */
++	u32 Timing1;			/* 0x04        */
++	u32 Timing2;			/* 0x08        */
++	u32 Timing3;			/* 0x0C        */
++	u32 UPBase;			/* 0x10        */
++	u32 LPBase;			/* 0x14        */
++	u32 INTREnable;			/* 0x18        */
++	u32 Control;			/* 0x1C        */
++	u32 Status;			/* 0x20        */
++	u32 Interrupt;			/* 0x24        */
++	u32 UPCurr;			/* 0x28        */
++	u32 LPCurr;			/* 0x2C        */
++	u32 Reserved1[5];		/* 0x30~0x40   */
++	u32 GPIO;			/* 0x44        */
++	u32 Reserved2[0x74 - 6];	/* 0x48~0x1FC  */
++
++	u32 Palette[0x80];		/* 0x200~0x3FC */
++	u32 TestReg[0x100];		/* 0x400~0x7FC */
++
++} LCD_Register;
++
++#endif /* __FARADAYFB_H */
++
+diff --git a/drivers/video/fbdev/ftlcdc100/lcd-info.c b/drivers/video/fbdev/ftlcdc100/lcd-info.c
+new file mode 100644
+index 000000000000..364288ab7f9d
+--- /dev/null
++++ b/drivers/video/fbdev/ftlcdc100/lcd-info.c
+@@ -0,0 +1,266 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++
++/*
++ * HBP : Horizontal Back Porch
++ * HFP : Horizontal Front Porch
++ * HSPW: Horizontal Sync. Pulse Width
++ * PPL : Pixels-per-line = 16(PPL+1)
++ */
++#define ENC_PARAM_TIME0(HBP, HFP, HSPW, PPL)	\
++	((((HBP)         - 1) << 24) |		\
++	 (((HFP)         - 1) << 16) |		\
++	 (((HSPW)        - 1) << 8) |		\
++	 ((((PPL) >> 4) - 1) << 2))
++
++/*
++ * HBP : Vertical Back Porch
++ * HFP : Vertical Front Porch
++ * HSPW: Vertical Sync. Pulse Width
++ * LPP : Lines-per-panel = LPP + 1
++ */
++#define ENC_PARAM_TIME1(VBP, VFP, VSPW, LPP)	\
++	 ((VBP << 24) |			\
++	 ((VFP) << 16) |			\
++	 (((VSPW) - 1) << 10) |			\
++	 (((LPP) - 1)))
++
++/*
++ * PRA : Pixel Rate Adaptive
++ * IOE : Invert Panel Output Enable
++ * IPC : Invert Panel Clock (Test Chip Testing)
++ * IHS : Invert Horisontal Sync.
++ * IVS : Invert Versical Sync.
++ * PCD : Panel Clock Divisor
++ */
++#define ENC_PARAM_TIME2(PRA, IOE, IPC, IHS, IVS, PCD)	\
++	(((PRA)     << 15) |				\
++	 ((IOE)     << 14) |				\
++	 ((IPC)     << 13) |				\
++	 ((IHS)     << 12) |				\
++	 ((IVS)     << 11) |				\
++	 (((PCD) - 1)))
++
++/*
++ * Enable YCbCr
++ * Enable YCbCr420
++ * FIFO threadhold
++ * Panel type, 0-6bit, 1-8bit
++ * LcdVComp, when to generate interrupt, 1: start of back_porch
++ * Power Enable
++ * Big Endian Pixel/Byte Ordering
++ * BGR
++ * TFT
++ * LCD bits per pixel
++ * Controller Enable
++ */
++
++#define ENC_PARAM_CTRL(ENYUV, ENYUV420, FIFOTH, PTYPE, VCOMP, LCD_ON, ENDIAN, BGR, TFT, BPP, LCD_EN) \
++	((ENYUV        << 18) |			\
++	 (ENYUV420     << 17) |			\
++	 (FIFOTH       << 16) |			\
++	 (PTYPE        << 15) |			\
++	 (VCOMP        << 12) |			\
++	 (LCD_ON       << 11) |			\
++	 (ENDIAN       <<  9) |			\
++	 (BGR          <<  8) |			\
++	 (TFT          <<  5) |			\
++	 (BPP          <<  1) |			\
++	 (LCD_EN))
++
++static struct lcd_param control[] = {
++
++	{
++		.value = ENC_PARAM_CTRL(0, 0, 1, 1, 0x3, 1, 0x0, 1, 1, 0x3, 1),
++		.flags = FFB_MODE_RGB | FFB_MODE_8BPP,
++	},
++	{
++		.value = ENC_PARAM_CTRL(1, 1, 1, 1, 0x3, 1, 0x0, 0, 1, 0x3, 1),
++		.flags = FFB_MODE_YUV420 | FFB_MODE_8BPP,
++	},
++	{
++		.value = ENC_PARAM_CTRL(1, 0, 1, 1, 0x3, 1, 0x0, 0, 1, 0x4, 1),
++		.flags = FFB_MODE_YUV422 | FFB_MODE_16BPP,
++	},
++	{
++		.value = ENC_PARAM_CTRL(0, 0, 1, 1, 0x3, 1, 0x0, 1, 1, 0x4, 1),
++		.flags = FFB_MODE_RGB | FFB_MODE_16BPP,
++	},
++	{
++		.value = ENC_PARAM_CTRL(0, 0, 1, 1, 0x3, 1, 0x0, 1, 1, 0x5, 1),
++		.flags = FFB_MODE_RGB | FFB_MODE_24BPP,
++	},
++};
++
++#ifdef CONFIG_PANEL_AUA036QN01
++
++static struct lcd_param time0[] = {
++
++	{
++		.value = ENC_PARAM_TIME0(7, 6, 1, 320),
++		.flags = FFB_MODE_RGB | FFB_MODE_YUV420 | FFB_MODE_YUV422,
++	},
++};
++
++static struct lcd_param time1[] = {
++
++	{
++		.value = ENC_PARAM_TIME1(1, 1, 1, 240),
++		.flags = FFB_MODE_RGB | FFB_MODE_YUV420 | FFB_MODE_YUV422,
++	},
++};
++
++static struct lcd_param time2[] = {
++
++	{
++		.value = ENC_PARAM_TIME2(0, 0, 1, 1, 1, 0x7),
++		.flags = FFB_MODE_RGB | FFB_MODE_YUV420 | FFB_MODE_YUV422,
++	},
++};
++
++static struct faradayfb_mach_info ffb_mach_info = {
++
++	.pixclock      = 171521,
++	.xres          = 320,
++	.yres          = 240,
++	.max_bpp       = 24,
++	.sync          = FB_SYNC_HOR_HIGH_ACT | FB_SYNC_VERT_HIGH_ACT,
++	.num_time0     = ARRAY_SIZE(time0),
++	.time0         = time0,
++	.num_time1     = ARRAY_SIZE(time1),
++	.time1         = time1,
++	.num_time2     = ARRAY_SIZE(time2),
++	.time2         = time2,
++	.num_control   = ARRAY_SIZE(control),
++	.control       = control,
++};
++#endif
++
++#ifdef CONFIG_PANEL_AUA070VW04
++static struct lcd_param time0[] = {
++
++	{
++		.value = ENC_PARAM_TIME0(88, 40, 128, 800),
++		.flags = FFB_MODE_RGB | FFB_MODE_YUV420 | FFB_MODE_YUV422,
++	},
++};
++
++static struct lcd_param time1[] = {
++
++	{
++		.value = ENC_PARAM_TIME1(21, 1, 3, 480),
++		.flags = FFB_MODE_RGB | FFB_MODE_YUV420 | FFB_MODE_YUV422,
++	},
++};
++
++static struct lcd_param time2[] = {
++
++	{
++//		.value = ENC_PARAM_TIME2(0, 1, 1, 1, 1, 0x5),
++		.value = ENC_PARAM_TIME2(1, 0, 0, 1, 1, 0x5),
++		.flags = FFB_MODE_RGB | FFB_MODE_YUV420 | FFB_MODE_YUV422,
++	},
++};
++
++static struct faradayfb_mach_info ffb_mach_info = {
++
++	.pixclock      = 171521,
++	.xres          = 800,
++	.yres          = 480,
++	.max_bpp       = 24,
++	.sync          = FB_SYNC_HOR_HIGH_ACT | FB_SYNC_VERT_HIGH_ACT,
++	.num_time0     = ARRAY_SIZE(time0),
++	.time0         = time0,
++	.num_time1     = ARRAY_SIZE(time1),
++	.time1         = time1,
++	.num_time2     = ARRAY_SIZE(time2),
++	.time2         = time2,
++	.num_control   = ARRAY_SIZE(control),
++	.control       = control,
++};
++
++#endif
++
++#ifdef CONFIG_PANEL_LW500AC9601
++static struct lcd_param time0[] = {
++	{
++		.value = ENC_PARAM_TIME0(88, 40, 128, 800),
++		.flags = FFB_MODE_RGB | FFB_MODE_YUV420 | FFB_MODE_YUV422,
++	},
++};
++
++static struct lcd_param time1[] = {
++	{
++		.value = ENC_PARAM_TIME1(33, 10, 2, 480),
++		.flags = FFB_MODE_RGB | FFB_MODE_YUV420 | FFB_MODE_YUV422,
++	},
++};
++
++static struct lcd_param time2[] = {
++	{
++		.value = ENC_PARAM_TIME2(1, 0, 1, 1, 1, 0x3),
++		.flags = FFB_MODE_RGB | FFB_MODE_YUV420 | FFB_MODE_YUV422,
++	},
++};
++
++static struct faradayfb_mach_info ffb_mach_info = {
++	.pixclock      = 15000000,
++	.xres          = 800,
++	.yres          = 480,
++	.max_bpp       = 24,
++	.sync          = FB_SYNC_HOR_HIGH_ACT | FB_SYNC_VERT_HIGH_ACT,
++	.num_time0     = ARRAY_SIZE(time0),
++	.time0         = time0,
++	.num_time1     = ARRAY_SIZE(time1),
++	.time1         = time1,
++	.num_time2     = ARRAY_SIZE(time2),
++	.time2         = time2,
++	.num_control   = ARRAY_SIZE(control),
++	.control       = control,
++};
++#endif
++
++#ifdef CONFIG_PANEL_CH7013A
++static struct lcd_param time0[] = {
++
++	{
++		.value = ENC_PARAM_TIME0(88, 40, 128, 800),
++		.flags = FFB_MODE_RGB,
++	},
++};
++
++static struct lcd_param time1[] = {
++	{
++		.value = ENC_PARAM_TIME1(23, 1, 4, 600),
++		.flags = FFB_MODE_RGB,
++	},
++};
++static struct lcd_param time2[] = {
++
++	{
++		.value = 0x00003801,  ENC_PARAM_TIME2(0, 0, 1, 1, 1, 0x2),
++		.flags = FFB_MODE_RGB,
++	},
++};
++
++static struct faradayfb_mach_info ffb_mach_info = {
++
++	.pixclock      = 35500000,
++	.xres		   = 800,
++	.yres		   = 600,
++	.max_bpp	   = 24,
++
++	.sync          = FB_SYNC_HOR_HIGH_ACT | FB_SYNC_VERT_HIGH_ACT,
++	.num_time0     = ARRAY_SIZE(time0),
++	.time0         = time0,
++	.num_time1     = ARRAY_SIZE(time1),
++	.time1         = time1,
++	.num_time2     = ARRAY_SIZE(time2),
++	.time2         = time2,
++	.num_control   = ARRAY_SIZE(control),
++	.control       = control,
++};
++
++#endif /* CONFIG_CH7013A */
+diff --git a/drivers/video/fbdev/ftlcdc100/pingpong-module.c b/drivers/video/fbdev/ftlcdc100/pingpong-module.c
+new file mode 100644
+index 000000000000..d575813dbfe6
+--- /dev/null
++++ b/drivers/video/fbdev/ftlcdc100/pingpong-module.c
+@@ -0,0 +1,614 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++
++#include <linux/io.h>
++
++void *fmem_alloc(size_t size, dma_addr_t *dma_handle, bool has_dma_coherent)
++{
++	struct page *page;
++	void *cpu_addr = NULL;
++
++	size = PAGE_ALIGN(size);
++
++	page = alloc_pages(GFP_DMA, get_order(size));
++	if (!(page))
++		goto no_page;
++
++	*dma_handle = page_to_phys(page);
++
++	if (!has_dma_coherent)
++		cpu_addr = ioremap_wc(*dma_handle, size);
++	else
++		cpu_addr = ioremap(*dma_handle, size);
++
++	if (cpu_addr) {
++		do {
++			SetPageReserved(page);
++			page++;
++		} while (size -= PAGE_SIZE);
++	} else {
++		__free_pages(page, get_order(size));
++	}
++
++no_page:
++	return cpu_addr;
++}
++
++void fmem_free(size_t size, void *cpu_addr, dma_addr_t handle)
++{
++	struct page *page = pfn_to_page(handle >> PAGE_SHIFT);
++
++	iounmap(cpu_addr);
++	size = PAGE_ALIGN(size);
++
++	do {
++		ClearPageReserved(page);
++		__free_page(page);
++		page++;
++
++	} while (size -= PAGE_SIZE);
++}
++
++static int faradayfb_mmap(struct fb_info *info, struct vm_area_struct *vma)
++{
++	struct faradayfb_info *fbi = info->par;
++	unsigned long off = vma->vm_pgoff << PAGE_SHIFT;
++	int ret = -EINVAL;
++
++	DEBUG(0, 1, "Enter\n");
++
++	if (off < info->fix.smem_len) {
++
++		off += fbi->screen_dma & PAGE_MASK;
++		vma->vm_pgoff = off >> PAGE_SHIFT;
++		if (!info->device->dma_coherent)
++			vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
++
++		ret = remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
++				vma->vm_end - vma->vm_start, vma->vm_page_prot);
++	} else {
++		DEBUG(1, 1, "buffer mapping error !!\n");
++	}
++
++	DEBUG(0, 1, "Leave\n");
++
++	return ret;
++}
++
++/*
++ * Allocates the DRAM memory for the frame buffer.  This buffer is
++ * remapped into a non-cached, non-buffered, memory region to
++ * allow palette and pixel writes to occur without flushing the
++ * cache.  Once this area is remapped, all virtual memory
++ * access to the video memory should occur at the new region.
++ */
++static int __init faradayfb_map_video_memory(struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++
++	bool dma_coherent = info->device->dma_coherent;
++
++	/* The extra PAGE size is used for the palette. */
++	fbi->map_size = PAGE_ALIGN(info->fix.smem_len) + PAGE_SIZE;
++	fbi->map_cpu = fmem_alloc(fbi->map_size, &fbi->map_dma, dma_coherent);
++
++	if (fbi->map_cpu) {
++
++		memset(fbi->map_cpu, 0x1d, fbi->map_size);
++		info->screen_base = fbi->map_cpu + PAGE_SIZE;
++		fbi->screen_dma = fbi->map_dma + PAGE_SIZE;
++		info->fix.smem_start = fbi->screen_dma;
++	}
++
++	return fbi->map_cpu ? 0 : -ENOMEM;
++}
++
++static inline void faradayfb_clean_screen(struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++	int size = info->var.xres * info->var.yres;
++
++	if (fbi->smode & FFB_MODE_YUV422) {
++		memset(fbi->map_cpu, 16, size * info->var.bits_per_pixel / 8);
++	} else if (fbi->smode & FFB_MODE_YUV420) {
++
++		memset(fbi->map_cpu, 16, size);
++		memset(fbi->map_cpu + PAGE_SIZE + ((size + 0xffff) & 0xffff0000), 128, size / 4);
++		memset(fbi->map_cpu + PAGE_SIZE + ((size + 0xffff) & 0xffff0000) * 5 / 4, 128, size / 4);
++	}
++}
++
++static inline void faradayfb_unmap_video_memory(struct fb_info *info)
++{
++	struct faradayfb_info *fbi = info->par;
++
++	fmem_free(fbi->map_size, fbi->map_cpu, fbi->map_dma);
++}
++
++#define FRAME_SIZE_RGB(xres, yres, mbpp)	((xres) * (yres) * (mbpp) / 8)
++#define FRAME_SIZE_YUV422(xres, yres, mbpp)	(((xres) * (yres) * (mbpp) / 8) * 2)
++#define FRAME_SIZE_YUV420(xres, yres, mbpp)	(((((xres) * (yres) * (mbpp) / 8) + 0xffff) & 0xffff0000) * 3 / 2)
++
++unsigned int nextPowerOf2(unsigned int n)
++{
++	n--;
++	n |= n >> 1;
++	n |= n >> 2;
++	n |= n >> 4;
++	n |= n >> 8;
++	n |= n >> 16;
++	n++;
++	return n;
++}
++
++static inline u32 faradayfb_cal_frame_buf_size(struct faradayfb_info *fbi)
++{
++	u32 size_rgb	= FRAME_SIZE_RGB(fbi->xres, fbi->yres, fbi->max_bpp);
++	u32 size_yuv422	= FRAME_SIZE_YUV422(fbi->xres, fbi->yres, 8);
++	u32 size_yuv420	= FRAME_SIZE_YUV420(fbi->xres, fbi->yres, 8);
++	u32 buf_size;
++	u32 buf_size_power_of_2;
++
++	/* PMA needs to allocate power of 2 memory size and the size should include the palette*/
++	buf_size = max(size_rgb, max(size_yuv422, size_yuv420));
++	buf_size_power_of_2 = nextPowerOf2(buf_size);
++	if ((buf_size_power_of_2 - buf_size) < PAGE_SIZE)
++		buf_size_power_of_2 = nextPowerOf2(buf_size + PAGE_SIZE);
++
++	return buf_size_power_of_2;
++}
++
++#ifdef CONFIG_FTLCD_OSD
++/************************************
++ *	OSD
++ ***********************************/
++#define FOSD_SETPOS		0x46e1
++#define FOSD_SETDIM		0x46e2
++#define FOSD_SETSCAL		0x46e3
++#define FLCD_SET_TRANSPARENT	0x46e4
++#define FLCD_SET_STRING		0x46e5
++#define FOSD_ON			0x46e6
++#define FOSD_OFF		0x46e7
++#define FRREG			0x46e8
++#define FWREG			0x46e9
++
++#define dig_alpha	((16 * 10) + (16 * 26) + (16 * 3))
++
++struct fosd_string {
++
++	unsigned int Str_row;
++	unsigned int display_mode;
++	unsigned int fg_color;
++	unsigned int bg_color;
++	unsigned char Str_OSD[30];
++};
++
++struct fosd_data {
++
++	unsigned int HPos;
++	unsigned int VPos;
++	unsigned int HDim;
++	unsigned int VDim;
++	unsigned int transparent_level;
++	unsigned int HScal;
++	unsigned int VScal;
++	struct fosd_string Str_Data[10];
++};
++
++unsigned int OSD_Font[] = {
++
++	/*	0	*/
++	0x00, 0x00, 0x00, 0x3e, 0x63, 0x67, 0x6f, 0x7b,
++	0x73, 0x63, 0x63, 0x3e, 0x00, 0x00, 0x00, 0x00,
++
++	/*	1	*/
++	0x00, 0x00, 0x00, 0x0c, 0x1c, 0x3c, 0x0c, 0x0c,
++	0x0c, 0x0c, 0x0c, 0x3f, 0x00, 0x00, 0x00, 0x00,
++
++	/*	2	*/
++	0x00, 0x00, 0x00, 0x3e, 0x63, 0x03, 0x06, 0x0c,
++	0x18, 0x30, 0x63, 0x7f, 0x00, 0x00, 0x00, 0x00,
++
++	/*	3	*/
++	0x00, 0x00, 0x00, 0x3E, 0x63, 0x03, 0x03, 0x1e,
++	0x03, 0x03, 0x63, 0x3E, 0x00, 0x00, 0x00, 0x00,
++
++	/*	4	*/
++	0x00, 0x00, 0x00, 0x06, 0x0e, 0x1e, 0x36, 0x66,
++	0x7f, 0x06, 0x06, 0x0f, 0x00, 0x00, 0x00, 0x00,
++
++	/*	5	*/
++	0x00, 0x00, 0x00, 0x7f, 0x60, 0x60, 0x60, 0x7e,
++	0x03, 0x03, 0x63, 0x3e, 0x00, 0x00, 0x00, 0x00,
++
++	/*	6	*/
++	0x00, 0x00, 0x00, 0x1c, 0x30, 0x60, 0x60, 0x7e,
++	0x63, 0x63, 0x63, 0x3e, 0x00, 0x00, 0x00, 0x00,
++
++	/*	7	*/
++	0x00, 0x00, 0x00, 0x7f, 0x63, 0x03, 0x06, 0x0c,
++	0x18, 0x18, 0x18, 0x18, 0x00, 0x00, 0x00, 0x00,
++
++	/*	8	*/
++	0x00, 0x00, 0x00, 0x3e, 0x63, 0x63, 0x63, 0x3e,
++	0x63, 0x63, 0x63, 0x3e, 0x00, 0x00, 0x00, 0x00,
++
++	/*	9	*/
++	0x00, 0x00, 0x00, 0x3e, 0x63, 0x63, 0x63, 0x3f,
++	0x03, 0x03, 0x06, 0x3c, 0x00, 0x00, 0x00, 0x00,
++
++	/*	A	*/
++	0x00, 0x00, 0x00, 0x08, 0x1c, 0x36, 0x63, 0x63,
++	0x7f, 0x63, 0x63, 0x63, 0x00, 0x00, 0x00, 0x00,
++
++	/*	B	*/
++	0x00, 0x00, 0x00, 0x7E, 0x33, 0x33, 0x33, 0x3E,
++	0x33, 0x33, 0x33, 0x7E, 0x00, 0x00, 0x00, 0x00,
++
++	/*	C	*/
++	0x00, 0x00, 0x00, 0x1E, 0x33, 0x61, 0x60, 0x60,
++	0x60, 0x61, 0x33, 0x1E, 0x00, 0x00, 0x00, 0x00,
++
++	/*	D	*/
++	0x00, 0x00, 0x00, 0x7c, 0x36, 0x33, 0x33, 0x33,
++	0x33, 0x33, 0x36, 0x7C, 0x00, 0x00, 0x00, 0x00,
++
++	/*	E	*/
++	0x00, 0x00, 0x00, 0x7f, 0x33, 0x31, 0x34, 0x3c,
++	0x34, 0x31, 0x33, 0x7f, 0x00, 0x00, 0x00, 0x00,
++
++	/*	F	*/
++	0x00, 0x00, 0x00, 0x7f, 0x33, 0x31, 0x34, 0x3c,
++	0x34, 0x30, 0x30, 0x78, 0x00, 0x00, 0x00, 0x00,
++
++	/*	G	*/
++	0x00, 0x00, 0x00, 0x1E, 0x33, 0x61, 0x60, 0x60,
++	0x6F, 0x63, 0x36, 0x7C, 0x00, 0x00, 0x00, 0x00,
++
++	/*	H	*/
++	0x00, 0x00, 0x00, 0x63, 0x63, 0x63, 0x64, 0x7f,
++	0x63, 0x63, 0x63, 0x63, 0x00, 0x00, 0x00, 0x00,
++
++	/*	I	*/
++	0x00, 0x00, 0x00, 0x3c, 0x18, 0x18, 0x18, 0x18,
++	0x18, 0x18, 0x18, 0x3c, 0x00, 0x00, 0x00, 0x00,
++
++	/*	J	*/
++	0x00, 0x00, 0x00, 0x0f, 0x06, 0x06, 0x06, 0x06,
++	0x06, 0x66, 0x66, 0x3c, 0x00, 0x00, 0x00, 0x00,
++
++	/*	K	*/
++	0x00, 0x00, 0x00, 0x73, 0x33, 0x36, 0x36, 0x3c,
++	0x36, 0x36, 0x33, 0x73, 0x00, 0x00, 0x00, 0x00,
++
++	/*	L	*/
++	0x00, 0x00, 0x00, 0x78, 0x30, 0x30, 0x30, 0x30,
++	0x30, 0x31, 0x33, 0x7f, 0x00, 0x00, 0x00, 0x00,
++
++	/*	M	*/
++	0x00, 0x00, 0x00, 0x63, 0x77, 0x7f, 0x6b, 0x63,
++	0x63, 0x63, 0x63, 0x63, 0x00, 0x00, 0x00, 0x00,
++
++	/*	N	*/
++	0x00, 0x00, 0x00, 0x63, 0x73, 0x7b, 0x7f, 0x6f,
++	0x67, 0x63, 0x63, 0x63, 0x00, 0x00, 0x00, 0x00,
++
++	/*	O	*/
++	0x00, 0x00, 0x00, 0x1c, 0x36, 0x63, 0x63, 0x63,
++	0x63, 0x63, 0x36, 0x1c, 0x00, 0x00, 0x00, 0x00,
++
++	/*	P	*/
++	0x00, 0x00, 0x00, 0x7e, 0x33, 0x33, 0x33, 0x3e,
++	0x30, 0x30, 0x30, 0x78, 0x00, 0x00, 0x00, 0x00,
++
++	/*	Q	*/
++	0x00, 0x00, 0x00, 0x3e, 0x63, 0x63, 0x63, 0x63,
++	0x6b, 0x6f, 0x3e, 0x06, 0x07, 0x00, 0x00, 0x00,
++
++	/*	R	*/
++	0x00, 0x00, 0x00, 0x7e, 0x33, 0x33, 0x33, 0x3e,
++	0x36, 0x33, 0x33, 0x73, 0x00, 0x00, 0x00, 0x00,
++
++	/*	S	*/
++	0x00, 0x00, 0x00, 0x3e, 0x63, 0x63, 0x30, 0x1c,
++	0x06, 0x63, 0x63, 0x3e, 0x00, 0x00, 0x00, 0x00,
++
++	/*	T	*/
++	0x00, 0x00, 0x00, 0xFF, 0x99, 0x18, 0x18, 0x18,
++	0x18, 0x18, 0x18, 0x3c, 0x00, 0x00, 0x00, 0x00,
++
++	/*	U	*/
++	0x00, 0x00, 0x00, 0x63, 0x63, 0x63, 0x63, 0x63,
++	0x63, 0x63, 0x63, 0x3e, 0x00, 0x00, 0x00, 0x00,
++
++	/*	V	*/
++	0x00, 0x00, 0x00, 0x63, 0x63, 0x63, 0x63, 0x63,
++	0x63, 0x36, 0x1c, 0x08, 0x00, 0x00, 0x00, 0x00,
++
++	/*	W	*/
++	0x00, 0x00, 0x00, 0x63, 0x63, 0x63, 0x63, 0x63,
++	0x6b, 0x7f, 0x77, 0x63, 0x00, 0x00, 0x00, 0x00,
++
++	/*	X	*/
++	0x00, 0x00, 0x00, 0x63, 0x63, 0x63, 0x36, 0x1c,
++	0x36, 0x63, 0x63, 0x63, 0x00, 0x00, 0x00, 0x00,
++
++	/*	Y	*/
++	0x00, 0x00, 0x00, 0x63, 0x63, 0x63, 0x36, 0x1c,
++	0x1c, 0x1c, 0x1c, 0x3e, 0x00, 0x00, 0x00, 0x00,
++
++	/*	Z	*/
++	0x00, 0x00, 0x00, 0x7f, 0x63, 0x46, 0x0c, 0x18,
++	0x30, 0x61, 0x63, 0x7f, 0x00, 0x00, 0x00, 0x00,
++
++	/*	space	*/
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++
++	/*  =  */
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7E, 0x00,
++	0x00, 0x7E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++
++	/*  ,  */
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x18, 0x18, 0x18, 0x30, 0x00, 0x00, 0x00,
++};
++
++void OSD_On(struct faradayfb_info *fbi)
++{
++	REG32(fbi->io_base + 0x34) &= 0xfffffffe;
++	REG32(fbi->io_base + 0x34) |= 1;
++}
++
++void OSD_Off(struct faradayfb_info *fbi)
++{
++	REG32(fbi->io_base + 0x34) &= 0xfffffffe;
++}
++
++void OSD_Pos(struct faradayfb_info *fbi, int HPos, int VPos)
++{
++	REG32(fbi->io_base + 0x38) = (HPos << 10) | VPos;
++}
++
++void OSD_Dim(struct faradayfb_info *fbi, int HDim, int VDim)
++{
++	REG32(fbi->io_base + 0x34) &= 0x0000001f;
++	REG32(fbi->io_base + 0x34) |= ((HDim << 10) | (VDim << 5));
++}
++
++void OSD_transparent(struct faradayfb_info *fbi, int level)
++{
++	REG32(fbi->io_base + 0x40) &= 0xffffff00;
++	REG32(fbi->io_base + 0x40) |= (level << 6);
++}
++
++void OSD_fg_color(struct faradayfb_info *fbi, int pal0, int pal1, int pal2, int pal3)
++{
++	REG32(fbi->io_base + 0x3c) = (pal0) | (pal1 << 8) | (pal2 << 16) | (pal3 << 24);
++}
++
++void OSD_bg_color(struct faradayfb_info *fbi, int pal1, int pal2, int pal3)
++{
++	REG32(fbi->io_base + 0x40) &= 0x000000ff;
++	REG32(fbi->io_base + 0x40) |= (pal1 << 8) | (pal2 << 16) | (pal3 << 24);
++}
++
++void OSD_Scal(struct faradayfb_info *fbi, int HScal, int VScal)
++{
++	REG32(fbi->io_base + 0x34) &= 0xffffffe1;
++	REG32(fbi->io_base + 0x34) |= (HScal << 3) | (VScal << 1);
++}
++
++void OSD_putc(struct faradayfb_info *fbi, char c, int position, unsigned int value)
++{
++	if (c >= '0' && c <= '9')
++		REG32(fbi->io_base + 0xc000 + position * 4) = ((c - '0') << 4) | value;
++
++	else if (c >= 'A' && c <= 'Z')
++		REG32(fbi->io_base + 0xc000 + position * 4) = ((c - 'A' + 10) << 4) | value;
++
++	if (c == ' ')
++		REG32(fbi->io_base + 0xc000 + position * 4) = (('Z' - 'A' + 10 + 1) << 4) | value;
++
++	if (c == '=')
++		REG32(fbi->io_base + 0xc000 + position * 4) = (('Z' - 'A' + 10 + 2) << 4) | value;
++
++	if (c == ',')
++		REG32(fbi->io_base + 0xc000 + position * 4) = (('Z' - 'A' + 10 + 3) << 4) | value;
++}
++
++void OSD_puts(struct faradayfb_info *fbi, char *str, int position, unsigned int value)
++{
++	int i;
++
++	for (i = 0; i < strlen(str); i++)
++		OSD_putc(fbi, *(str + i), position + i, value);
++}
++
++void OSD_String(struct faradayfb_info *fbi, int row, int mode, char *str, int fg_color, int bg_color)
++{
++	int i, j, x, y;
++	unsigned int value = fg_color | bg_color;
++
++	/* 10 digit & 26 alphabet & ' ' & '=' & ',' */
++	for (i = 0; i < dig_alpha; i++) {
++
++		x = 0;
++		y = OSD_Font[i];
++
++		for (j = 0; j < 12; j++) { /* reorder */
++			if (y & 1)
++				x |= 1;
++			y >>= 1;
++			x <<= 1;
++		}
++
++		x >>= 1;
++		REG32(fbi->io_base + 0x8000 + i * 4) = x;
++	}
++
++	OSD_puts(fbi, str, row, value);
++
++	if (mode == 2) { /* YCbCr */
++
++		OSD_fg_color(fbi, 0x57, 0x88, 0x3B, 0xFF);
++		OSD_bg_color(fbi, 0x57, 0x88, 0x3B);
++	} else {
++		OSD_fg_color(fbi, 0x07, 0x38, 0xC0, 0xFF);
++		OSD_bg_color(fbi, 0x07, 0x38, 0xc0);
++	}
++}
++#endif	/* CONFIG_FTLCD_OSD */
++
++struct andesIO {
++
++	unsigned long Regaddr;
++	unsigned long Regoffset;
++	unsigned long Regvalue;
++};
++
++static int faradayfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
++{
++	int ret = 0;
++#ifdef CONFIG_FTLCD_OSD
++	struct faradayfb_info	*fbi = info->par;
++	int			i;
++	struct fosd_data	fosd;
++
++	struct andesIO		IOAccess;
++	unsigned long			*Regaccess;
++#endif
++
++	DEBUG(0, 1, "Enter\n");
++
++	switch (cmd) {
++#ifdef CONFIG_FTLCD_OSD
++	case FRREG:
++
++		if (copy_from_user(&IOAccess, (struct andesIO *)arg, sizeof(struct andesIO))) {
++
++			ret = -EFAULT;
++			break;
++		}
++
++		Regaccess = (unsigned long *)(((IOAccess.Regaddr >> 4) | 0xF0000000UL) + IOAccess.Regoffset);
++
++		IOAccess.Regvalue = *(Regaccess);
++
++		if (copy_to_user((struct andesIO *)arg, &IOAccess, sizeof(struct andesIO))) {
++			ret = -EFAULT;
++			break;
++		}
++
++		break;
++
++	case FWREG:
++
++		if (copy_from_user(&IOAccess, (struct andesIO *)arg, sizeof(struct andesIO))) {
++			ret = -EFAULT;
++			break;
++		}
++
++		Regaccess = (unsigned long *)(((IOAccess.Regaddr >> 4) | 0xF0000000UL) + IOAccess.Regoffset);
++		*(Regaccess) = IOAccess.Regvalue;
++
++		break;
++
++	case FOSD_ON:
++
++		DEBUG(1, 1, "FOSD_ON:\n");
++		OSD_On(fbi);
++		break;
++
++	case FOSD_OFF:
++
++		DEBUG(1, 1, "FOSD_OFF:\n");
++		OSD_Off(fbi);
++		break;
++
++	case FOSD_SETPOS:
++
++		DEBUG(1, 1, "FOSD_SETPOS:\n");
++
++		if (copy_from_user(&fosd, (unsigned int *)arg, 2 * sizeof(unsigned int))) {
++
++			ret = -EFAULT;
++			break;
++		}
++
++		OSD_Pos(fbi, fosd.HPos, fosd.VPos);
++		DEBUG(1, 1, "OSD_Pos = %d %d\n", fosd.HPos, fosd.VPos);
++		break;
++
++	case FOSD_SETDIM:
++
++		DEBUG(1, 1, "FOSD_SETDIM:\n");
++
++		if (copy_from_user(&fosd, (unsigned int *)arg, 4 * sizeof(unsigned int))) {
++
++			ret = -EFAULT;
++			break;
++		}
++
++		OSD_Dim(fbi, fosd.HDim, fosd.VDim);
++		DEBUG(1, 1, "OSD_Dim = %d %d\n", fosd.HDim, fosd.VDim);
++		break;
++
++	case FOSD_SETSCAL:
++
++		DEBUG(1, 1, "FOSD_SETSCAL:\n");
++
++		if (copy_from_user(&fosd, (unsigned int *)arg, 7 * sizeof(unsigned int))) {
++			ret = -EFAULT;
++			break;
++		}
++
++		OSD_Scal(fbi, fosd.HScal, fosd.VScal);
++		break;
++
++	case FLCD_SET_TRANSPARENT:
++
++		DEBUG(1, 1, "FLCD_SET_TRANSPARENT:\n");
++
++		if (copy_from_user(&fosd, (unsigned int *)arg, 5 * sizeof(unsigned int))) {
++
++			ret = -EFAULT;
++			break;
++		}
++
++		OSD_transparent(fbi, fosd.transparent_level);
++		DEBUG(1, 1, "OSD_transparent = %d\n", fosd.transparent_level);
++		break;
++
++	case FLCD_SET_STRING:
++
++		DEBUG(1, 1, "FLCD_SET_STRING:\n");
++
++		if (copy_from_user(&fosd, (unsigned int *)arg, sizeof(struct fosd_data))) {
++
++			ret = -EFAULT;
++			break;
++		}
++
++		for (i = 0; i < fosd.VDim; i++)
++
++			OSD_String(fbi, fosd.Str_Data[i].Str_row,
++					fosd.Str_Data[i].display_mode,
++					fosd.Str_Data[i].Str_OSD,
++					fosd.Str_Data[i].fg_color,
++					fosd.Str_Data[i].bg_color);
++		break;
++#endif  /* CONFIG_FTLCD_OSD */
++
++	default:
++
++		DEBUG(1, 1, "IOCTL CMD(%08u) no define!\n", cmd);
++		ret = -EFAULT;
++		break;
++	}
++
++	DEBUG(0, 1, "Leave\n");
++	return ret;
++}
+-- 
+2.34.1
+

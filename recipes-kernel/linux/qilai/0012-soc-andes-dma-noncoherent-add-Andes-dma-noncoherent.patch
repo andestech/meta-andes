@@ -1,0 +1,266 @@
+From 1d38ffedbca1a98f903ea040c4465c7eb31b62f9 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Wed, 8 Mar 2023 15:42:37 +0800
+Subject: [PATCH 012/191] soc: andes: dma-noncoherent: add Andes
+ dma-noncoherent
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Kconfig                      |  2 -
+ arch/riscv/configs/andes-support.config |  1 +
+ arch/riscv/mm/dma-noncoherent.c         | 16 +++++
+ drivers/soc/andes/Kconfig               | 11 ++++
+ drivers/soc/andes/Makefile              |  5 +-
+ drivers/soc/andes/dma-noncoherent.c     | 23 +++++++
+ include/soc/andes/dma.h                 | 83 +++++++++++++++++++++++++
+ 7 files changed, 137 insertions(+), 4 deletions(-)
+ create mode 100644 drivers/soc/andes/dma-noncoherent.c
+ create mode 100644 include/soc/andes/dma.h
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 6bf8dc0b8f93..7d99f3a92ccb 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -118,7 +118,6 @@ config RISCV
+ 	select MODULES_USE_ELF_RELA if MODULES
+ 	select MODULE_SECTIONS if MODULES
+ 	select OF
+-	select OF_DMA_DEFAULT_COHERENT
+ 	select OF_EARLY_FLATTREE
+ 	select OF_IRQ
+ 	select PCI_DOMAINS_GENERIC if PCI
+@@ -230,7 +229,6 @@ config RISCV_DMA_NONCOHERENT
+ 	select ARCH_HAS_SYNC_DMA_FOR_DEVICE
+ 	select ARCH_HAS_SYNC_DMA_FOR_CPU
+ 	select ARCH_HAS_SETUP_DMA_OPS
+-	select DMA_DIRECT_REMAP
+ 
+ config AS_HAS_INSN
+ 	def_bool $(as-instr,.insn r 51$(comma) 0$(comma) 0$(comma) t0$(comma) t0$(comma) zero)
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+index ff6179d4f903..62a644d17204 100644
+--- a/arch/riscv/configs/andes-support.config
++++ b/arch/riscv/configs/andes-support.config
+@@ -9,4 +9,5 @@ CONFIG_FTMAC100=y
+ CONFIG_MMC_FTSDCG=y
+ CONFIG_ATCDMAC300G=y
+ 
++CONFIG_RISCV_ISA_ZICBOM=y
+ # CONFIG_RISCV_PMU is not set
+diff --git a/arch/riscv/mm/dma-noncoherent.c b/arch/riscv/mm/dma-noncoherent.c
+index d919efab6eba..e7142dd85aca 100644
+--- a/arch/riscv/mm/dma-noncoherent.c
++++ b/arch/riscv/mm/dma-noncoherent.c
+@@ -9,6 +9,7 @@
+ #include <linux/dma-map-ops.h>
+ #include <linux/mm.h>
+ #include <asm/cacheflush.h>
++#include <soc/andes/dma.h>
+ 
+ static bool noncoherent_supported;
+ 
+@@ -19,12 +20,18 @@ void arch_sync_dma_for_device(phys_addr_t paddr, size_t size,
+ 
+ 	switch (dir) {
+ 	case DMA_TO_DEVICE:
++		if (!noncoherent_supported)
++			andes_cache_op(paddr, size, cpu_dma_wb_range);
+ 		ALT_CMO_OP(clean, vaddr, size, riscv_cbom_block_size);
+ 		break;
+ 	case DMA_FROM_DEVICE:
++		if (!noncoherent_supported)
++			andes_cache_op(paddr, size, cpu_dma_inval_range);
+ 		ALT_CMO_OP(clean, vaddr, size, riscv_cbom_block_size);
+ 		break;
+ 	case DMA_BIDIRECTIONAL:
++		if (!noncoherent_supported)
++			andes_cache_op(paddr, size, cpu_dma_wb_range);
+ 		ALT_CMO_OP(flush, vaddr, size, riscv_cbom_block_size);
+ 		break;
+ 	default:
+@@ -42,6 +49,8 @@ void arch_sync_dma_for_cpu(phys_addr_t paddr, size_t size,
+ 		break;
+ 	case DMA_FROM_DEVICE:
+ 	case DMA_BIDIRECTIONAL:
++		if (!noncoherent_supported)
++			andes_cache_op(paddr, size, cpu_dma_inval_range);
+ 		ALT_CMO_OP(flush, vaddr, size, riscv_cbom_block_size);
+ 		break;
+ 	default:
+@@ -53,12 +62,19 @@ void arch_dma_prep_coherent(struct page *page, size_t size)
+ {
+ 	void *flush_addr = page_address(page);
+ 
++	if (!noncoherent_supported)
++		dma_flush_page(page, size);
+ 	ALT_CMO_OP(flush, flush_addr, size, riscv_cbom_block_size);
+ }
+ 
+ void arch_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
+ 		const struct iommu_ops *iommu, bool coherent)
+ {
++	if (!noncoherent_supported) {
++		dev->dma_coherent = coherent;
++		return;
++	}
++
+ 	WARN_TAINT(!coherent && riscv_cbom_block_size > ARCH_DMA_MINALIGN,
+ 		   TAINT_CPU_OUT_OF_SPEC,
+ 		   "%s %s: ARCH_DMA_MINALIGN smaller than riscv,cbom-block-size (%d < %d)",
+diff --git a/drivers/soc/andes/Kconfig b/drivers/soc/andes/Kconfig
+index fc77350757d4..cb3b61364419 100644
+--- a/drivers/soc/andes/Kconfig
++++ b/drivers/soc/andes/Kconfig
+@@ -9,6 +9,17 @@ config ANDES_CACHE
+ 	help
+ 	  Support for the Andes L1 & L2 cache controller on AE350 platforms.
+ 
++config ANDES_DMA_NONCOHERENT
++	bool "Andes DMA noncoherent support"
++	select ARCH_HAS_SYNC_DMA_FOR_DEVICE
++	select ARCH_HAS_SYNC_DMA_FOR_CPU
++	select ARCH_HAS_SETUP_DMA_OPS
++	select ARCH_HAS_DMA_PREP_COHERENT
++	select ARCH_HAS_DMA_SET_UNCACHED
++	depends on RISCV && PLAT_AE350
++	help
++	  Andes DMA noncoherent support
++
+ config ANDES_PPMA
+ 	bool "Andes PPMA Support"
+ 	depends on RISCV && PLAT_AE350
+diff --git a/drivers/soc/andes/Makefile b/drivers/soc/andes/Makefile
+index c72c495a4620..bcdbcfd42dbf 100644
+--- a/drivers/soc/andes/Makefile
++++ b/drivers/soc/andes/Makefile
+@@ -2,6 +2,7 @@
+ # Copyright (C) 2023 Andes Technology Corporation.
+ 
+ obj-y	+= andes_sbi.o
+-obj-$(CONFIG_ANDES_CACHE)	+= cache.o
+-obj-$(CONFIG_ANDES_PPMA)	+= ppma.o
++obj-$(CONFIG_ANDES_CACHE)		+= cache.o
++obj-$(CONFIG_ANDES_DMA_NONCOHERENT)	+= dma-noncoherent.o
++obj-$(CONFIG_ANDES_PPMA)		+= ppma.o
+ 
+diff --git a/drivers/soc/andes/dma-noncoherent.c b/drivers/soc/andes/dma-noncoherent.c
+new file mode 100644
+index 000000000000..0d9fc903eb04
+--- /dev/null
++++ b/drivers/soc/andes/dma-noncoherent.c
+@@ -0,0 +1,23 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2022 Andes Technology Corporation
++ */
++
++#include <soc/andes/dma.h>
++#include <linux/io.h>
++
++void *arch_dma_set_uncached(void *addr, size_t size)
++{
++	phys_addr_t phys;
++
++	phys = page_to_phys(virt_to_page(addr));
++	addr = ioremap_wc(phys, size);
++	return addr;
++}
++EXPORT_SYMBOL(arch_dma_set_uncached);
++
++void arch_dma_clear_uncached(void *addr, size_t size)
++{
++	iounmap(addr);
++}
++EXPORT_SYMBOL(arch_dma_clear_uncached);
+diff --git a/include/soc/andes/dma.h b/include/soc/andes/dma.h
+new file mode 100644
+index 000000000000..0e803451a3b8
+--- /dev/null
++++ b/include/soc/andes/dma.h
+@@ -0,0 +1,83 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++
++#ifndef __SOC_ANDES_DMA_H
++#define __SOC_ANDES_DMA_H
++
++#include <linux/types.h>
++#include <linux/dma-direct.h>
++#include <linux/dma-map-ops.h>
++#include <linux/mm.h>
++#include <linux/io.h>
++#include <linux/highmem.h>
++#include <linux/cacheflush.h>
++#include <asm/sbi.h>
++#include <soc/andes/proc.h>
++
++static inline void dma_flush_page(struct page *page, size_t size)
++{
++	unsigned long k_d_vaddr;
++	struct range_info ri;
++
++	/*
++	 * Invalidate any data that might be lurking in the
++	 * kernel direct-mapped region for device DMA.
++	 */
++	k_d_vaddr = (unsigned long)page_address(page);
++	memset((void *)k_d_vaddr, 0, size);
++	ri.start = k_d_vaddr;
++	ri.end = k_d_vaddr + size;
++	ri.page = page;
++	cpu_dma_wb_range((void *)&ri);
++	cpu_dma_inval_range((void *)&ri);
++}
++
++static inline void andes_cache_op(phys_addr_t paddr, size_t size,
++		void (*fn)(void *ri))
++{
++	struct page *page = pfn_to_page(paddr >> PAGE_SHIFT);
++	unsigned offset = paddr & ~PAGE_MASK;
++	size_t left = size;
++	unsigned long start;
++	struct range_info ri;
++
++	do {
++		size_t len = left;
++
++		if (PageHighMem(page)) {
++			void *addr;
++
++			if (offset + len > PAGE_SIZE) {
++				if (offset >= PAGE_SIZE) {
++					page += offset >> PAGE_SHIFT;
++					offset &= ~PAGE_MASK;
++				}
++				len = PAGE_SIZE - offset;
++			}
++
++			addr = kmap_atomic(page);
++			start = (unsigned long)(addr + offset);
++			ri.start = start;
++			ri.end = start + len;
++			ri.page = page;
++			fn((struct range_info *)&ri);
++			kunmap_atomic(addr);
++		} else {
++			start = (unsigned long)phys_to_virt(paddr);
++			ri.start = start;
++			ri.end = start + size;
++			ri.page = page;
++			fn((struct range_info *)&ri);
++		}
++		offset = 0;
++		page++;
++		left -= len;
++	} while (left);
++}
++
++extern void *arch_dma_set_uncached(void *addr, size_t size);
++extern void arch_dma_clear_uncached(void *addr, size_t size);
++
++#endif /* !__SOC_ANDES_DMA_H */
+-- 
+2.34.1
+

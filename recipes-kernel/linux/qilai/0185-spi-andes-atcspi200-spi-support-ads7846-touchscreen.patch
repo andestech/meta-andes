@@ -1,0 +1,220 @@
+From e8bf0de3302afadac14319d3ce3b183677431e18 Mon Sep 17 00:00:00 2001
+From: Locus Wei-Han Chen <locus84@andestech.com>
+Date: Thu, 23 Nov 2023 14:28:06 +0800
+Subject: [PATCH 185/191] spi: andes: atcspi200: spi support ads7846
+ touchscreen
+
+Extend the SPI driver to eliminate the need for the cpe_ts_ae350 driver.
+Use the upstream ads7846.c and the SPI framework to operate the
+touchscreen currently.
+
+1. Can accurately obtain the values of the x-axis and y-axis.
+2. Since different devices require distinct environmental
+   configurations, during the probe stage, different initialization
+   settings are applied based on the compatible string.
+
+Signed-off-by: Locus Wei-Han Chen <locus84@andestech.com>
+---
+ drivers/spi/spi-atcspi200.c | 89 ++++++++++++++++++++++++++++++++++---
+ 1 file changed, 83 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/spi/spi-atcspi200.c b/drivers/spi/spi-atcspi200.c
+index 40b2a9368df6..271a986ec80c 100644
+--- a/drivers/spi/spi-atcspi200.c
++++ b/drivers/spi/spi-atcspi200.c
+@@ -23,6 +23,7 @@
+ 
+ #define SPI_XFER_BEGIN		(1 << 0)
+ #define SPI_XFER_END		(1 << 1)
++#define SPI_XFER_DATA		(1 << 2)
+ #define SPI_XFER_ONCE		(SPI_XFER_BEGIN | SPI_XFER_END)
+ #define SPI_XFER_SHIFT		0
+ 
+@@ -61,6 +62,8 @@
+ /* SPI Transfer Format Register */
+ #define ATCSPI200_TRANSFMT_CPHA_MASK		(1UL << 0)
+ #define ATCSPI200_TRANSFMT_CPOL_MASK		(1UL << 1)
++#define ATCSPI200_TRANSFMT_DATA_LEN_OFFSET	(8)
++#define ATCSPI200_TRANSFMT_DATA_LEN_MASK	(0x1F << ATCSPI200_TRANSFMT_DATA_LEN_OFFSET)
+ 
+ /* SPI Status Register */
+ #define ATCSPI200_STATUS_TXEMPTY_OFFSET		(1 << 22)
+@@ -88,6 +91,11 @@
+ #define SPI_INTR_ST		0x3C	// SPI Interrupt Status Registe
+ #define SPI_TIMING		0x40	// SPI Interface timing Register
+ 
++struct ts_buf {
++	u8 cmd;
++	__be16 data;
++} __packed;
++
+ struct atcspi200_spi {
+ 	void __iomem	*regs;
+ 	struct clk	*clk;
+@@ -98,6 +106,8 @@ struct atcspi200_spi {
+ 	u8		cmd_buf[16];
+ 	u8		*din;
+ 	u8		*dout;
++	struct ts_buf	*tx_buf;
++	struct ts_buf	*rx_buf;
+ 	unsigned int	addr;
+ 	unsigned int	max_transfer_length;
+ 	unsigned int	freq;
+@@ -126,7 +136,7 @@ static void atcspi200_polling_spiactive(struct atcspi200_spi *spi)
+ 	} while (active & 1);
+ }
+ 
+-static int atcspi200_spi_setup(struct atcspi200_spi *spi)
++static int spi_nor_setup(struct atcspi200_spi *spi)
+ {
+ 	unsigned int	format_val;
+ 	u32	timing;
+@@ -168,6 +178,32 @@ static int atcspi200_spi_setup(struct atcspi200_spi *spi)
+ 	return 0;
+ }
+ 
++static int spi_ts_setup(struct atcspi200_spi *spi)
++{
++	unsigned int reg_val;
++
++	reg_val = atcspi200_spi_read(spi, SPI_TIMING);
++	reg_val = reg_val | ((spi->clk_rate / (spi->freq << 1)) - 1);
++	atcspi200_spi_write(spi, SPI_TIMING, reg_val);
++
++	reg_val = atcspi200_spi_read(spi, SPI_TRANSFMT);
++	atcspi200_spi_write(spi, SPI_TRANSFMT,
++			    (reg_val & ATCSPI200_TRANSFMT_DATA_LEN_MASK) |
++			    (0x17 << ATCSPI200_TRANSFMT_DATA_LEN_OFFSET));
++
++	return 0;
++}
++
++static int atcspi200_spi_setup(struct atcspi200_spi *spi, const char *node_name)
++{
++	if (!strcmp(node_name, "jedec,spi-nor"))
++		spi_nor_setup(spi);
++	else if (!strcmp(node_name, "ti,ads7846"))
++		spi_ts_setup(spi);
++
++	return 0;
++}
++
+ static int atcspi200_spi_stop(struct atcspi200_spi *spi)
+ {
+ 	atcspi200_spi_write(spi, SPI_TIMING, spi->mtiming);
+@@ -266,6 +302,26 @@ static int transfer_data(struct atcspi200_spi *spi, u8 *rx_buf, u8 *tx_buf, int
+ 	return spi->data_len;
+ 
+ }
++
++static void read_val(struct atcspi200_spi *spi, struct spi_transfer *t)
++{
++	int i, trans_len = 0, tc = 0;
++
++	atcspi200_spi_write(spi, SPI_TRANSCTRL, tc);
++	for (i = 0; i < 5; i++) {
++		atcspi200_polling_spiactive(spi);
++
++		while (!(atcspi200_spi_read(spi, SPI_STATUS) &
++			 ATCSPI200_STATUS_TXEMPTY_OFFSET));
++		atcspi200_spi_write(spi, SPI_DATA, spi->tx_buf[i].cmd << 16);
++		atcspi200_spi_write(spi, SPI_CMD, 1);
++
++		while ((atcspi200_spi_read(spi, SPI_STATUS) &
++			ATCSPI200_STATUS_RXEMPTY_OFFSET));
++		spi->rx_buf[i].data = cpu_to_be16(atcspi200_spi_read(spi, SPI_DATA));
++	}
++}
++
+ static int atcspi200_spi_transfer(struct spi_device *atcspi200_spi,
+ 				  struct spi_transfer *t, unsigned long flags)
+ {
+@@ -280,6 +336,8 @@ static int atcspi200_spi_transfer(struct spi_device *atcspi200_spi,
+ 	max_trans_len = spi->max_transfer_length;
+ 	switch (flags) {
+ 	case SPI_XFER_SHIFT:
++		if (!t->tx_buf)
++			return 0;
+ 		memcpy(cmd_buf+spi->cmd_len, t->tx_buf, t->len);
+ 		spi->cmd_len += t->len;
+ 		return 0;
+@@ -306,6 +364,11 @@ static int atcspi200_spi_transfer(struct spi_device *atcspi200_spi,
+ 		spi->trans_len = 1;
+ 		atcspi200_spi_start(spi, t);
+ 		break;
++	case SPI_XFER_DATA:
++		spi->rx_buf = (struct ts_buf *)t->rx_buf;
++		spi->tx_buf = (struct ts_buf *)t->tx_buf;
++		read_val(spi, t);
++		return 0;
+ 	}
+ 	num_chunks = DIV_ROUND_UP(data_len, max_trans_len);
+ 	while (num_chunks--) {
+@@ -339,16 +402,20 @@ static int atcspi200_spi_transfer_one_message(struct spi_master *master, struct
+ 
+ 	spi_flags = SPI_XFER_BEGIN;
+ 	list_for_each_entry(t, &m->transfers, transfer_list) {
+-		if (list_is_first(&t->transfer_list, &m->transfers) && !(t->tx_buf)) {
++		if (list_is_first(&t->transfer_list, &m->transfers) &&
++		    !(t->tx_buf) && !(t->rx_buf)) {
+ 			dev_dbg(&master->dev, "missing tx buf\n");
+ 			return -EINVAL;
+ 		}
+ 		if (!t->tx_buf && !t->rx_buf)
+ 			spi_flags |= SPI_XFER_ONCE;
+ 
+-		if (list_is_last(&t->transfer_list, &m->transfers))
+-			spi_flags |= SPI_XFER_END;
+-
++		if (list_is_last(&t->transfer_list, &m->transfers)) {
++			if (t->tx_buf && t->rx_buf)
++				spi_flags = SPI_XFER_DATA;
++			else
++				spi_flags |= SPI_XFER_END;
++		}
+ 		spin_lock_irqsave(&spi->lock, flags);
+ 		ret = atcspi200_spi_transfer(m->spi, t, spi_flags);
+ 		spin_unlock_irqrestore(&spi->lock, flags);
+@@ -451,6 +518,8 @@ static int atcspi200_spi_probe(struct platform_device *pdev)
+ 	struct atcspi200_spi *spi;
+ 	int ret, irq;
+ 	u32 num_cs = NSPI_MAX_CS_NUM;
++	struct device_node *child = of_get_next_child(pdev->dev.of_node, NULL);
++	const char *subnode;
+ 
+ 	master = spi_alloc_master(&pdev->dev, sizeof(struct atcspi200_spi));
+ 	if (!master) {
+@@ -501,6 +570,7 @@ static int atcspi200_spi_probe(struct platform_device *pdev)
+ 
+ 	/* Optional parameters */
+ 	ret = of_property_read_u32(pdev->dev.of_node, "spi-max-frequency", &master->max_speed_hz);
++	spi->freq = master->max_speed_hz;
+ 	if (ret) {
+ 		master->max_speed_hz = SPI_MAX_HZ; /* 50MHz */
+ 		spi->freq = SPI_MAX_HZ;
+@@ -518,6 +588,7 @@ static int atcspi200_spi_probe(struct platform_device *pdev)
+ 		ret = -EINVAL;
+ 		goto put_master;
+ 	}
++	ret = of_property_read_u32(pdev->dev.of_node, "clock-frequency", &spi->clk_rate);
+ 	/* probe the number of CS lines */
+ 	ret = of_property_read_u32(pdev->dev.of_node, "num-cs", &num_cs);
+ 	if (ret) {
+@@ -539,7 +610,13 @@ static int atcspi200_spi_probe(struct platform_device *pdev)
+ 	master->mem_ops = &atcspi200_mem_ops;
+ 
+ 	/* Configure the SPI master hardware */
+-	atcspi200_spi_setup(spi);
++	ret = of_property_read_string(child, "compatible", &subnode);
++	if (ret) {
++		dev_err(&pdev->dev, "could not find compatible string\n");
++		ret = -ENXIO;
++		goto put_master;
++	}
++	atcspi200_spi_setup(spi, subnode);
+ 	spi->mtiming = atcspi200_spi_read(spi, SPI_TIMING);
+ 
+ 	ret = devm_request_irq(&pdev->dev, irq, andes_spi_irq, 0,
+-- 
+2.34.1
+

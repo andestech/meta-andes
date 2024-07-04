@@ -1,0 +1,29 @@
+From 7dc41586eed4d4c88244501e70b408ff7728ebf7 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Fri, 9 Jun 2023 08:17:10 +0800
+Subject: [PATCH 054/191] v3PR: add earlycon=sbi to extend cmdline
+
+---
+ arch/riscv/configs/sv39.config | 2 +-
+ arch/riscv/configs/sv48.config | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/riscv/configs/sv39.config b/arch/riscv/configs/sv39.config
+index 899c7e52cde3..bf107b886542 100644
+--- a/arch/riscv/configs/sv39.config
++++ b/arch/riscv/configs/sv39.config
+@@ -1,2 +1,2 @@
+-CONFIG_CMDLINE="no4lvl"
++CONFIG_CMDLINE="no4lvl earlycon=sbi"
+ CONFIG_CMDLINE_EXTEND=y
+diff --git a/arch/riscv/configs/sv48.config b/arch/riscv/configs/sv48.config
+index 2d0e26a5956b..94136f06251d 100644
+--- a/arch/riscv/configs/sv48.config
++++ b/arch/riscv/configs/sv48.config
+@@ -1,2 +1,2 @@
+-CONFIG_CMDLINE="no5lvl"
++CONFIG_CMDLINE="no5lvl earlycon=sbi"
+ CONFIG_CMDLINE_EXTEND=y
+-- 
+2.34.1
+

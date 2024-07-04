@@ -1,0 +1,198 @@
+From 09ecb42101c045bfe93d959da3ceaecc97b1fce7 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Fri, 3 May 2024 15:20:34 +0800
+Subject: [PATCH 175/191] renemae SOC_RESET_VECTOR to SMU_RESET_VECTOR
+
+remove all nnessary printf
+in rpmsg
+in ppma
+in remoteproc
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ drivers/remoteproc/qilai_remoteproc.c  | 11 ++++++-----
+ drivers/remoteproc/remoteproc_core.c   | 13 ++++++++-----
+ drivers/remoteproc/remoteproc_virtio.c | 10 ++++++----
+ drivers/rpmsg/mtk_rpmsg.c              |  2 +-
+ drivers/rpmsg/rpmsg_ns.c               |  7 ++++---
+ drivers/rpmsg/virtio_rpmsg_bus.c       |  3 ++-
+ drivers/soc/andes/ppma.c               |  2 --
+ 7 files changed, 27 insertions(+), 21 deletions(-)
+
+diff --git a/drivers/remoteproc/qilai_remoteproc.c b/drivers/remoteproc/qilai_remoteproc.c
+index c62da77ab7d1..7340f1f3a876 100644
+--- a/drivers/remoteproc/qilai_remoteproc.c
++++ b/drivers/remoteproc/qilai_remoteproc.c
+@@ -30,8 +30,9 @@
+ #define SOC_NX_RESET_BIT	2
+ #define SOC_NX_RW_RESET_BIT		19
+ #define SOC_BOOT_CTRL_OFFSET (SOC_OFFSET + 0x4C)
+-#define SOC_RESET_VECTOR_LO_OFFSET (0x78)
+-#define SOC_RESET_VECTOR_HI_OFFSET (0x7C)
++
++#define SMU_RESET_VECTOR_LO_OFFSET (0x78)
++#define SMU_RESET_VECTOR_HI_OFFSET (0x7C)
+ 
+ /* PMA napot is 0x10FDFFFFF */
+ #define SP_BASE 		0x43f000000
+@@ -113,7 +114,6 @@ void check_for_openamp_sp(void *info)
+ 	if (swmbox_base) {
+ 		reg_value = readl(swmbox_base + SBI_OFF);
+ 		if (reg_value) {
+-			printk(KERN_INFO "[%s] reg_value:%08x\n", __func__, reg_value);
+ 			writel(0, swmbox_base + SBI_OFF);
+ 			andes_amp_trace(AMP_MP_HANDLE_EVENT);
+ 			queue_work(qilai_vq_wq, &rpc_work.work);
+@@ -143,8 +143,8 @@ static int andes_rproc_start(struct rproc *rproc)
+ 
+ 	/* MP set ELF entry point to the SP reset vector. */
+ 
+-	writel((unsigned int)(SP_BASE), atcsmu.base + SOC_RESET_VECTOR_LO_OFFSET);
+-	writel((unsigned int)(SP_BASE >> 32), atcsmu.base + SOC_RESET_VECTOR_HI_OFFSET);
++	writel((unsigned int)(SP_BASE), atcsmu.base + SMU_RESET_VECTOR_LO_OFFSET);
++	writel((unsigned int)(SP_BASE >> 32), atcsmu.base + SMU_RESET_VECTOR_HI_OFFSET);
+ 
+ 	reg_value = readl(atcsmu.base + SOC_NX_RESET_OFFSET);
+ 
+@@ -411,6 +411,7 @@ static int andes_remoteproc_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	swmbox_base = local->mbox_msg;
++        memset(swmbox_base, 0x0, sizeof(struct swmsg_box));
+ 
+ 	andes_amp_trace(AMP_MP_SBI_ENABLE);
+ 	sbi_swplic_openamp_idx(1);
+diff --git a/drivers/remoteproc/remoteproc_core.c b/drivers/remoteproc/remoteproc_core.c
+index fbed193dd4b3..dbf7a51482d8 100644
+--- a/drivers/remoteproc/remoteproc_core.c
++++ b/drivers/remoteproc/remoteproc_core.c
+@@ -1313,7 +1313,8 @@ static int rproc_start(struct rproc *rproc, const struct firmware *fw)
+ 
+ 	rproc->state = RPROC_RUNNING;
+ 
+-	dev_info(dev, "remote processor %s is now up\n", rproc->name);
++        /* for Qilai OpenAMP  */
++	//dev_info(dev, "remote processor %s is now up\n", rproc->name);
+ 
+ 	return 0;
+ 
+@@ -1382,8 +1383,8 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
+ 	if (ret)
+ 		return ret;
+ 
+-//	dev_info(dev, "Booting fw image %s, size %zd\n", name, fw->size);
+-	dev_info(dev, "Booting fw\n");
++        //dev_info(dev, "Booting fw image %s, size %zd\n", name, fw->size);
++	//dev_info(dev, "Booting fw\n");
+ 
+ 	/*
+ 	 * if enabling an IOMMU isn't relevant for this rproc, this is
+@@ -1734,7 +1735,8 @@ static int rproc_stop(struct rproc *rproc, bool crashed)
+ 
+ 	rproc->state = RPROC_OFFLINE;
+ 
+-	dev_info(dev, "stopped remote processor %s\n", rproc->name);
++        /* for Qilai OpenAMP */
++	//dev_info(dev, "stopped remote processor %s\n", rproc->name);
+ 
+ 	return 0;
+ }
+@@ -1941,7 +1943,8 @@ int rproc_boot(struct rproc *rproc)
+ 
+ 		ret = rproc_attach(rproc);
+ 	} else {
+-		dev_info(dev, "powering up %s\n", rproc->name);
++                /* for qilai OpenAMP */
++		//dev_info(dev, "powering up %s\n", rproc->name);
+ 
+ 		/* load firmware */
+ 		ret = request_firmware(&firmware_p, rproc->firmware, dev);
+diff --git a/drivers/remoteproc/remoteproc_virtio.c b/drivers/remoteproc/remoteproc_virtio.c
+index 0e95525c1158..2d1b26d7673d 100644
+--- a/drivers/remoteproc/remoteproc_virtio.c
++++ b/drivers/remoteproc/remoteproc_virtio.c
+@@ -395,8 +395,9 @@ static int rproc_add_virtio_dev(struct rproc_vdev *rvdev, int id)
+ 			}
+ 		} else {
+ 			if (mem->va) {
+-				dev_warn(dev, "vdev %d buffer already mapped\n",
+-					 rvdev->index);
++				/* for Qilai OpenAMP */
++                                //dev_warn(dev, "vdev %d buffer already mapped\n",
++				//	 rvdev->index);
+ 				pa = rproc_va_to_pa(mem->va);
+ 			} else {
+ 				/* Use dma address as carveout no memmapped yet */
+@@ -446,8 +447,9 @@ static int rproc_add_virtio_dev(struct rproc_vdev *rvdev, int id)
+ 		dev_err(dev, "failed to register vdev: %d\n", ret);
+ 		goto out;
+ 	}
+-
+-	dev_info(dev, "registered %s (type %d)\n", dev_name(&vdev->dev), id);
++        
++        /* for Qilai OpenAMP */
++	//dev_info(dev, "registered %s (type %d)\n", dev_name(&vdev->dev), id);
+ 
+ out:
+ 	return ret;
+diff --git a/drivers/rpmsg/mtk_rpmsg.c b/drivers/rpmsg/mtk_rpmsg.c
+index d1213c33da20..e9a18fc0aac1 100644
+--- a/drivers/rpmsg/mtk_rpmsg.c
++++ b/drivers/rpmsg/mtk_rpmsg.c
+@@ -295,7 +295,7 @@ static int mtk_rpmsg_ns_cb(struct rpmsg_device *rpdev, void *data, int len,
+ 	/* don't trust the remote processor for null terminating the name */
+ 	msg->name[RPMSG_NAME_SIZE - 1] = '\0';
+ 
+-	dev_info(dev, "creating channel %s addr 0x%x\n", msg->name, msg->addr);
++	dev_dbg(dev, "creating channel %s addr 0x%x\n", msg->name, msg->addr);
+ 
+ 	ret = mtk_rpmsg_create_device(mtk_subdev, msg->name, msg->addr);
+ 	if (ret) {
+diff --git a/drivers/rpmsg/rpmsg_ns.c b/drivers/rpmsg/rpmsg_ns.c
+index c70ad03ff2e9..200ab4a7d933 100644
+--- a/drivers/rpmsg/rpmsg_ns.c
++++ b/drivers/rpmsg/rpmsg_ns.c
+@@ -54,9 +54,10 @@ static int rpmsg_ns_cb(struct rpmsg_device *rpdev, void *data, int len,
+ 	chinfo.src = RPMSG_ADDR_ANY;
+ 	chinfo.dst = rpmsg32_to_cpu(rpdev, msg->addr);
+ 
+-	dev_info(dev, "%sing channel %s addr 0x%x\n",
+-		 rpmsg32_to_cpu(rpdev, msg->flags) & RPMSG_NS_DESTROY ?
+-		 "destroy" : "creat", msg->name, chinfo.dst);
++        /* for Qilai OpenAMP */
++	//dev_info(dev, "%sing channel %s addr 0x%x\n",
++	//	 rpmsg32_to_cpu(rpdev, msg->flags) & RPMSG_NS_DESTROY ?
++	//	 "destroy" : "creat", msg->name, chinfo.dst);
+ 
+ 	if (rpmsg32_to_cpu(rpdev, msg->flags) & RPMSG_NS_DESTROY) {
+ 		ret = rpmsg_release_channel(rpdev, &chinfo);
+diff --git a/drivers/rpmsg/virtio_rpmsg_bus.c b/drivers/rpmsg/virtio_rpmsg_bus.c
+index 905ac7910c98..14e686a93849 100644
+--- a/drivers/rpmsg/virtio_rpmsg_bus.c
++++ b/drivers/rpmsg/virtio_rpmsg_bus.c
+@@ -994,7 +994,8 @@ static int rpmsg_probe(struct virtio_device *vdev)
+ 	if (notify)
+ 		virtqueue_notify(vrp->rvq);
+ 
+-	dev_info(&vdev->dev, "rpmsg host is online\n");
++	/* for Qilai OpenAMP */
++        //dev_info(&vdev->dev, "rpmsg host is online\n");
+ 
+ 	return 0;
+ 
+diff --git a/drivers/soc/andes/ppma.c b/drivers/soc/andes/ppma.c
+index 274559517be9..ba886c16a913 100644
+--- a/drivers/soc/andes/ppma.c
++++ b/drivers/soc/andes/ppma.c
+@@ -39,8 +39,6 @@ void andes_set_ppma(phys_addr_t phys_addr, void *va_addr, size_t size)
+ 	int i, err;
+ 	bool within_memory = pfn_valid(phys_addr >> PAGE_SHIFT);
+ 
+-	printk("!!riscv_pfn_base = 0x%lx\n",riscv_pfn_base);
+-	printk("!! max_mapnr = 0x%lx\n",max_mapnr);
+ 	/*
+ 	 * PPMA/Non-cacheability setting only
+ 	 * when the given PA is within main memory range,
+-- 
+2.34.1
+

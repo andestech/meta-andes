@@ -1,0 +1,48 @@
+From 714d72bc965770eaf7af67ff986a60ed15ca41b8 Mon Sep 17 00:00:00 2001
+From: Andy Chiu <andy.chiu@sifive.com>
+Date: Wed, 16 Aug 2023 15:54:49 +0000
+Subject: [PATCH 122/191] RISC-V: vector: export VLENB csr in
+ __sc_riscv_v_state
+
+VLENB is critical for callers of ptrace to reconstruct Vector register
+files from the register dump of NT_RISCV_VECTOR. Also, future systems
+may will have a writable VLENB, so add it now to potentially save future
+compatibility issue.
+
+Fixes: 0c59922c769a ("riscv: Add ptrace vector support")
+Signed-off-by: Andy Chiu <andy.chiu@sifive.com>
+---
+ arch/riscv/include/asm/vector.h      | 3 ++-
+ arch/riscv/include/uapi/asm/ptrace.h | 1 +
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/arch/riscv/include/asm/vector.h b/arch/riscv/include/asm/vector.h
+index e7df4e0ac793..1c4274250212 100644
+--- a/arch/riscv/include/asm/vector.h
++++ b/arch/riscv/include/asm/vector.h
+@@ -65,8 +65,9 @@ static __always_inline void __vstate_csr_save(struct __riscv_v_ext_state *dest)
+ 		"csrr	%1, " __stringify(CSR_VTYPE) "\n\t"
+ 		"csrr	%2, " __stringify(CSR_VL) "\n\t"
+ 		"csrr	%3, " __stringify(CSR_VCSR) "\n\t"
++		"csrr	%4, " __stringify(CSR_VLENB) "\n\t"
+ 		: "=r" (dest->vstart), "=r" (dest->vtype), "=r" (dest->vl),
+-		  "=r" (dest->vcsr) : :);
++		  "=r" (dest->vcsr), "=r" (dest->vlenb) : :);
+ }
+ 
+ static __always_inline void __vstate_csr_restore(struct __riscv_v_ext_state *src)
+diff --git a/arch/riscv/include/uapi/asm/ptrace.h b/arch/riscv/include/uapi/asm/ptrace.h
+index 9d5a0bdadd77..595959acdd54 100644
+--- a/arch/riscv/include/uapi/asm/ptrace.h
++++ b/arch/riscv/include/uapi/asm/ptrace.h
+@@ -103,6 +103,7 @@ struct __riscv_v_ext_state {
+ 	unsigned long vl;
+ 	unsigned long vtype;
+ 	unsigned long vcsr;
++	unsigned long vlenb;
+ 	void *datap;
+ 	/*
+ 	 * In signal handler, datap will be set a correct user stack offset
+-- 
+2.34.1
+

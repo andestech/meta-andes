@@ -1,0 +1,55 @@
+From 066d0cd22413a8bc27623177a8914c9d613e8586 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Fri, 7 Apr 2023 15:19:26 +0800
+Subject: [PATCH 069/191] riscv: andes: defconfig: add config and include for
+ Andes riscv pmu
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Kconfig.erratas              | 2 +-
+ arch/riscv/configs/andes-support.config | 2 +-
+ drivers/perf/riscv_pmu_sbi.c            | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/arch/riscv/Kconfig.erratas b/arch/riscv/Kconfig.erratas
+index 8ec1a9034cc6..efeb25ea3427 100644
+--- a/arch/riscv/Kconfig.erratas
++++ b/arch/riscv/Kconfig.erratas
+@@ -37,7 +37,7 @@ config ERRATA_ANDES_PA_MSB
+ 
+ config ERRATA_ANDES_HPM
+ 	bool "Apply Andes HPM errata"
+-	depends on ERRATA_ANDES && RISCV_PMU_SBI
++	depends on ERRATA_ANDES
+ 	default y
+ 	help
+ 	  The Andes cores implement a HPM overflow extension very
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+index 30e0b70cd6dc..6110ce28d31c 100644
+--- a/arch/riscv/configs/andes-support.config
++++ b/arch/riscv/configs/andes-support.config
+@@ -5,7 +5,7 @@ CONFIG_ANDES_CACHE=y
+ CONFIG_ANDES_DMA_NONCOHERENT=y
+ CONFIG_ANDES_PPMA=y
+ CONFIG_RISCV_ISA_ZICBOM=y
+-# CONFIG_RISCV_PMU is not set
++CONFIG_RISCV_PMU=y
+ 
+ CONFIG_FTMAC100=y
+ CONFIG_MMC_FTSDCG=y
+diff --git a/drivers/perf/riscv_pmu_sbi.c b/drivers/perf/riscv_pmu_sbi.c
+index 7fbf89398676..c7f1588a3e73 100644
+--- a/drivers/perf/riscv_pmu_sbi.c
++++ b/drivers/perf/riscv_pmu_sbi.c
+@@ -19,7 +19,7 @@
+ #include <linux/of.h>
+ #include <linux/cpu_pm.h>
+ #include <linux/sched/clock.h>
+-#include <soc/andes/andes.h>
++#include <soc/andes/sbi.h>
+ #include <soc/andes/csr.h>
+ 
+ #include <asm/errata_list.h>
+-- 
+2.34.1
+

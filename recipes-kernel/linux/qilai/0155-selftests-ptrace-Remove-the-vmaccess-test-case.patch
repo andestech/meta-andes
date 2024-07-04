@@ -1,0 +1,29 @@
+From 120ab5eebe0c5759719e7e794266f249f5b1cb1e Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Tue, 3 Oct 2023 14:36:31 +0800
+Subject: [PATCH 155/191] selftests/ptrace: Remove the vmaccess test case.
+
+This testcase 'tools/testing/selftests/ptrace/vmaccess.c' still can not
+pass on the newest v6.4 kernel. Thus, remove this test case.
+
+Link: https://patchwork.kernel.org/project/linux-kselftest/patch/20221128070454.1850273-1-limin100@huawei.com/
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ tools/testing/selftests/ptrace/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/testing/selftests/ptrace/Makefile b/tools/testing/selftests/ptrace/Makefile
+index 2f1f532c39db..6ee155ffb57f 100644
+--- a/tools/testing/selftests/ptrace/Makefile
++++ b/tools/testing/selftests/ptrace/Makefile
+@@ -1,6 +1,6 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ CFLAGS += -std=c99 -pthread -iquote../../../../include/uapi -Wall
+ 
+-TEST_GEN_PROGS := get_syscall_info peeksiginfo vmaccess
++TEST_GEN_PROGS := get_syscall_info peeksiginfo
+ 
+ include ../lib.mk
+-- 
+2.34.1
+

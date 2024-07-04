@@ -1,0 +1,60 @@
+From 95568b6adad5f42476c1f1a2ec746606ccc4ef2f Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Wed, 9 Aug 2023 12:34:01 +0800
+Subject: [PATCH 130/191] riscv: andes: remove config ANDES_QEMU_SUPPORT
+
+The Andes dma-coherent support is checked in the following order:
+
+ZICBOM -> PPMA -> MSB
+
+However, the older version of QEMU does not support the ZICBOM and
+PPMA. When using a non-coherent setup in the Device Tree Source,
+the ANDES MSB takes effect. QEMU doesn't support the ANDES MSB,
+which results in system issues.
+
+The current, newer version of QEMU supports PPMA.
+As a result, the ANDES_QEMU_SUPPORT has been removed.
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Kconfig.socs          | 7 -------
+ arch/riscv/include/asm/pgtable.h | 4 ----
+ 2 files changed, 11 deletions(-)
+
+diff --git a/arch/riscv/Kconfig.socs b/arch/riscv/Kconfig.socs
+index be0793207ab9..d70b40f6d94a 100644
+--- a/arch/riscv/Kconfig.socs
++++ b/arch/riscv/Kconfig.socs
+@@ -27,13 +27,6 @@ config PLAT_AE350
+ 	  This enables support for Andes AE350 platform hardware.
+ endchoice
+ 
+-config ANDES_QEMU_SUPPORT
+-	bool "Andes QEMU SUPPORT"
+-	depends on SOC_SIFIVE
+-	default n
+-	help
+-	  Andes QEMU Support.
+-
+ config SOC_MICROCHIP_POLARFIRE
+ 	bool "Microchip PolarFire SoCs"
+ 	select MCHP_CLK_MPFS
+diff --git a/arch/riscv/include/asm/pgtable.h b/arch/riscv/include/asm/pgtable.h
+index a520d5124e5b..7b232d442b8f 100644
+--- a/arch/riscv/include/asm/pgtable.h
++++ b/arch/riscv/include/asm/pgtable.h
+@@ -153,11 +153,7 @@ extern struct pt_alloc_ops pt_ops __initdata;
+ #ifdef CONFIG_PLAT_AE350
+ /* Noncacheable page prot for Andes MSB */
+ extern phys_addr_t andes_pa_msb;
+-#ifdef CONFIG_ANDES_QEMU_SUPPORT
+-#define _PAGE_NONCACHEABLE      0
+-#else
+ #define _PAGE_NONCACHEABLE      ((!!andes_pa_msb) << 31)
+-#endif
+ #endif /* CONFIG_PLAT_AE350 */
+ 
+ /* Number of PGD entries that a user-mode program can use */
+-- 
+2.34.1
+

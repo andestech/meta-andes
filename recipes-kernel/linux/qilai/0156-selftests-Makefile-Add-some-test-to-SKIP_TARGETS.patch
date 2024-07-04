@@ -1,0 +1,43 @@
+From 95edc9597ebfef37e27e9600eaddb5b4421f12f6 Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Wed, 4 Oct 2023 14:37:54 +0800
+Subject: [PATCH 156/191] selftests/Makefile: Add some test to SKIP_TARGETS
+
+Skipped test case:
+ * Used some network utilities that BusyBox does not support
+    drivers/dma-buf
+    drivers/s390x/uvdevice
+    drivers/net/bonding
+    drivers/net/team
+    net
+    net/af_unix
+    net/forwarding
+    net/mptcp
+    net/openvswitch
+ * Causes the system to hang
+    lkdtm
+    breakpoints
+    firmware
+ * Need to add reserved memory for ramoops in DTS
+    pstore
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ tools/testing/selftests/Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tools/testing/selftests/Makefile b/tools/testing/selftests/Makefile
+index aae64eb2ae73..93736dbd2e3d 100644
+--- a/tools/testing/selftests/Makefile
++++ b/tools/testing/selftests/Makefile
+@@ -96,6 +96,7 @@ TARGETS_HOTPLUG += memory-hotplug
+ # BPF since it has cutting edge build time dependencies which require
+ # more effort to install.
+ SKIP_TARGETS ?= bpf
++SKIP_TARGETS += breakpoints drivers/dma-buf drivers/s390x/uvdevice drivers/net/bonding drivers/net/team firmware net net/af_unix net/forwarding net/mptcp net/openvswitch lkdtm pstore
+ ifneq ($(SKIP_TARGETS),)
+ 	TMP := $(filter-out $(SKIP_TARGETS), $(TARGETS))
+ 	override TARGETS := $(TMP)
+-- 
+2.34.1
+

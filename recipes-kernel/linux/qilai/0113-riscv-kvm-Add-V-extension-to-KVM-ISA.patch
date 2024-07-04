@@ -1,0 +1,49 @@
+From 0b77b63b4d4ba84f1187f5d48118253db50c8d9a Mon Sep 17 00:00:00 2001
+From: Vincent Chen <vincent.chen@sifive.com>
+Date: Mon, 5 Jun 2023 11:07:15 +0000
+Subject: [PATCH 113/191] riscv: kvm: Add V extension to KVM ISA
+
+Add V extension to KVM isa extension list to enable supporting of V
+extension on VCPUs.
+
+Signed-off-by: Vincent Chen <vincent.chen@sifive.com>
+Signed-off-by: Greentime Hu <greentime.hu@sifive.com>
+Signed-off-by: Andy Chiu <andy.chiu@sifive.com>
+Reviewed-by: Conor Dooley <conor.dooley@microchip.com>
+Reviewed-by: Anup Patel <anup@brainfault.org>
+Acked-by: Anup Patel <anup@brainfault.org>
+Reviewed-by: Heiko Stuebner <heiko.stuebner@vrull.eu>
+Link: https://lore.kernel.org/r/20230605110724.21391-19-andy.chiu@sifive.com
+Signed-off-by: Palmer Dabbelt <palmer@rivosinc.com>
+---
+ arch/riscv/include/uapi/asm/kvm.h | 1 +
+ arch/riscv/kvm/vcpu.c             | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/arch/riscv/include/uapi/asm/kvm.h b/arch/riscv/include/uapi/asm/kvm.h
+index 8985ff234c01..8f37444dd492 100644
+--- a/arch/riscv/include/uapi/asm/kvm.h
++++ b/arch/riscv/include/uapi/asm/kvm.h
+@@ -102,6 +102,7 @@ enum KVM_RISCV_ISA_EXT_ID {
+ 	KVM_RISCV_ISA_EXT_SVINVAL,
+ 	KVM_RISCV_ISA_EXT_ZIHINTPAUSE,
+ 	KVM_RISCV_ISA_EXT_ZICBOM,
++	KVM_RISCV_ISA_EXT_V,
+ 	KVM_RISCV_ISA_EXT_MAX,
+ };
+ 
+diff --git a/arch/riscv/kvm/vcpu.c b/arch/riscv/kvm/vcpu.c
+index 5174ef54ad1d..0c293ddd980a 100644
+--- a/arch/riscv/kvm/vcpu.c
++++ b/arch/riscv/kvm/vcpu.c
+@@ -56,6 +56,7 @@ static const unsigned long kvm_isa_ext_arr[] = {
+ 	[KVM_RISCV_ISA_EXT_H] = RISCV_ISA_EXT_h,
+ 	[KVM_RISCV_ISA_EXT_I] = RISCV_ISA_EXT_i,
+ 	[KVM_RISCV_ISA_EXT_M] = RISCV_ISA_EXT_m,
++	[KVM_RISCV_ISA_EXT_V] = RISCV_ISA_EXT_v,
+ 
+ 	KVM_ISA_EXT_ARR(SSTC),
+ 	KVM_ISA_EXT_ARR(SVINVAL),
+-- 
+2.34.1
+

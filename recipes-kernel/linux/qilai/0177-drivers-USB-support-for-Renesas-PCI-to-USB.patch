@@ -1,0 +1,33 @@
+From 4997de120fca519b5a8656d749dad682280d44bb Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Mon, 6 May 2024 19:45:56 +0800
+Subject: [PATCH 177/191] drivers: USB: support for Renesas PCI to USB
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ arch/riscv/configs/qilai.config | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/arch/riscv/configs/qilai.config b/arch/riscv/configs/qilai.config
+index e4ce209f6440..e0400288b4b8 100644
+--- a/arch/riscv/configs/qilai.config
++++ b/arch/riscv/configs/qilai.config
+@@ -52,4 +52,13 @@ CONFIG_DRM_KMS_HELPER=y
+ CONFIG_DRM_KMS_FB_HELPER=y
+ CONFIG_DRM_VRAM_HELPER=y
+ CONFIG_HIGHMEM=y
+-CONFIG_IGC=y
+\ No newline at end of file
++CONFIG_IGC=y
++CONFIG_USB_RTL8152=y
++CONFIG_INPUT_EVDEV=y
++CONFIG_USB_XHCI_PCI_RENESAS=y
++
++## sample for linux-firmware
++# CONFIG_EXTRA_FIRMWARE="amdgpu/polaris12_ce.bin amdgpu/polaris12_ce_2.bin amdgpu/polaris12_k_mc.bin amdgpu/polaris12_k_smc.bin amdgpu/polaris12_mc.bin amdgpu/polaris12_me.bin amdgpu/polaris12_me_2.bin amdgpu/polaris12_mec.bin amdgpu/polaris12_mec2.bin amdgpu/polaris12_mec2_2.bin amdgpu/polaris12_mec_2.bin amdgpu/polaris12_pfp.bin amdgpu/polaris12_pfp_2.bin amdgpu/polaris12_rlc.bin amdgpu/polaris12_sdma.bin amdgpu/polaris12_sdma1.bin amdgpu/polaris12_smc.bin amdgpu/polaris12_uvd.bin amdgpu/polaris12_vce.bin"
++# CONFIG_EXTRA_FIRMWARE_DIR="/path/to/the/folder/linux-firmware"
++# CONFIG_FW_LOADER_USER_HELPER=y
++# CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n
+-- 
+2.34.1
+

@@ -1,0 +1,35 @@
+From a500585db133db7246e4ce5c0458205c2f4dfd92 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Mon, 17 Apr 2023 16:28:24 +0800
+Subject: [PATCH 028/191] soc: andes: injection: upgrade struct file_operations
+ to struct proc_ops
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ drivers/soc/andes/inject_init.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/soc/andes/inject_init.c b/drivers/soc/andes/inject_init.c
+index 60b1beba2a71..43e2c6e38fbf 100644
+--- a/drivers/soc/andes/inject_init.c
++++ b/drivers/soc/andes/inject_init.c
+@@ -38,11 +38,11 @@ static int inject_open(struct inode *inode, struct file *file)
+ 	return single_open(file, inject_show, NULL);
+ }
+ 
+-static const struct file_operations inject_fops = {
+-	.open		= inject_open,
+-	.read		= seq_read,
+-	.llseek		= seq_lseek,
+-	.release	= single_release,
++static const struct proc_ops inject_fops = {
++	.proc_open	= inject_open,
++	.proc_read	= seq_read,
++	.proc_lseek	= seq_lseek,
++	.proc_release	= single_release,
+ };
+ 
+ static int __init inject_init(void)
+-- 
+2.34.1
+

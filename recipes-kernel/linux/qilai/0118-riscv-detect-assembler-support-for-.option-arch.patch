@@ -1,0 +1,49 @@
+From 3d2020a2c7876986a6746d3649ee87afcd14bcd5 Mon Sep 17 00:00:00 2001
+From: Andy Chiu <andy.chiu@sifive.com>
+Date: Mon, 5 Jun 2023 11:07:20 +0000
+Subject: [PATCH 118/191] riscv: detect assembler support for .option arch
+
+Some extensions use .option arch directive to selectively enable certain
+extensions in parts of its assembly code. For example, Zbb uses it to
+inform assmebler to emit bit manipulation instructions. However,
+supporting of this directive only exist on GNU assembler and has not
+landed on clang at the moment, making TOOLCHAIN_HAS_ZBB depend on
+AS_IS_GNU.
+
+While it is still under review at https://reviews.llvm.org/D123515, the
+upcoming Vector patch also requires this feature in assembler. Thus,
+provide Kconfig AS_HAS_OPTION_ARCH to detect such feature. Then
+TOOLCHAIN_HAS_XXX will be turned on automatically when the feature land.
+
+Suggested-by: Nathan Chancellor <nathan@kernel.org>
+Signed-off-by: Andy Chiu <andy.chiu@sifive.com>
+Reviewed-by: Conor Dooley <conor.dooley@microchip.com>
+Reviewed-by: Nathan Chancellor <nathan@kernel.org>
+Reviewed-by: Heiko Stuebner <heiko.stuebner@vrull.eu>
+Tested-by: Heiko Stuebner <heiko.stuebner@vrull.eu>
+Link: https://lore.kernel.org/r/20230605110724.21391-24-andy.chiu@sifive.com
+Signed-off-by: Palmer Dabbelt <palmer@rivosinc.com>
+---
+ arch/riscv/Kconfig | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 901d0f7b619b..a37d42ca4d0b 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -233,6 +233,12 @@ config RISCV_DMA_NONCOHERENT
+ config AS_HAS_INSN
+ 	def_bool $(as-instr,.insn r 51$(comma) 0$(comma) 0$(comma) t0$(comma) t0$(comma) zero)
+ 
++config AS_HAS_OPTION_ARCH
++	# https://reviews.llvm.org/D123515
++	def_bool y
++	depends on $(as-instr, .option arch$(comma) +m)
++	depends on !$(as-instr, .option arch$(comma) -i)
++
+ source "arch/riscv/Kconfig.socs"
+ source "arch/riscv/Kconfig.erratas"
+ 
+-- 
+2.34.1
+

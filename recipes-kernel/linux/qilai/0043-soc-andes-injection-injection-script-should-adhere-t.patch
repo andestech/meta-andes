@@ -1,0 +1,36 @@
+From f9742d889fc8f988647654d3b428302ebfc1583b Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Tue, 23 May 2023 14:55:18 +0800
+Subject: [PATCH 043/191] soc: andes: injection: injection script should adhere
+ to the rules of the shell script
+
+It is suggested in the Gitea code review:
+https://gitea.andestech.com/RD-SW/linux/pulls/17#issuecomment-73617
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ drivers/soc/andes/inject_init.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/soc/andes/inject_init.c b/drivers/soc/andes/inject_init.c
+index 43e2c6e38fbf..24408731f8fc 100644
+--- a/drivers/soc/andes/inject_init.c
++++ b/drivers/soc/andes/inject_init.c
+@@ -52,10 +52,11 @@ static int __init inject_init(void)
+ 	inject = (void *)ioremap((phys_addr_t)INJECT_START, INJECT_SIZE);
+ 	p = (unsigned char *)inject;
+ 
+-	if (p[0] != '#' && p[0] != 0x79)
+-		p[0] = 0;
++	if (p[0] == '#' && p[1] == '!')
++		proc_create("inject", 0444, NULL, &inject_fops);
++	else
++		iounmap(inject);
+ 
+-	proc_create("inject", 0444, NULL, &inject_fops);
+ 	return 0;
+ }
+ arch_initcall(inject_init);
+-- 
+2.34.1
+

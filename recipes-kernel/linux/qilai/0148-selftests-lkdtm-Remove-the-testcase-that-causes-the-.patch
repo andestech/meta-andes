@@ -1,0 +1,37 @@
+From 4a2f7e3720c997235e1193657f9c0256ea56d3ba Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Tue, 25 Jul 2023 17:41:34 +0800
+Subject: [PATCH 148/191] selftests/lkdtm: Remove the testcase that causes the
+ system to hang.
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ tools/testing/selftests/lkdtm/tests.txt | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/tools/testing/selftests/lkdtm/tests.txt b/tools/testing/selftests/lkdtm/tests.txt
+index 607b8d7e3ea3..ca2515f90dd8 100644
+--- a/tools/testing/selftests/lkdtm/tests.txt
++++ b/tools/testing/selftests/lkdtm/tests.txt
+@@ -32,18 +32,11 @@ SLAB_FREE_PAGE
+ #HARDLOCKUP Hangs the system
+ #SPINLOCKUP Hangs the system
+ #HUNG_TASK Hangs the system
+-EXEC_DATA
+-EXEC_STACK
+ EXEC_KMALLOC
+-EXEC_VMALLOC
+-EXEC_RODATA
+ EXEC_USERSPACE
+ EXEC_NULL
+ ACCESS_USERSPACE
+ ACCESS_NULL
+-WRITE_RO
+-WRITE_RO_AFTER_INIT
+-WRITE_KERN
+ WRITE_OPD
+ REFCOUNT_INC_OVERFLOW
+ REFCOUNT_ADD_OVERFLOW
+-- 
+2.34.1
+

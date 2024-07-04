@@ -1,0 +1,78 @@
+From 87b6890fd4e37aa61e6f22fba1a9b576ee3d0169 Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Tue, 14 Nov 2023 10:29:12 +0800
+Subject: [PATCH 157/191] selftests: Enable some required kernel config
+
+selftests/zram: Enable CONFIG_CRYPTO_LZO and CONFIG_SWAP config
+selftests/syscall_user_dispatch: Enable CONFIG_SYSCALL_USER_DISPATCH config
+selftests/kvm: Enable CONFIG_VIRTUALIZATION config
+selftests/fpu:Enable CONFIG_RUNTIME_TESTING_MEN and CONFIG_TEST_FPU config
+selftests/firmware: Enable CONFIG_RUNTIME_TESTING_MENU config
+selftests/ftrace: Enable CONFIG_FTRACE_SYSCALL and CONFIG_SYNTH_EVENTS config
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ tools/testing/selftests/firmware/config              | 1 +
+ tools/testing/selftests/fpu/config                   | 2 ++
+ tools/testing/selftests/ftrace/config                | 2 ++
+ tools/testing/selftests/kvm/config                   | 1 +
+ tools/testing/selftests/syscall_user_dispatch/config | 1 +
+ tools/testing/selftests/zram/config                  | 2 ++
+ 6 files changed, 9 insertions(+)
+ create mode 100644 tools/testing/selftests/fpu/config
+
+diff --git a/tools/testing/selftests/firmware/config b/tools/testing/selftests/firmware/config
+index 6e402519b117..f2d5fbc2e054 100644
+--- a/tools/testing/selftests/firmware/config
++++ b/tools/testing/selftests/firmware/config
+@@ -1,3 +1,4 @@
++CONFIG_RUNTIME_TESTING_MENU=y
+ CONFIG_TEST_FIRMWARE=y
+ CONFIG_FW_LOADER=y
+ CONFIG_FW_LOADER_USER_HELPER=y
+diff --git a/tools/testing/selftests/fpu/config b/tools/testing/selftests/fpu/config
+new file mode 100644
+index 000000000000..5622621a3324
+--- /dev/null
++++ b/tools/testing/selftests/fpu/config
+@@ -0,0 +1,2 @@
++CONFIG_RUNTIME_TESTING_MENU=y
++CONFIG_TEST_FPU=m
+diff --git a/tools/testing/selftests/ftrace/config b/tools/testing/selftests/ftrace/config
+index e59d985eeff0..f3d6a9553c4b 100644
+--- a/tools/testing/selftests/ftrace/config
++++ b/tools/testing/selftests/ftrace/config
+@@ -14,3 +14,5 @@ CONFIG_SAMPLES=y
+ CONFIG_SAMPLE_FTRACE_DIRECT=m
+ CONFIG_SAMPLE_TRACE_PRINTK=m
+ CONFIG_KALLSYMS_ALL=y
++CONFIG_FTRACE_SYSCALLS=y
++CONFIG_SYNTH_EVENTS=y
+diff --git a/tools/testing/selftests/kvm/config b/tools/testing/selftests/kvm/config
+index 63ed533f73d6..ea6be969e0fc 100644
+--- a/tools/testing/selftests/kvm/config
++++ b/tools/testing/selftests/kvm/config
+@@ -1,3 +1,4 @@
++CONFIG_VIRTUALIZATION=y
+ CONFIG_KVM=y
+ CONFIG_KVM_INTEL=y
+ CONFIG_KVM_AMD=y
+diff --git a/tools/testing/selftests/syscall_user_dispatch/config b/tools/testing/selftests/syscall_user_dispatch/config
+index 039e303e59d7..7f4ee436956d 100644
+--- a/tools/testing/selftests/syscall_user_dispatch/config
++++ b/tools/testing/selftests/syscall_user_dispatch/config
+@@ -1 +1,2 @@
+ CONFIG_GENERIC_ENTRY=y
++CONFIG_SYSCALL_USER_DISPATCH=y
+diff --git a/tools/testing/selftests/zram/config b/tools/testing/selftests/zram/config
+index e0cc47e2c7e2..70e0c49bb439 100644
+--- a/tools/testing/selftests/zram/config
++++ b/tools/testing/selftests/zram/config
+@@ -1,2 +1,4 @@
+ CONFIG_ZSMALLOC=y
+ CONFIG_ZRAM=m
++CONFIG_CRYPTO_LZO=y
++CONFIG_SWAP=y
+-- 
+2.34.1
+

@@ -1,0 +1,52 @@
+From bad10e3fea0959a94a467b5a11c8cd3b506204ce Mon Sep 17 00:00:00 2001
+From: Locus Wei-Han Chen <locus84@andestech.com>
+Date: Thu, 8 Jun 2023 15:04:40 +0800
+Subject: [PATCH 075/191] tool/perf: Adjust the sample frequency to 1000
+
+This patch is a workaround for now.
+Due to the slower speed of our FPGA, we have temporarily set the clock
+frequency to 1000. It may be adjusted back in the future.
+
+Reformed from the following patches
+ - (447a6013e9173) perf tools: Bump default sample freq to 4 kHz
+
+Signed-off-by: Locus Wei-Han Chen <locus84@andestech.com>
+---
+ tools/perf/builtin-record.c | 7 ++++++-
+ tools/perf/builtin-top.c    | 2 +-
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/tools/perf/builtin-record.c b/tools/perf/builtin-record.c
+index 7314183cdcb6..cfad0a8b725b 100644
+--- a/tools/perf/builtin-record.c
++++ b/tools/perf/builtin-record.c
+@@ -3293,7 +3293,12 @@ static struct record record = {
+ 		.mmap_pages	     = UINT_MAX,
+ 		.user_freq	     = UINT_MAX,
+ 		.user_interval	     = ULLONG_MAX,
+-		.freq		     = 4000,
++		/*
++		 * Due to the slower speed of our FPGA, we have temporarily
++		 * set the clock frequency to 1000.
++		 * It may be reverted in the future.
++		 */
++		.freq		     = 1000,
+ 		.target		     = {
+ 			.uses_mmap   = true,
+ 			.default_per_cpu = true,
+diff --git a/tools/perf/builtin-top.c b/tools/perf/builtin-top.c
+index 4b3ff7687236..8c43a32a99e5 100644
+--- a/tools/perf/builtin-top.c
++++ b/tools/perf/builtin-top.c
+@@ -1419,7 +1419,7 @@ int cmd_top(int argc, const char **argv)
+ 			.mmap_pages	= UINT_MAX,
+ 			.user_freq	= UINT_MAX,
+ 			.user_interval	= ULLONG_MAX,
+-			.freq		= 4000, /* 4 KHz */
++			.freq		= 1000, /* 1 KHz */
+ 			.target		= {
+ 				.uses_mmap   = true,
+ 			},
+-- 
+2.34.1
+

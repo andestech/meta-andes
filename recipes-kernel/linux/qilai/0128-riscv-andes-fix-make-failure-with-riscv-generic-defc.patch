@@ -1,0 +1,219 @@
+From edb78f1dd5feffbf4d886e0d37c36393b71ad02d Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Thu, 3 Aug 2023 17:09:21 +0800
+Subject: [PATCH 128/191] riscv: andes: fix make failure with riscv generic
+ defconfig
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/include/asm/io.h      |  2 ++
+ arch/riscv/include/asm/pgtable.h | 11 ++++++++++-
+ arch/riscv/include/asm/ptrace.h  |  2 ++
+ arch/riscv/kernel/asm-offsets.c  |  3 +++
+ arch/riscv/kernel/entry.S        |  4 ++++
+ arch/riscv/kernel/process.c      |  2 ++
+ include/soc/andes/dma.h          | 11 ++++++++++-
+ include/soc/andes/sbi.h          |  6 ++++++
+ 8 files changed, 39 insertions(+), 2 deletions(-)
+
+diff --git a/arch/riscv/include/asm/io.h b/arch/riscv/include/asm/io.h
+index 3f3ef8f6dae9..95851da85b52 100644
+--- a/arch/riscv/include/asm/io.h
++++ b/arch/riscv/include/asm/io.h
+@@ -134,12 +134,14 @@ __io_writes_outs(outs, u64, q, __io_pbr(), __io_paw())
+ #endif
+ 
+ #ifdef CONFIG_MMU
++#ifdef CONFIG_PLAT_AE350
+ extern void __iomem *ioremap_wc(phys_addr_t phys_addr, size_t size);
+ #define ioremap_wc ioremap_wc
+ #define ioremap_wt ioremap_wc
+ 
+ extern bool iounmap_allowed(void *addr);
+ #define iounmap_allowed iounmap_allowed
++#endif /* CONFIG_PLAT_AE350 */
+ #endif /* CONFIG_MMU */
+ 
+ #include <asm-generic/io.h>
+diff --git a/arch/riscv/include/asm/pgtable.h b/arch/riscv/include/asm/pgtable.h
+index 3afd20781e85..a520d5124e5b 100644
+--- a/arch/riscv/include/asm/pgtable.h
++++ b/arch/riscv/include/asm/pgtable.h
+@@ -150,6 +150,7 @@ struct pt_alloc_ops {
+ extern struct pt_alloc_ops pt_ops __initdata;
+ 
+ #ifdef CONFIG_MMU
++#ifdef CONFIG_PLAT_AE350
+ /* Noncacheable page prot for Andes MSB */
+ extern phys_addr_t andes_pa_msb;
+ #ifdef CONFIG_ANDES_QEMU_SUPPORT
+@@ -157,6 +158,7 @@ extern phys_addr_t andes_pa_msb;
+ #else
+ #define _PAGE_NONCACHEABLE      ((!!andes_pa_msb) << 31)
+ #endif
++#endif /* CONFIG_PLAT_AE350 */
+ 
+ /* Number of PGD entries that a user-mode program can use */
+ #define USER_PTRS_PER_PGD   (TASK_SIZE / PGDIR_SIZE)
+@@ -328,6 +330,7 @@ static inline pte_t pfn_pte(unsigned long pfn, pgprot_t prot)
+ 
+ 	ALT_THEAD_PMA(prot_val);
+ 
++#ifdef CONFIG_PLAT_AE350
+ 	/*
+ 	 * When PPMA is on and activated: pa_msb == 0;
+ 	 *                     Otherwise: pa_msb != 0;
+@@ -337,6 +340,9 @@ static inline pte_t pfn_pte(unsigned long pfn, pgprot_t prot)
+ 				| (prot_val  & ~_PAGE_NONCACHEABLE));
+ 	else
+ 		return __pte((pfn << _PAGE_PFN_SHIFT) | prot_val);
++#else
++	return __pte((pfn << _PAGE_PFN_SHIFT) | prot_val);
++#endif /* !CONFIG_PLAT_AE350 */
+ }
+ 
+ #define mk_pte(page, prot)       pfn_pte(page_to_pfn(page), prot)
+@@ -595,7 +601,9 @@ static inline pgprot_t pgprot_noncached(pgprot_t _prot)
+ 
+ 	prot &= ~_PAGE_MTMASK;
+ 	prot |= _PAGE_IO;
++#ifdef CONFIG_PLAT_AE350
+ 	prot |= _PAGE_NONCACHEABLE;
++#endif
+ 
+ 	return __pgprot(prot);
+ }
+@@ -607,8 +615,9 @@ static inline pgprot_t pgprot_writecombine(pgprot_t _prot)
+ 
+ 	prot &= ~_PAGE_MTMASK;
+ 	prot |= _PAGE_NOCACHE;
++#ifdef CONFIG_PLAT_AE350
+ 	prot |= _PAGE_NONCACHEABLE;
+-
++#endif
+ 	return __pgprot(prot);
+ }
+ 
+diff --git a/arch/riscv/include/asm/ptrace.h b/arch/riscv/include/asm/ptrace.h
+index fc526aaa23a7..bcf24741a62c 100644
+--- a/arch/riscv/include/asm/ptrace.h
++++ b/arch/riscv/include/asm/ptrace.h
+@@ -50,8 +50,10 @@ struct pt_regs {
+ 	unsigned long badaddr;
+ 	unsigned long cause;
+ 
++#ifdef CONFIG_PLAT_AE350
+ 	/* Andes supervisor detailed trap cause */
+ 	unsigned long sdcause;
++#endif
+ 	/* a0 value before the syscall */
+ 	unsigned long orig_a0;
+ };
+diff --git a/arch/riscv/kernel/asm-offsets.c b/arch/riscv/kernel/asm-offsets.c
+index 65042c283b40..bfef7dea4ab2 100644
+--- a/arch/riscv/kernel/asm-offsets.c
++++ b/arch/riscv/kernel/asm-offsets.c
+@@ -113,7 +113,10 @@ void asm_offsets(void)
+ 	OFFSET(PT_STATUS, pt_regs, status);
+ 	OFFSET(PT_BADADDR, pt_regs, badaddr);
+ 	OFFSET(PT_CAUSE, pt_regs, cause);
++
++#ifdef CONFIG_PLAT_AE350
+ 	OFFSET(PT_SDCAUSE, pt_regs, sdcause);
++#endif
+ 
+ 	OFFSET(SUSPEND_CONTEXT_REGS, suspend_context, regs);
+ 
+diff --git a/arch/riscv/kernel/entry.S b/arch/riscv/kernel/entry.S
+index e2aea3e24a8d..9e295c79e830 100644
+--- a/arch/riscv/kernel/entry.S
++++ b/arch/riscv/kernel/entry.S
+@@ -90,14 +90,18 @@ _save_context:
+ 	csrr s3, CSR_TVAL
+ 	csrr s4, CSR_CAUSE
+ 	csrr s5, CSR_SCRATCH
++#ifdef CONFIG_PLAT_AE350
+ 	csrr s6, CSR_SDCAUSE
++#endif
+ 	REG_S s0, PT_SP(sp)
+ 	REG_S s1, PT_STATUS(sp)
+ 	REG_S s2, PT_EPC(sp)
+ 	REG_S s3, PT_BADADDR(sp)
+ 	REG_S s4, PT_CAUSE(sp)
+ 	REG_S s5, PT_TP(sp)
++#ifdef CONFIG_PLAT_AE350
+ 	REG_S s6, PT_SDCAUSE(sp)
++#endif
+ 
+ 	/*
+ 	 * Set the scratch register to 0, so that if a recursive exception
+diff --git a/arch/riscv/kernel/process.c b/arch/riscv/kernel/process.c
+index 1dc6cc197493..e7bceecba16c 100644
+--- a/arch/riscv/kernel/process.c
++++ b/arch/riscv/kernel/process.c
+@@ -75,8 +75,10 @@ void __show_regs(struct pt_regs *regs)
+ 	pr_cont(" t5 : " REG_FMT " t6 : " REG_FMT "\n",
+ 		regs->t5, regs->t6);
+ 
++#ifdef CONFIG_PLAT_AE350
+ 	pr_cont("status: " REG_FMT " badaddr: " REG_FMT " cause: " REG_FMT " sdcause: " REG_FMT "\n",
+ 		regs->status, regs->badaddr, regs->cause, regs->sdcause);
++#endif
+ }
+ void show_regs(struct pt_regs *regs)
+ {
+diff --git a/include/soc/andes/dma.h b/include/soc/andes/dma.h
+index 176b426c2aa1..ae724c1e6027 100644
+--- a/include/soc/andes/dma.h
++++ b/include/soc/andes/dma.h
+@@ -34,6 +34,7 @@ struct range_info {
+ 	struct page *page;
+ };
+ 
++#ifdef CONFIG_PLAT_AE350
+ void cpu_dma_inval_range(void *info);
+ void cpu_dma_wb_range(void *info);
+ 
+@@ -56,7 +57,7 @@ static inline void dma_flush_page(struct page *page, size_t size)
+ }
+ 
+ static inline void andes_cache_op(phys_addr_t paddr, size_t size,
+-		void (*fn)(void *ri))
++				  void (*fn)(void *ri))
+ {
+ 	struct page *page = pfn_to_page(paddr >> PAGE_SHIFT);
+ 	unsigned offset = paddr & ~PAGE_MASK;
+@@ -101,4 +102,12 @@ static inline void andes_cache_op(phys_addr_t paddr, size_t size,
+ extern void *arch_dma_set_uncached(void *addr, size_t size);
+ extern void arch_dma_clear_uncached(void *addr, size_t size);
+ 
++#else
++static inline void cpu_dma_inval_range(void *info) {}
++static inline void cpu_dma_wb_range(void *info) {}
++static inline void dma_flush_page(struct page *page, size_t size) {}
++static inline void andes_cache_op(phys_addr_t paddr, size_t size,
++				  void (*fn)(void *ri)) {}
++#endif /* !CONFIG_PLAT_AE350 */
++
+ #endif /* !__SOC_ANDES_DMA_H */
+diff --git a/include/soc/andes/sbi.h b/include/soc/andes/sbi.h
+index 47a51347e6a4..4e716a74ed9f 100644
+--- a/include/soc/andes/sbi.h
++++ b/include/soc/andes/sbi.h
+@@ -59,7 +59,13 @@ void sbi_andes_set_ppma(void *arg);
+ void sbi_andes_free_ppma(void *addr);
+ long sbi_andes_probe_ppma(void);
+ 
++#ifdef CONFIG_PLAT_AE350
+ /* Trigger module support debug application with gdbserver */
+ void sbi_andes_set_trigger(unsigned int type, uintptr_t data, int enable);
++#else
++static inline void sbi_andes_set_trigger(unsigned int type,
++					 uintptr_t data,
++					 int enable) {}
++#endif /* !CONFIG_PLAT_AE350 */
+ 
+ #endif /* !__SOC_ANDES_SBI_H */
+-- 
+2.34.1
+

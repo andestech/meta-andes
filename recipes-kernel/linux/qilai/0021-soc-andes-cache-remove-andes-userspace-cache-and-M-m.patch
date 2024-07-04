@@ -1,0 +1,336 @@
+From 316de8b29187b2d7bdbc748fd6e7d4a105d0196b Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Thu, 27 Apr 2023 13:54:49 +0800
+Subject: [PATCH 021/191] soc: andes: cache: remove andes userspace cache and
+ M-mode control functions
+
+This commit removes function declarations in include/soc/andes/proc.h
+that are only used in RISCV-Linux-5.4 arch/riscv/andesv5/cctl.c and
+arch/riscv/andesv5/sbi_proc_module.c.
+
+It also moves include/soc/andes/proc.h cache-related functions to their
+respective include files and removes the include/soc/andes/proc.h.
+
+For more details, see:
+[1] https://gitea.andestech.com/RD-SW/linux/issues/10
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ drivers/soc/andes/cache.c | 180 +++-----------------------------------
+ include/soc/andes/dma.h   |  23 ++++-
+ include/soc/andes/proc.h  |  53 -----------
+ 3 files changed, 33 insertions(+), 223 deletions(-)
+ delete mode 100644 include/soc/andes/proc.h
+
+diff --git a/drivers/soc/andes/cache.c b/drivers/soc/andes/cache.c
+index 2ed06292ba16..7d7772e3ecf3 100644
+--- a/drivers/soc/andes/cache.c
++++ b/drivers/soc/andes/cache.c
+@@ -8,12 +8,12 @@
+ #include <linux/sizes.h>
+ #include <linux/smp.h>
+ #include <linux/irqflags.h>
++#include <linux/io.h>
+ #include <asm/csr.h>
+ #include <asm/sbi.h>
+-#include <asm/io.h>
+-#include <soc/andes/proc.h>
+ #include <soc/andes/csr.h>
+ #include <soc/andes/sbi.h>
++#include <soc/andes/dma.h>
+ 
+ #define MAX_CACHE_LINE_SIZE 256
+ #define EVSEL_MASK	0xff
+@@ -21,10 +21,10 @@
+ #define SEL_OFF(id)	(8 * (id % 8))
+ 
+ void __iomem *l2c_base;
+-/* default to offset of V0 memory map */
+-u32 L2C_REG_PER_CORE_OFFSET = 0x10;
+-u32 CCTL_L2_STATUS_PER_CORE_OFFSET = 0x4;
+-u32 L2C_REG_STATUS_OFFSET = 0;
++
++u32 L2C_REG_PER_CORE_OFFSET;
++u32 CCTL_L2_STATUS_PER_CORE_OFFSET;
++u32 L2C_REG_STATUS_OFFSET;
+ 
+ DEFINE_PER_CPU(struct andesv5_cache_info, cpu_cache_info) = {
+ 	.init_done = 0,
+@@ -189,169 +189,6 @@ void cpu_dma_wb_range(void *info)
+ }
+ EXPORT_SYMBOL(cpu_dma_wb_range);
+ 
+-/* non-blocking load store */
+-long sbi_andes_get_non_blocking_status(void)
+-{
+-	struct sbiret ret;
+-
+-	ret = sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_GET_MMISC_CTL_STATUS, 0, 0,
+-			0, 0, 0, 0);
+-	return ret.value;
+-}
+-void sbi_andes_set_mcache_ctl(unsigned long input)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_SET_MCACHE_CTL, input, 0, 0, 0,
+-		  0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-void sbi_andes_set_mmisc_ctl(unsigned long input)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_NON_BLOCKING_LOAD_STORE, input,
+-		  0, 0, 0, 0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-/* write around */
+-long sbi_andes_get_write_around_status(void)
+-{
+-	struct sbiret ret;
+-
+-	ret = sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_GET_MCACHE_CTL_STATUS, 0,
+-			0, 0, 0, 0, 0);
+-	return ret.value;
+-}
+-
+-void sbi_andes_enable_non_blocking_load_store(void)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_WRITE_AROUND, 1, 0, 0, 0, 0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-void sbi_andes_disable_non_blocking_load_store(void)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_WRITE_AROUND, 0, 0, 0, 0, 0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-void sbi_andes_enable_write_around(void)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_SET_MCACHE_CTL, 1, 0, 0,
+-		  0, 0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-void sbi_andes_disable_write_around(void)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_SET_MMISC_CTL, 0, 0, 0, 0, 0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-/* L1 Cache Prefetch */
+-void sbi_andes_enable_l1i_cache(void)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_L1CACHE_I_PREFETCH, 1, 0, 0, 0,
+-		  0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-void sbi_andes_disable_l1i_cache(void)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_L1CACHE_I_PREFETCH, 0, 0, 0, 0,
+-		  0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-void sbi_andes_enable_l1d_cache(void)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_L1CACHE_D_PREFETCH, 1, 0, 0, 0,
+-		  0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-void sbi_andes_disable_l1d_cache(void)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_L1CACHE_D_PREFETCH, 0, 0, 0, 0,
+-		  0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-/* L1 Cache */
+-long sbi_andes_cpu_l1c_status(void)
+-{
+-	struct sbiret ret;
+-
+-	ret = sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_GET_MCACHE_CTL_STATUS, 0,
+-			0, 0, 0, 0, 0);
+-	return ret.value;
+-}
+-
+-void sbi_andes_cpu_icache_enable(void *info)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_ICACHE_OP, 1, 0, 0, 0, 0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-void sbi_andes_cpu_icache_disable(void *info)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_ICACHE_OP, 0, 0, 0, 0, 0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-void sbi_andes_cpu_dcache_enable(void *info)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_DCACHE_OP, 1, 0, 0, 0, 0, 0);
+-	local_irq_restore(flags);
+-}
+-
+-void sbi_andes_cpu_dcache_disable(void *info)
+-{
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_DCACHE_OP, 0, 0, 0, 0, 0, 0);
+-	local_irq_restore(flags);
+-}
+-
+ int __init l2c_init(void)
+ {
+ 	struct device_node *node;
+@@ -363,6 +200,11 @@ int __init l2c_init(void)
+ 	if (l2c_base)
+ 		l2c_cfg = *(u32 *)l2c_base;
+ 
++	/* default to offset of V0 memory map */
++	L2C_REG_PER_CORE_OFFSET = 0x10;
++	CCTL_L2_STATUS_PER_CORE_OFFSET = 0x4;
++	L2C_REG_STATUS_OFFSET = 0;
++
+ 	if (l2c_cfg & V5_L2C_CFG_MAP_MASK) {
+ 		L2C_REG_PER_CORE_OFFSET = 0x1000;
+ 		CCTL_L2_STATUS_PER_CORE_OFFSET = 0;
+diff --git a/include/soc/andes/dma.h b/include/soc/andes/dma.h
+index 0e803451a3b8..176b426c2aa1 100644
+--- a/include/soc/andes/dma.h
++++ b/include/soc/andes/dma.h
+@@ -14,7 +14,28 @@
+ #include <linux/highmem.h>
+ #include <linux/cacheflush.h>
+ #include <asm/sbi.h>
+-#include <soc/andes/proc.h>
++
++/*
++ * struct andesv5_cache_info
++ * The member of this struct is dupilcated to some content of struct cacheinfo
++ * to reduce the latence of searching dcache inforamtion in andesv5/cache.c.
++ * At current only dcache-line-size is needed. when the content of
++ * andesv5_cache_info has been initilized by function fill_cpu_cache_info(),
++ * member init_done is set as true
++ */
++struct andesv5_cache_info {
++	bool init_done;
++	int dcache_line_size;
++};
++
++struct range_info {
++	unsigned long start;
++	unsigned long end;
++	struct page *page;
++};
++
++void cpu_dma_inval_range(void *info);
++void cpu_dma_wb_range(void *info);
+ 
+ static inline void dma_flush_page(struct page *page, size_t size)
+ {
+diff --git a/include/soc/andes/proc.h b/include/soc/andes/proc.h
+deleted file mode 100644
+index 6c0a2db85dc1..000000000000
+--- a/include/soc/andes/proc.h
++++ /dev/null
+@@ -1,53 +0,0 @@
+-/* SPDX-License-Identifier: GPL-2.0 */
+-/*
+- * Copyright (C) 2023 Andes Technology Corporation.
+- */
+-#ifndef __SOC_ANDES_PROC_H
+-#define __SOC_ANDES_PROC_H
+-
+-#include <asm/io.h>
+-#include <asm/page.h>
+-
+-long sbi_andes_cpu_l1c_status(void);
+-void sbi_andes_cpu_icache_enable(void *info);
+-void sbi_andes_cpu_icache_disable(void *info);
+-void sbi_andes_cpu_dcache_enable(void *info);
+-void sbi_andes_cpu_dcache_disable(void *info);
+-
+-long sbi_andes_get_non_blocking_status(void);
+-long sbi_andes_get_write_around_status(void);
+-void sbi_andes_enable_non_blocking_load_store(void);
+-void sbi_andes_disable_non_blocking_load_store(void);
+-void sbi_andes_enable_write_around(void);
+-void sbi_andes_disable_write_around(void);
+-
+-void sbi_andes_enable_l1i_cache(void);
+-void sbi_andes_disable_l1i_cache(void);
+-void sbi_andes_enable_l1d_cache(void);
+-void sbi_andes_disable_l1d_cache(void);
+-
+-void sbi_andes_set_mcache_ctl(unsigned long input);
+-void sbi_andes_set_mmisc_ctl(unsigned long input);
+-
+-void cpu_dma_inval_range(void *info);
+-void cpu_dma_wb_range(void *info);
+-
+-/*
+- * struct andesv5_cache_info
+- * The member of this struct is dupilcated to some content of struct cacheinfo
+- * to reduce the latence of searching dcache inforamtion in andesv5/cache.c.
+- * At current only dcache-line-size is needed. when the content of
+- * andesv5_cache_info has been initilized by function fill_cpu_cache_info(),
+- * member init_done is set as true
+- */
+-struct andesv5_cache_info {
+-	bool init_done;
+-	int dcache_line_size;
+-};
+-
+-struct range_info {
+-	unsigned long start;
+-	unsigned long end;
+-	struct page *page;
+-};
+-#endif /* !__SOC_ANDES_PROC_H */
+-- 
+2.34.1
+

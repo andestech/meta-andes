@@ -1,0 +1,50 @@
+From 000ffdfb0e058e9aacead5061ffaeb8f7aa1004a Mon Sep 17 00:00:00 2001
+From: Locus Wei-Han Chen <locus84@andestech.com>
+Date: Tue, 6 Jun 2023 13:47:04 +0800
+Subject: [PATCH 073/191] perf/core: Implement workaround to add pmu stop
+ before unthrottling to prevent WARNING
+
+It is a temporary workaround for ast530.
+We will continue to investigate and resolve the root cause in the future.
+
+Currently, during the perf sampling, if the perf interrupt takes too
+long, perf framework will lower the perf_event_max_sample_rate.
+This will limit the number of samples per timer tick (max_samples_per_tick)
+and set hwc->interrupts to MAX_INTERRUPTS
+within the __perf_event_account_interrupt() function.
+
+Afterward, the perf framework will unthrottle the event in the timer
+interrupt handler, which triggers the driver's *_pmu_start() function.
+Most of the driver's *_pmu_start() functions will check the event->hw.state
+to determine whether this event has stopped. If the event has not stopped,
+a WARN_ON_ONCE() warning will be triggered.
+
+This is currently a workaround and may be reverted in the future.
+
+Reformed from the following:
+https://patchwork.kernel.org/project/linux-riscv/patch/20230602094841.1225-1-eric.lin@sifive.com/
+
+Signed-off-by: Locus Wei-Han Chen <locus84@andestech.com>
+---
+ kernel/events/core.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/kernel/events/core.c b/kernel/events/core.c
+index db1065daabb6..7be484d765b6 100644
+--- a/kernel/events/core.c
++++ b/kernel/events/core.c
+@@ -4100,6 +4100,11 @@ static void perf_adjust_freq_unthr_context(struct perf_event_context *ctx,
+ 
+ 		if (hwc->interrupts == MAX_INTERRUPTS) {
+ 			hwc->interrupts = 0;
++
++			/*
++			 * This is a workaround that may be reverted in the future.
++			 */
++			event->pmu->stop(event, 0);
+ 			perf_log_throttle(event, 1);
+ 			event->pmu->start(event, 0);
+ 		}
+-- 
+2.34.1
+

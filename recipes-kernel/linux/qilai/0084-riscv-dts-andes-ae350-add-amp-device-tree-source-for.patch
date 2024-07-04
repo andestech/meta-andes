@@ -1,0 +1,340 @@
+From a62f296034c454bd8f53f2059c1916d7bb657836 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Fri, 9 Jun 2023 16:28:24 +0800
+Subject: [PATCH 084/191] riscv: dts: andes: ae350: add amp device tree source
+ for andes_remoteproc
+
+The AX25MP AMP DTS creates a node for andes_remoteproc module and
+reserved memory from main memory to create shared memory and vrings.
+---
+ arch/riscv/boot/dts/andes/Makefile            |   1 +
+ .../dts/andes/ax25mp_amp_c2_64_d_ae350.dts    | 305 ++++++++++++++++++
+ 2 files changed, 306 insertions(+)
+ create mode 100644 arch/riscv/boot/dts/andes/ax25mp_amp_c2_64_d_ae350.dts
+
+diff --git a/arch/riscv/boot/dts/andes/Makefile b/arch/riscv/boot/dts/andes/Makefile
+index f4e5195458e0..1cb9312dd28f 100644
+--- a/arch/riscv/boot/dts/andes/Makefile
++++ b/arch/riscv/boot/dts/andes/Makefile
+@@ -6,6 +6,7 @@ dtb-$(CONFIG_PLAT_AE350) += a45_c1_d_dsp_noncoherent_ae350.dtb
+ dtb-$(CONFIG_PLAT_AE350) += ax25_c1_d_dsp_noncoherent_ae350.dtb
+ dtb-$(CONFIG_PLAT_AE350) += ax27l2_c1_d_dsp_noncoherent_ae350.dtb
+ dtb-$(CONFIG_PLAT_AE350) += ax45_c1_d_dsp_noncoherent_ae350.dtb
++dtb-$(CONFIG_PLAT_AE350) += ax25mp_amp_c2_64_d_ae350.dtb
+ 
+ # FPGA : VCU118
+ dtb-$(CONFIG_PLAT_AE350) += a25mp_c4_d_dsp_ae350.dtb
+diff --git a/arch/riscv/boot/dts/andes/ax25mp_amp_c2_64_d_ae350.dts b/arch/riscv/boot/dts/andes/ax25mp_amp_c2_64_d_ae350.dts
+new file mode 100644
+index 000000000000..5d80968907dc
+--- /dev/null
++++ b/arch/riscv/boot/dts/andes/ax25mp_amp_c2_64_d_ae350.dts
+@@ -0,0 +1,305 @@
++/dts-v1/;
++
++/ {
++	compatible = "andestech,ae350";
++	#address-cells = <0x2>;
++	#size-cells = <0x2>;
++	dma-coherent;
++
++	cpus {
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		timebase-frequency = <0x3938700>;
++
++		cpu@0 {
++			device_type = "cpu";
++			reg = <0x0>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0xv5-0p0";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-line-size = <0x20>;
++			d-cache-size = <0x8000>;
++			d-cache-line-size = <0x20>;
++			next-level-cache = <0x1>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x2>;
++			};
++		};
++	};
++
++	l2-cache@e0500000 {
++		compatible = "cache";
++		cache-level = <0x2>;
++		cache-size = <0x40000>;
++		reg = <0x0 0xe0500000 0x0 0x40000>;
++		andes,inst-prefetch = <0x3>;
++		andes,data-prefetch = <0x3>;
++		andes,tag-ram-ctl = <0x0 0x0>;
++		andes,data-ram-ctl = <0x0 0x0>;
++		phandle = <0x1>;
++	};
++
++	memory@0 {
++		device_type = "memory";
++		reg = <0x0 0x0 0x0 0x40000000>;
++	};
++
++	soc {
++		#address-cells = <0x2>;
++		#size-cells = <0x2>;
++		compatible = "andestech,riscv-ae350-soc", "simple-bus";
++		ranges;
++
++		interrupt-controller@e4000000 {
++			compatible = "riscv,plic0";
++			#address-cells = <0x2>;
++			#interrupt-cells = <0x2>;
++			interrupt-controller;
++			reg = <0x0 0xe4000000 0x0 0x2000000>;
++			riscv,ndev = <0x47>;
++			interrupts-extended = <0x2 0xb 0x2 0x9 0x3 0xb 0x3 0x9>;
++			phandle = <0x4>;
++		};
++
++		interrupt-controller@e6400000 {
++			compatible = "riscv,plic1";
++			#address-cells = <0x2>;
++			#interrupt-cells = <0x2>;
++			interrupt-controller;
++			reg = <0x0 0xe6400000 0x0 0x400000>;
++			riscv,ndev = <0x2>;
++			interrupts-extended = <0x2 0x3 0x3 0x3>;
++		};
++
++		plmt0@e6000000 {
++			compatible = "riscv,plmt0";
++			reg = <0x0 0xe6000000 0x0 0x100000>;
++			interrupts-extended = <0x2 0x7 0x3 0x7>;
++		};
++	};
++
++	reserved-memory {
++		#address-cells = <0x2>;
++		#size-cells = <0x2>;
++		ranges;
++
++		reserved_mem1:reserved_mem1@3fe00000 {
++			no-map;
++			reg = <0x0 0x3fe00000 0x0 0x1e4000>;
++			alignment = <0x100>;
++		};
++
++		vdev0buffer:vdev0buffer@3ffe4000 {
++			no-map;
++			reg = <0x0 0x3ffe4000 0x0 0xc000>;
++			alignment = <0x100>;
++		};
++		vdev0vring1:vdev0vring0@3fff0000 {
++			no-map;
++			reg = <0x0 0x3fff0000 0x0 0x4000>;
++			alignment = <0x100>;
++		};
++		vdev0vring0:vdev0vring1@3fff4000 {
++			no-map;
++			reg = <0x0 0x3fff4000 0x0 0x4000>;
++			alignment = <0x100>;
++		};
++
++		andes_rsc_table:andes_rsc_table@3fff8000 {
++			no-map;
++			reg = <0x0 0x3fff8000 0x0 0x2000>;
++			aligment = <0x400>;
++		};
++
++		reserved_mem2:reserved_mem2@3fffa000 {
++			no-map;
++			reg = <0x0 0x3fffa000 0x0 0x6000>;
++			alignment = <0x100>;
++		};
++	};
++
++	slave_port_ilm:slave_port_ilm@a0000000 {
++		compatible = "andestech,slave_port_ilm";
++		reg = <0x0 0xa0000000 0x0 0x200000>;
++	};
++
++	slave_port_dlm:slave_port_dlm@a0200000 {
++		compatible = "andestech,slave_port_dlm";
++		reg = <0x0 0xa0200000 0x0 0x200000>;
++	};
++
++	andes_remoteproc {
++		compatible = "andestech,andes_remoteproc";
++		memory-region = <&vdev0buffer>, <&vdev0vring0>,
++				<&vdev0vring1>, <&andes_rsc_table>;
++		slave_ports = <&slave_port_ilm>, <&slave_port_dlm>;
++		interrupts = <0x1e 0x4>;
++		interrupt-parent = <0x4>;
++	};
++
++	virt_100mhz {
++		#clock-cells = <0x0>;
++		compatible = "fixed-clock";
++		clock-frequency = <0x5f5e100>;
++		phandle = <0x5>;
++	};
++
++	smu@f0100000 {
++		compatible = "andestech,atcsmu";
++		reg = <0x0 0xf0100000 0x0 0x1000>;
++	};
++
++	wdt@f0500000 {
++		compatible = "andestech,atcwdt200";
++		interrupts = <0x0 0x4>;
++		reg = <0x0 0xf0500000 0x0 0x1000>;
++		clock-frequency = <0xe4e1c0>;
++		interrupt-parent = <0x4>;
++	};
++
++	timer@f0400000 {
++		compatible = "andestech,atcpit100";
++		reg = <0x0 0xf0400000 0x0 0x1000>;
++		clock-frequency = <0x3938700>;
++		interrupts = <0x3 0x4>;
++		interrupt-parent = <0x4>;
++	};
++
++	serial@f0300000 {
++		compatible = "andestech,uart16550", "ns16550a";
++		reg = <0x0 0xf0300000 0x0 0x1000>;
++		interrupts = <0x9 0x4>;
++		clock-frequency = <0x12c0000>;
++		reg-shift = <0x2>;
++		reg-offset = <0x20>;
++		no-loopback-test = <0x1>;
++		interrupt-parent = <0x4>;
++	};
++
++	gpio@f0700000 {
++		compatible = "andestech,atcgpio100";
++		reg = <0x0 0xf0700000 0x0 0x1000>;
++		interrupts = <0x7 0x4>;
++		interrupt-parent = <0x4>;
++	};
++
++	rtc@f0600000 {
++		compatible = "andestech,atcrtc100";
++		reg = <0x0 0xf0600000 0x0 0x1000>;
++		interrupts = <0x1 0x4 0x2 0x4>;
++		interrupt-parent = <0x4>;
++		wakeup-source;
++	};
++
++	mac@e0100000 {
++		compatible = "andestech,atmac100";
++		reg = <0x0 0xe0100000 0x0 0x1000>;
++		interrupts = <0x13 0x4>;
++		interrupt-parent = <0x4>;
++	};
++
++	mmc@f0e00000 {
++		compatible = "andestech,atfsdc010";
++		max-frequency = <0x5f5e100>;
++		clock-freq-min-max = <0x61a80 0x5f5e100>;
++		fifo-depth = <0x10>;
++		reg = <0x0 0xf0e00000 0x0 0x1000>;
++		interrupts = <0x12 0x4>;
++		cap-sd-highspeed;
++		interrupt-parent = <0x4>;
++	};
++
++	dma@f0c00000 {
++		compatible = "andestech,atcdmac300";
++		reg = <0x0 0xf0c00000 0x0 0x1000>;
++		interrupts = <0xa 0x4 0x40 0x4 0x41 0x4 0x42 0x4 0x43 0x4 0x44 0x4 0x45 0x4 0x46 0x4 0x47 0x4>;
++		dma-channels = <0x8>;
++		interrupt-parent = <0x4>;
++	};
++
++	lcd@e0200000 {
++		compatible = "andestech,atflcdc100";
++		reg = <0x0 0xe0200000 0x0 0x1000>;
++		interrupts = <0x14 0x4>;
++		interrupt-parent = <0x4>;
++	};
++
++	smc@e0400000 {
++		compatible = "andestech,atfsmc020";
++		reg = <0x0 0xe0400000 0x0 0x1000>;
++	};
++
++	snd@f0d00000 {
++		compatible = "andestech,atfac97";
++		reg = <0x0 0xf0d00000 0x0 0x1000>;
++		interrupts = <0x11 0x4>;
++		interrupt-parent = <0x4>;
++	};
++
++	pmu {
++		device_type = "pmu";
++		compatible = "riscv,andes-pmu";
++	};
++
++	nor@0,0 {
++		compatible = "cfi-flash";
++		reg = <0x0 0x88000000 0x0 0x1000>;
++		bank-width = <0x2>;
++		device-width = <0x1>;
++	};
++
++	spi@f0b00000 {
++		compatible = "andestech,atcspi200";
++		reg = <0x0 0xf0b00000 0x0 0x1000>;
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		num-cs = <0x1>;
++		clocks = <0x5>;
++		interrupts = <0x4 0x4>;
++		interrupt-parent = <0x4>;
++
++		flash@0 {
++			compatible = "mx25u1635e", "jedec,spi-nor";
++			spi-max-frequency = <0x2faf080>;
++			reg = <0x0>;
++			spi-cpol;
++			spi-cpha;
++		};
++	};
++
++	pwm@f0400000 {
++		compatible = "andestech,atcpit100-pwm";
++		reg = <0x0 0xf0400000 0x0 0x1000>;
++		clock-frequency = <0x3938700>;
++		interrupts = <0x3 0x4>;
++		interrupt-parent = <0x4>;
++		pwm-cells = <0x2>;
++	};
++
++	i2c@f0a00000 {
++		compatible = "andestech,atciic100";
++		reg = <0x0 0xf0a00000 0x0 0x1000>;
++		interrupts = <0x6 0x4>;
++		interrupt-parent = <0x4>;
++	};
++
++	aliases {
++		uart0 = "/serial@f0300000";
++		spi0 = "/spi@f0b00000";
++		i2c0 = "/i2c@f0a00000";
++	};
++
++	chosen {
++		bootargs = "console=ttyS0,38400n8 earlycon=sbi debug loglevel=7";
++		stdout-path = "uart0:38400n8";
++	};
++};
+-- 
+2.34.1
+

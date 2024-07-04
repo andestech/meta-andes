@@ -1,0 +1,68 @@
+From 2fb093fc6fc2784f2efd5121166b426a5dcb6d99 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Tue, 23 May 2023 16:15:30 +0800
+Subject: [PATCH 044/191] rtc: andes: atcrtc100: change reads the RTC four
+ times to one time
+
+It is suggested in the Gitea code review:
+https://gitea.andestech.com/RD-SW/linux/pulls/17#issuecomment-73729
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/configs/andes-support.config |  3 +++
+ drivers/rtc/rtc-atcrtc100.c             | 21 +++++++++++----------
+ 2 files changed, 14 insertions(+), 10 deletions(-)
+
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+index 4db18a169178..8df4241ad379 100644
+--- a/arch/riscv/configs/andes-support.config
++++ b/arch/riscv/configs/andes-support.config
+@@ -31,3 +31,6 @@ CONFIG_FFB_MODE_24BPP=y
+ 
+ CONFIG_SND_FTSSP010=y
+ CONFIG_SND_FTSSP010_AC97=y
++
++CONFIG_RTC_CLASS=y
++CONFIG_RTC_DRV_ATCRTC100=y
+diff --git a/drivers/rtc/rtc-atcrtc100.c b/drivers/rtc/rtc-atcrtc100.c
+index a9b9dce6d181..e3bdef0f7576 100644
+--- a/drivers/rtc/rtc-atcrtc100.c
++++ b/drivers/rtc/rtc-atcrtc100.c
+@@ -49,14 +49,14 @@
+ #define MIN_MSK			(0x3f)
+ #define SEC_OFF			0
+ #define SEC_MSK			(0x3f)
+-#define RTC_SECOND		\
+-			((RTC_CNT >> SEC_OFF) & SEC_MSK) /* RTC sec */
+-#define RTC_MINUTE		\
+-			((RTC_CNT >> MIN_OFF) & MIN_MSK) /* RTC min */
+-#define RTC_HOUR		\
+-			((RTC_CNT >> HOR_OFF) & HOR_MSK) /* RTC hour */
+-#define RTC_DAYS		\
+-			((RTC_CNT >> DAY_OFF) & DAY_MSK) /* RTC day */
++#define RTC_SECOND(x)		\
++			((x >> SEC_OFF) & SEC_MSK) /* RTC sec */
++#define RTC_MINUTE(x)		\
++			((x >> MIN_OFF) & MIN_MSK) /* RTC min */
++#define RTC_HOUR(x)		\
++			((x >> HOR_OFF) & HOR_MSK) /* RTC hour */
++#define RTC_DAYS(x)		\
++			((x >> DAY_OFF) & DAY_MSK) /* RTC day */
+ #define RTC_ALM_SECOND		\
+ 			((RTC_ALM >> SEC_OFF) & SEC_MSK) /* RTC alarm sec */
+ #define RTC_ALM_MINUTE		\
+@@ -130,8 +130,9 @@ static int atc_alarm_irq_enable(struct device *dev, unsigned int enabled)
+ static int atc_rtc_read_time(struct device *dev, struct rtc_time *tm)
+ {
+ 	struct atc_rtc *rtc = dev_get_drvdata(dev);
+-	unsigned long time = RTC_DAYS * 86400 + RTC_HOUR * 3600
+-				+ RTC_MINUTE * 60 + RTC_SECOND;
++	unsigned long rtc_cnt = RTC_CNT;
++	unsigned long time = RTC_DAYS(rtc_cnt) * 86400 + RTC_HOUR(rtc_cnt) * 3600
++				+ RTC_MINUTE(rtc_cnt) * 60 + RTC_SECOND(rtc_cnt);
+ 
+ 	rtc_time64_to_tm(time, tm);
+ 	if (rtc_valid_tm(tm) < 0) {
+-- 
+2.34.1
+

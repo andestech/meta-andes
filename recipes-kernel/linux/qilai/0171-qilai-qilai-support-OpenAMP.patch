@@ -1,0 +1,947 @@
+From 65b6bab6eccb7a57f9e8c9712479e1e46372482b Mon Sep 17 00:00:00 2001
+From: Locus Wei-Han Chen <locus84@andestech.com>
+Date: Fri, 29 Mar 2024 17:22:59 +0800
+Subject: [PATCH 171/191] qilai: qilai support OpenAMP
+
+Signed-off-by: Locus Wei-Han Chen <locus84@andestech.com>
+---
+ arch/riscv/Makefile                    |   2 +-
+ arch/riscv/boot/dts/andes/qilai.dts    |  60 +++
+ arch/riscv/configs/qilai_openmp.config |  17 +
+ arch/riscv/include/asm/smp.h           |   4 +
+ arch/riscv/kernel/smp.c                |  35 +-
+ drivers/remoteproc/Kconfig             |   3 +
+ drivers/remoteproc/Makefile            |   1 +
+ drivers/remoteproc/qilai_remoteproc.c  | 491 +++++++++++++++++++++++++
+ drivers/remoteproc/remoteproc_core.c   |  13 +-
+ drivers/soc/andes/andes_sbi.c          |  14 +
+ drivers/soc/andes/ppma.c               |   9 +-
+ include/linux/remoteproc.h             |  18 +-
+ include/soc/andes/sbi.h                |   7 +-
+ 13 files changed, 654 insertions(+), 20 deletions(-)
+ create mode 100644 arch/riscv/configs/qilai_openmp.config
+ create mode 100644 drivers/remoteproc/qilai_remoteproc.c
+
+diff --git a/arch/riscv/Makefile b/arch/riscv/Makefile
+index d95009156884..450921d21526 100644
+--- a/arch/riscv/Makefile
++++ b/arch/riscv/Makefile
+@@ -225,4 +225,4 @@ ae350_rv64_ax25_amp_defconfig:
+ 
+ PHONY += qilai_rv64_smp_defconfig
+ qilai_rv64_smp_defconfig:
+-	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config smp.config sv39.config qilai.config
+\ No newline at end of file
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config smp.config sv39.config qilai.config qilai_openmp.config
+diff --git a/arch/riscv/boot/dts/andes/qilai.dts b/arch/riscv/boot/dts/andes/qilai.dts
+index e56e1c7fa437..8554a92a2efa 100644
+--- a/arch/riscv/boot/dts/andes/qilai.dts
++++ b/arch/riscv/boot/dts/andes/qilai.dts
+@@ -142,6 +142,66 @@ memory@400000000 {
+ 		reg = <0x04 0x00000000 0x4 0x00000000>;
+ 	};
+ 
++	reserved-memory {
++		#address-cells = <0x2>;
++		#size-cells = <0x2>;
++		ranges;
++
++		andes_spbase:andes_spbase@43f000000 {
++			no-map;
++			reg = <0x4 0x3f000000 0x0 0x800000>;
++			aligment = <0x1000>;
++		};
++		test1:test1@43f800000 {
++			no-map;
++			reg = <0x4 0x3f800000 0x0 0x7e4000>;
++		};
++		vdev0buffer:vdev0buffer@43ffe4000 {
++			no-map;
++			reg = <0x4 0x3ffe4000 0x0 0x8000>;
++			alignment = <0x100>;
++		};
++		test2:test@43ffec000 {
++			no-map;
++			reg = <0x4 0x3ffec000 0x0 0x4000>;
++		};
++		/* RX vring from AX45mp, TX ring(NX27V view) */
++		vdev0vring0:vdev0vring0@43fff0000 {
++			no-map;
++			reg = <0x4 0x3fff0000 0x0 0x4000>;
++			alignment = <0x100>;
++		};
++		/* TX vring from AX45mp, RX ring(NX27V view) */
++		vdev0vring1:vdev0vring1@43fff4000 {
++			no-map;
++			reg = <0x4 0x3fff4000 0x0 0x4000>;
++			alignment = <0x100>;
++		};
++		andes_rsc_table:andes_rsc_table@43fff8000 {
++			no-map;
++			reg = <0x4 0x3fff8000 0x0 0x4000>;
++			aligment = <0x400>;
++		};
++		andes_swmbox:andes_swmbox@43fffc000 {
++			no-map;
++			reg = <0x4 0x3fffc000 0x0 0x4000>;
++			aligment = <0x1000>;
++		};
++	};
++
++	andes_remoteproc {
++		#address-cells = <0x2>;
++		#size-cells = <0x2>;
++		compatible = "andestech,andes_remoteproc";
++		memory-region = <&andes_spbase>, <&test1>,<&vdev0buffer>,<&test2>,
++		        <&vdev0vring0>, <&vdev0vring1>, <&andes_rsc_table>;
++		openamp-interrupt-method = "swplic";
++		mp_hartid = <0x1>;
++		sp_hartid = <0x4>;
++		rmem_base = <0x4 0x3f000000>;
++		rmem_size = <0x0 0x01000000>;
++	};
++
+ 	soc {
+ 		#address-cells = <0x2>;
+ 		#size-cells = <0x2>;
+diff --git a/arch/riscv/configs/qilai_openmp.config b/arch/riscv/configs/qilai_openmp.config
+new file mode 100644
+index 000000000000..0ecce24ac219
+--- /dev/null
++++ b/arch/riscv/configs/qilai_openmp.config
+@@ -0,0 +1,17 @@
++CONFIG_AMP=y
++
++CONFIG_REMOTEPROC_CDEV=y
++CONFIG_RPMSG_CTRL=y
++CONFIG_RPMSG_CHAR=y
++CONFIG_RPMSG_VIRTIO=y
++
++CONFIG_DRM=y
++CONFIG_DRM_TTM=y
++CONFIG_ATCSMU=y
++CONFIG_UIO=y
++CONFIG_UIO_PDRV_GENIRQ=y
++CONFIG_REMOTEPROC=y
++CONFIG_QILAI_REMOTEPROC=y
++CONFIG_LOCALVERSION_AUTO=n
++CONFIG_RISCV_SBI=y
++CONFIG_NR_CPUS=5
+diff --git a/arch/riscv/include/asm/smp.h b/arch/riscv/include/asm/smp.h
+index 3831b638ecab..5b058bb77c5c 100644
+--- a/arch/riscv/include/asm/smp.h
++++ b/arch/riscv/include/asm/smp.h
+@@ -15,6 +15,10 @@
+ struct seq_file;
+ extern unsigned long boot_cpu_hartid;
+ 
++int smp_add_amp_check(void* ptr, void* info);
++int smp_del_amp_check(void);
++
++int smp_amp_init(void);
+ struct riscv_ipi_ops {
+ 	void (*ipi_inject)(const struct cpumask *target);
+ 	void (*ipi_clear)(void);
+diff --git a/arch/riscv/kernel/smp.c b/arch/riscv/kernel/smp.c
+index 8c3b59f1f9b8..68676eb01019 100644
+--- a/arch/riscv/kernel/smp.c
++++ b/arch/riscv/kernel/smp.c
+@@ -24,6 +24,13 @@
+ #include <asm/tlbflush.h>
+ #include <asm/cacheflush.h>
+ #include <asm/cpu_ops.h>
++#include <linux/workqueue.h>
++
++struct remoteproc_check {
++	void (*check) (void *info);
++	void *info;
++};
++struct remoteproc_check rproc_amp = { .check = NULL, .info = NULL };
+ 
+ enum ipi_message_type {
+ 	IPI_RESCHEDULE,
+@@ -166,8 +173,12 @@ void handle_IPI(struct pt_regs *regs)
+ 		mb();
+ 
+ 		ops = xchg(pending_ipis, 0);
+-		if (ops == 0)
++		if (ops == 0) {
++			if(rproc_amp.check) {
++				rproc_amp.check(rproc_amp.info);
++			}
+ 			return;
++		}
+ 
+ 		if (ops & (1 << IPI_RESCHEDULE)) {
+ 			stats[IPI_RESCHEDULE]++;
+@@ -333,3 +344,25 @@ void smp_send_reschedule(int cpu)
+ 	send_ipi_single(cpu, IPI_RESCHEDULE);
+ }
+ EXPORT_SYMBOL_GPL(smp_send_reschedule);
++
++int smp_add_amp_check(void* ptr, void* info)
++{
++	if (!rproc_amp.check) {
++		rproc_amp.check = ptr;
++		rproc_amp.info = info;
++		return 0;
++	}
++	return -EINVAL;
++}
++EXPORT_SYMBOL(smp_add_amp_check);
++
++int smp_del_amp_check(void)
++{
++	if (rproc_amp.check != NULL) {
++		rproc_amp.check = NULL;
++		rproc_amp.info = NULL;
++		return 0;
++	}
++	return -EINVAL;
++}
++EXPORT_SYMBOL(smp_del_amp_check);
+diff --git a/drivers/remoteproc/Kconfig b/drivers/remoteproc/Kconfig
+index 6a0b1d7bb158..177109991aad 100644
+--- a/drivers/remoteproc/Kconfig
++++ b/drivers/remoteproc/Kconfig
+@@ -362,6 +362,9 @@ config ANDES_REMOTEPROC
+ 
+ 	  It's safe to say N here if you're not interested in utilizing
+ 	  a slave processor.
++config QILAI_REMOTEPROC
++	tristate "Andes remoteproc support"
++	depends on REMOTEPROC
+ 
+ endif # REMOTEPROC
+ 
+diff --git a/drivers/remoteproc/Makefile b/drivers/remoteproc/Makefile
+index c5c39487d6c9..4622a4d07006 100644
+--- a/drivers/remoteproc/Makefile
++++ b/drivers/remoteproc/Makefile
+@@ -39,3 +39,4 @@ obj-$(CONFIG_STM32_RPROC)		+= stm32_rproc.o
+ obj-$(CONFIG_TI_K3_DSP_REMOTEPROC)	+= ti_k3_dsp_remoteproc.o
+ obj-$(CONFIG_TI_K3_R5_REMOTEPROC)	+= ti_k3_r5_remoteproc.o
+ obj-$(CONFIG_ANDES_REMOTEPROC)		+= andes_remoteproc.o
++obj-$(CONFIG_QILAI_REMOTEPROC)          += qilai_remoteproc.o
+diff --git a/drivers/remoteproc/qilai_remoteproc.c b/drivers/remoteproc/qilai_remoteproc.c
+new file mode 100644
+index 000000000000..c62da77ab7d1
+--- /dev/null
++++ b/drivers/remoteproc/qilai_remoteproc.c
+@@ -0,0 +1,491 @@
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_fdt.h>
++#include <linux/of_address.h>
++#include <linux/of_reserved_mem.h>
++#include <linux/err.h>
++#include <linux/platform_device.h>
++#include <linux/dma-mapping.h>
++#include <linux/interrupt.h>
++#include <linux/remoteproc.h>
++#include <linux/delay.h>
++#include <soc/andes/sbi.h>
++#include <soc/andes/smu.h>
++
++#include "remoteproc_internal.h"
++#include "remoteproc_elf_helpers.h"
++
++#include <asm/sbi.h>
++#include <asm/smp.h>
++
++/* andes swplic base address */
++#define SW_PLIC_DIST_BASE		0x0000400000
++#define SW_PLIC_LENGTH			0x0000400000
++
++/* qilai SMU/SOC register offset */
++#define SOC_OFFSET 0x400
++#define SOC_NMI_OFFSET (SOC_OFFSET + 0x178)
++#define SOC_NX_RESET_OFFSET (SOC_OFFSET + 0x170)
++#define SOC_NX_RESET_BIT	2
++#define SOC_NX_RW_RESET_BIT		19
++#define SOC_BOOT_CTRL_OFFSET (SOC_OFFSET + 0x4C)
++#define SOC_RESET_VECTOR_LO_OFFSET (0x78)
++#define SOC_RESET_VECTOR_HI_OFFSET (0x7C)
++
++/* PMA napot is 0x10FDFFFFF */
++#define SP_BASE 		0x43f000000
++#define MBOX_MSG 		0x43fffc000
++#define MBOX_MSG_SIZE  	0x4
++#define MBOX_SET_MSG   	-1
++#define MBOX_SP_RUN    	0
++
++struct andes_rproc_pdata {
++	struct device *dev;
++	struct rproc *rproc;
++	int irq;
++	u32 sp_hardid;
++	u64 rmem_base;
++	u64 rmem_size;
++	void __iomem *mbox_msg;
++	void __iomem *sp_base;
++	void __iomem *revdmem_base;
++};
++
++/* SW definition message box for sp and for opensbi */
++struct swmsg_box {
++	u32 sp_mbox;
++	u32 opensbi_mbox;
++	u32 mp_status;
++	u32 sp_status;
++};
++#define MBOX_OFF	(offsetof(struct swmsg_box, sp_mbox))
++#define SBI_OFF		(offsetof(struct swmsg_box, opensbi_mbox))
++#define MP_ST_OFF	(offsetof(struct swmsg_box, mp_status))
++#define SP_ST_OFF		(offsetof(struct swmsg_box, sp_status))
++
++extern struct atcsmu atcsmu;
++
++void __iomem *swmbox_base = NULL;
++enum andes_qilai_openamp_mp_state {
++	AMP_MP_INIT = 0,
++	AMP_MP_SBI_ENABLE,
++	AMP_MP_REMOVE,
++	AMP_MP_PAESE_FW,
++	AMP_MP_LOAD_ELF,
++	AMP_MP_REVD_MEM = 5,
++	AMP_MP_START,
++	AMP_MP_STOP,
++	AMP_MP_SEND_IPI,
++	AMP_MP_HANDLE_EVENT,
++	AMP_MP_HANDLE_EVENT_DONE = 10,
++};
++/* for the interrupt top-helf */
++struct rpc_work {
++	struct work_struct work;
++	struct rproc *rproc;
++};
++struct rpc_work rpc_work;
++struct workqueue_struct *qilai_vq_wq;
++
++static void andes_amp_trace(u32 status)
++{
++	writel(status, swmbox_base + MP_ST_OFF);
++}
++
++/* struct work_struct *work */
++static void rproc_handle_event(struct work_struct *ptr)
++{
++	struct rpc_work* rpc_work =
++		(struct rpc_work*) container_of(ptr, struct rpc_work, work);
++
++	if (rpc_work->rproc) {
++		rproc_vq_interrupt(rpc_work->rproc, 0);
++		andes_amp_trace(AMP_MP_HANDLE_EVENT_DONE);
++	}
++}
++
++void check_for_openamp_sp(void *info)
++{
++	uint32_t reg_value = 0;
++	struct remoteproc_check* rpc_check = (struct remoteproc_check*)info;
++
++	if (swmbox_base) {
++		reg_value = readl(swmbox_base + SBI_OFF);
++		if (reg_value) {
++			printk(KERN_INFO "[%s] reg_value:%08x\n", __func__, reg_value);
++			writel(0, swmbox_base + SBI_OFF);
++			andes_amp_trace(AMP_MP_HANDLE_EVENT);
++			queue_work(qilai_vq_wq, &rpc_work.work);
++		}
++	}
++}
++
++static void andes_rproc_kick(struct rproc *rproc, int vqid)
++{
++	struct device *dev = rproc->dev.parent;
++	struct andes_rproc_pdata *local = rproc->priv;
++
++	dev_dbg(dev, "KICK Firmware to start send messages vqid %d\n", vqid);
++
++	andes_amp_trace(AMP_MP_SEND_IPI);
++	sbi_swplic_openamp_send_ipi(local->sp_hardid);
++}
++
++static int andes_rproc_start(struct rproc *rproc)
++{
++	struct device *dev = rproc->dev.parent;
++	struct andes_rproc_pdata *local = rproc->priv;
++	uint32_t reg_value = 0;
++
++	dev_dbg(dev, "%s\n", __func__);
++	andes_amp_trace(AMP_MP_START);
++
++	/* MP set ELF entry point to the SP reset vector. */
++
++	writel((unsigned int)(SP_BASE), atcsmu.base + SOC_RESET_VECTOR_LO_OFFSET);
++	writel((unsigned int)(SP_BASE >> 32), atcsmu.base + SOC_RESET_VECTOR_HI_OFFSET);
++
++	reg_value = readl(atcsmu.base + SOC_NX_RESET_OFFSET);
++
++	writel(reg_value | (1 << SOC_NX_RESET_BIT), atcsmu.base + SOC_NX_RESET_OFFSET);
++
++	writel(MBOX_SET_MSG, local->mbox_msg + MBOX_OFF);
++
++	return 0;
++}
++
++static int andes_rproc_stop(struct rproc *rproc)
++{
++	struct device *dev = rproc->dev.parent;
++	struct andes_rproc_pdata *local = rproc->priv;
++	unsigned int msg;
++
++	dev_dbg(dev, "%s\n", __func__);
++	andes_amp_trace(AMP_MP_STOP);
++
++	msg = readl(local->mbox_msg + MBOX_OFF);
++	if (msg == MBOX_SP_RUN) {
++		writel(MBOX_SET_MSG, local->mbox_msg + MBOX_OFF);
++		andes_rproc_kick(rproc, 1);
++	}
++
++	return 0;
++}
++
++static int andes_reserved_mem_release(struct rproc *rproc,
++					struct rproc_mem_entry *mem)
++{
++	return 0;
++}
++
++static int andes_reserved_mem_alloc(struct rproc *rproc,
++					struct rproc_mem_entry *mem)
++{
++	void *va;
++	struct andes_rproc_pdata *local = rproc->priv;
++
++	if ((mem->dma >= local->rmem_base) &&
++		((mem->dma + mem->len) < (local->rmem_base + local->rmem_size))) {
++		va = (local->revdmem_base + mem->dma - local->rmem_base);
++	}
++	mem->va = va;
++
++	return 0;
++}
++
++static int andes_parse_reserved_mems(struct rproc *rproc)
++{
++	int i, num_mems;
++	struct device *dev = rproc->dev.parent;
++	struct device_node *mem_nodes = dev->of_node;
++	struct andes_rproc_pdata *local = rproc->priv;
++	struct rproc_mem_entry *mem;
++
++	num_mems = of_count_phandle_with_args(mem_nodes,
++						"memory-region", NULL);
++	if (num_mems <= 0) {
++		dev_err(dev, "need reserved-memory to shared memory\n");
++		return -EINVAL;
++	}
++
++	dev_dbg(dev, "%s number of mems: %d \n", __func__, num_mems);
++	andes_amp_trace(AMP_MP_REVD_MEM);
++
++	for (i = 0; i < num_mems; i++) {
++		struct device_node *dt_node;
++		struct reserved_mem *rmem;
++
++		dt_node = of_parse_phandle(mem_nodes, "memory-region", i);
++		rmem = of_reserved_mem_lookup(dt_node);
++		if (!rmem) {
++			dev_err(dev, "unable to acquire memory-region\n");
++			return -EINVAL;
++		}
++
++		mem = rproc_mem_entry_init(dev, NULL, (dma_addr_t)rmem->base,
++				rmem->size, rmem->base, andes_reserved_mem_alloc,
++				andes_reserved_mem_release, dt_node->name);
++		if (!mem) {
++			dev_err(dev,
++				"unable to initialize memory-region %s \n",
++				dt_node->name);
++			return -ENOMEM;
++		}
++
++		rproc_add_carveout(rproc, mem);
++	}
++
++	memset(local->revdmem_base, 0, local->rmem_size);
++
++	return 0;
++}
++
++static int andes_parse_fw(struct rproc *rproc, const struct firmware *fw)
++{
++	int ret;
++
++	andes_amp_trace(AMP_MP_PAESE_FW);
++
++	ret = andes_parse_reserved_mems(rproc);
++	if (ret)
++		return ret;
++
++	ret = rproc_elf_load_rsc_table(rproc, fw);
++	if (ret == -EINVAL) {
++		dev_info(&rproc->dev, "no resource table found.\n");
++		ret = 0;
++	}
++
++	return ret;
++}
++
++int andes_rproc_elf_load_segments(struct rproc *rproc, const struct firmware *fw)
++{
++	struct device *dev = &rproc->dev;
++	const void *ehdr, *phdr;
++	int i, ret = 0;
++	u16 phnum;
++	const u8 *elf_data = fw->data;
++	u8 class = fw_elf_get_class(fw);
++	u32 elf_phdr_get_size = elf_size_of_phdr(class);
++
++	ehdr = elf_data;
++	phnum = elf_hdr_get_e_phnum(class, ehdr);
++	phdr = elf_data + elf_hdr_get_e_phoff(class, ehdr);
++
++	andes_amp_trace(AMP_MP_LOAD_ELF);
++
++	/* go through the available ELF segments */
++	for (i = 0; i < phnum; i++, phdr += elf_phdr_get_size) {
++		/*
++		 * u64 da = elf_phdr_get_p_paddr(class, phdr);
++		 * sp don't need pa, it just use va.
++		 */
++
++		u64 da = elf_phdr_get_p_vaddr(class, phdr);
++		u64 memsz = elf_phdr_get_p_memsz(class, phdr);
++		u64 filesz = elf_phdr_get_p_filesz(class, phdr);
++		u64 offset = elf_phdr_get_p_offset(class, phdr);
++		u32 type = elf_phdr_get_p_type(class, phdr);
++		void *ptr;
++
++		if (type != PT_LOAD)
++			continue;
++
++		dev_dbg(dev, "phdr: type %d da 0x%llx memsz 0x%llx filesz 0x%llx\n",
++			type, da, memsz, filesz);
++
++		if (filesz > memsz) {
++			dev_err(dev, "bad phdr filesz 0x%llx memsz 0x%llx\n",
++				filesz, memsz);
++			ret = -EINVAL;
++			break;
++		}
++
++		if (offset + filesz > fw->size) {
++			dev_err(dev, "truncated fw: need 0x%llx avail 0x%zx\n",
++				offset + filesz, fw->size);
++			ret = -EINVAL;
++			break;
++		}
++
++		if (!rproc_u64_fit_in_size_t(memsz)) {
++			dev_err(dev, "size (%llx) does not fit in size_t type\n",
++				memsz);
++			ret = -EOVERFLOW;
++			break;
++		}
++		/* grab the kernel address for this device address */
++		ptr = rproc_da_to_va(rproc, da, memsz, NULL);
++		if (!ptr) {
++			dev_err(dev, "bad phdr da 0x%llx mem 0x%llx\n", da,
++				memsz);
++			ret = -EINVAL;
++			break;
++		}
++
++		/* put the segment where the remote processor expects it */
++		if (filesz)
++			memcpy(ptr, elf_data + offset, filesz);
++
++		/*
++		 * Zero out remaining memory for this segment.
++		 *
++		 * This isn't strictly required since dma_alloc_coherent already
++		 * did this for us. albeit harmless, we may consider removing
++		 * this.
++		 */
++		if (memsz > filesz)
++			memset(ptr + filesz, 0, memsz - filesz);
++	}
++
++	return ret;
++}
++
++static struct rproc_ops andes_rproc_ops = {
++	.start		       = andes_rproc_start,
++	.stop		       = andes_rproc_stop,
++	.kick		       = andes_rproc_kick,
++	.parse_fw	       = andes_parse_fw,
++	.find_loaded_rsc_table = rproc_elf_find_loaded_rsc_table,
++	.load                  = andes_rproc_elf_load_segments,
++	.sanity_check          = rproc_elf_sanity_check,
++	.get_boot_addr         = rproc_elf_get_boot_addr,
++};
++
++static int andes_remoteproc_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct device_node *dev_node = dev->of_node;
++	struct rproc *rproc;
++	struct andes_rproc_pdata *local;
++	int ret = 0;
++
++	rproc = rproc_alloc(dev, dev_node->name, &andes_rproc_ops,
++			    NULL, sizeof(*local));
++	if (!rproc) {
++		dev_err(&pdev->dev, "rproc allocation failed\n");
++		return -ENOMEM;
++	}
++
++	if (!atcsmu.base) {
++		dev_err(&pdev->dev, "atcsmu.base is NULL or 0x0\n");
++		goto error;
++	}
++
++	rproc->auto_boot = false;
++	local = rproc->priv;
++	local->rproc = rproc;
++	local->dev = dev;
++
++	platform_set_drvdata(pdev, rproc);
++
++	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64));
++	if (ret) {
++		dev_err(&pdev->dev, "dma_set_coherent_mask: %d\n", ret);
++		goto error;
++	}
++
++	ret = rproc_add(local->rproc);
++	if (ret) {
++		dev_err(&pdev->dev, "rproc registration failed\n");
++		goto error;
++	}
++
++	/* swplic base address and length */
++
++	of_property_read_u64(dev_node, "rmem_base", &local->rmem_base);
++	of_property_read_u64(dev_node, "rmem_size", &local->rmem_size);
++	of_property_read_u32(dev_node, "sp_hartid", &local->sp_hardid);
++
++	dev_info(&pdev->dev, "rmem_base:%llx rmem_size:%llx\n",
++		 local->rmem_base, local->rmem_size);
++
++	local->revdmem_base = ioremap_wc(local->rmem_base, local->rmem_size);
++	if (!local->revdmem_base)
++		goto error;
++
++	if (MBOX_MSG >= local->rmem_base) {
++		local->mbox_msg = (local->revdmem_base + MBOX_MSG - local->rmem_base);
++	}
++
++	swmbox_base = local->mbox_msg;
++
++	andes_amp_trace(AMP_MP_SBI_ENABLE);
++	sbi_swplic_openamp_idx(1);
++
++	if (smp_add_amp_check(&check_for_openamp_sp, rproc))
++		goto error;
++
++	INIT_WORK(&rpc_work.work, rproc_handle_event);
++	rpc_work.rproc = rproc;
++
++	qilai_vq_wq = alloc_workqueue("qilai_vq_wq", WQ_HIGHPRI, 0);
++	if (!qilai_vq_wq) {
++		dev_err(&pdev->dev, "qilai_vq_wq init failed\n");
++		goto error;
++	}
++
++	return 0;
++
++error:
++
++	if (local->revdmem_base)
++		iounmap(local->revdmem_base);
++
++	local->mbox_msg = NULL;
++	swmbox_base = NULL;
++	rproc_free(rproc);
++	sbi_swplic_openamp_idx(0);
++	return ret;
++}
++
++static int andes_remoteproc_remove(struct platform_device *pdev)
++{
++	struct rproc *rproc = platform_get_drvdata(pdev);
++	struct andes_rproc_pdata *local = rproc->priv;
++
++	dev_info(&pdev->dev, "%s\n", __func__);
++	andes_amp_trace(AMP_MP_REMOVE);
++
++	destroy_workqueue(qilai_vq_wq);
++
++	if (atomic_read(&rproc->power) > 0)
++		rproc_shutdown(rproc);
++
++	if (local->revdmem_base)
++		iounmap(local->revdmem_base);
++
++	local->mbox_msg = NULL;
++	swmbox_base = NULL;
++
++	of_reserved_mem_device_release(&pdev->dev);
++	rproc_del(rproc);
++	rproc_free(rproc);
++
++	sbi_swplic_openamp_idx(0);
++	smp_del_amp_check();
++
++	return 0;
++}
++
++/* Match table for OF platform binding */
++static const struct of_device_id andes_remoteproc_match[] = {
++	{ .compatible = "andestech,andes_remoteproc", },
++	{ /* end of list */ },
++};
++MODULE_DEVICE_TABLE(of, andes_remoteproc_match);
++
++static struct platform_driver andes_remoteproc_driver = {
++	.probe = andes_remoteproc_probe,
++	.remove = andes_remoteproc_remove,
++	.driver = {
++		.name = "andes_remoteproc",
++		.of_match_table = andes_remoteproc_match,
++	},
++};
++module_platform_driver(andes_remoteproc_driver);
++
++MODULE_DESCRIPTION("Andes remote processor control driver");
++MODULE_LICENSE("GPL v2");
+diff --git a/drivers/remoteproc/remoteproc_core.c b/drivers/remoteproc/remoteproc_core.c
+index c3f194d9384d..fbed193dd4b3 100644
+--- a/drivers/remoteproc/remoteproc_core.c
++++ b/drivers/remoteproc/remoteproc_core.c
+@@ -288,7 +288,7 @@ rproc_find_carveout_by_name(struct rproc *rproc, const char *name, ...)
+  * Return: 0 if carveout matches request else error
+  */
+ static int rproc_check_carveout_da(struct rproc *rproc,
+-				   struct rproc_mem_entry *mem, u32 da, u32 len)
++				   struct rproc_mem_entry *mem, u64 da, u32 len)
+ {
+ 	struct device *dev = &rproc->dev;
+ 	int delta;
+@@ -754,7 +754,7 @@ static int rproc_alloc_carveout(struct rproc *rproc,
+ 		mapping->len = mem->len;
+ 		list_add_tail(&mapping->node, &rproc->mappings);
+ 
+-		dev_dbg(dev, "carveout mapped 0x%x to %pad\n",
++		dev_dbg(dev, "carveout mapped 0x%llx to %pad\n",
+ 			mem->da, &dma);
+ 	}
+ 
+@@ -837,7 +837,7 @@ static int rproc_handle_carveout(struct rproc *rproc,
+ 		return -EINVAL;
+ 	}
+ 
+-	dev_dbg(dev, "carveout rsc: name: %s, da 0x%x, pa 0x%x, len 0x%x, flags 0x%x\n",
++	dev_dbg(dev, "carveout rsc: name: %s, da 0x%llx, pa 0x%llx, len 0x%x, flags 0x%x\n",
+ 		rsc->name, rsc->da, rsc->pa, rsc->len, rsc->flags);
+ 
+ 	/*
+@@ -912,7 +912,7 @@ EXPORT_SYMBOL(rproc_add_carveout);
+ __printf(8, 9)
+ struct rproc_mem_entry *
+ rproc_mem_entry_init(struct device *dev,
+-		     void *va, dma_addr_t dma, size_t len, u32 da,
++		     void *va, dma_addr_t dma, size_t len, u64 da,
+ 		     int (*alloc)(struct rproc *, struct rproc_mem_entry *),
+ 		     int (*release)(struct rproc *, struct rproc_mem_entry *),
+ 		     const char *name, ...)
+@@ -958,7 +958,7 @@ EXPORT_SYMBOL(rproc_mem_entry_init);
+ __printf(5, 6)
+ struct rproc_mem_entry *
+ rproc_of_resm_mem_entry_init(struct device *dev, u32 of_resm_idx, size_t len,
+-			     u32 da, const char *name, ...)
++			     u64 da, const char *name, ...)
+ {
+ 	struct rproc_mem_entry *mem;
+ 	va_list args;
+@@ -1382,7 +1382,8 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
+ 	if (ret)
+ 		return ret;
+ 
+-	dev_info(dev, "Booting fw image %s, size %zd\n", name, fw->size);
++//	dev_info(dev, "Booting fw image %s, size %zd\n", name, fw->size);
++	dev_info(dev, "Booting fw\n");
+ 
+ 	/*
+ 	 * if enabling an IOMMU isn't relevant for this rproc, this is
+diff --git a/drivers/soc/andes/andes_sbi.c b/drivers/soc/andes/andes_sbi.c
+index 74da5aa16821..0657b7a9db27 100644
+--- a/drivers/soc/andes/andes_sbi.c
++++ b/drivers/soc/andes/andes_sbi.c
+@@ -55,3 +55,17 @@ long sbi_andes_read_powerbrake(void)
+ 	return ret.value;
+ }
+ EXPORT_SYMBOL(sbi_andes_read_powerbrake);
++
++void sbi_swplic_openamp_idx(uint8_t idx)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_OPENAMP_IDX, idx,
++			0, 0, 0, 0, 0);
++}
++EXPORT_SYMBOL(sbi_swplic_openamp_idx);
++
++void sbi_swplic_openamp_send_ipi(uint8_t target_hart)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_OPENAMP_SEND_IPI, target_hart,
++			0, 0, 0, 0, 0);
++}
++EXPORT_SYMBOL(sbi_swplic_openamp_send_ipi);
+diff --git a/drivers/soc/andes/ppma.c b/drivers/soc/andes/ppma.c
+index 48419d11bab4..274559517be9 100644
+--- a/drivers/soc/andes/ppma.c
++++ b/drivers/soc/andes/ppma.c
+@@ -21,6 +21,9 @@
+ #define RESERVED_PMA_CNT 0
+ #endif
+ 
++extern unsigned long riscv_pfn_base;
++extern unsigned long max_mapnr;
++
+ struct ppma_arg_t ppma_arg;
+ 
+ long andes_probe_ppma(void)
+@@ -36,6 +39,8 @@ void andes_set_ppma(phys_addr_t phys_addr, void *va_addr, size_t size)
+ 	int i, err;
+ 	bool within_memory = pfn_valid(phys_addr >> PAGE_SHIFT);
+ 
++	printk("!!riscv_pfn_base = 0x%lx\n",riscv_pfn_base);
++	printk("!! max_mapnr = 0x%lx\n",max_mapnr);
+ 	/*
+ 	 * PPMA/Non-cacheability setting only
+ 	 * when the given PA is within main memory range,
+@@ -61,7 +66,7 @@ void andes_set_ppma(phys_addr_t phys_addr, void *va_addr, size_t size)
+ 	 * FIXME: we need online CPU mask, not the number
+ 	 */
+ 	id = get_cpu();
+-	for (i = RESERVED_PMA_CNT; i < cpu_num; i++) {
++	for (i = 0; i < cpu_num; i++) {
+ 		if (i == id)
+ 			continue;
+ 
+@@ -90,7 +95,7 @@ void andes_free_ppma(void *addr)
+ 	 * FIXME: we need online CPU mask, not the number
+ 	 */
+ 	id = get_cpu();
+-	for (i = RESERVED_PMA_CNT; i < cpu_num; i++) {
++	for (i = 0; i < cpu_num; i++) {
+ 		if (i == id)
+ 			continue;
+ 
+diff --git a/include/linux/remoteproc.h b/include/linux/remoteproc.h
+index fe8978eb69f1..88ba98dd3a2d 100644
+--- a/include/linux/remoteproc.h
++++ b/include/linux/remoteproc.h
+@@ -169,8 +169,8 @@ enum fw_resource_type {
+  * (mainly for debugging purposes).
+  */
+ struct fw_rsc_carveout {
+-	u32 da;
+-	u32 pa;
++	u64 da;
++	u64 pa;
+ 	u32 len;
+ 	u32 flags;
+ 	u32 reserved;
+@@ -207,8 +207,8 @@ struct fw_rsc_carveout {
+  * access to physical addresses that are outside those ranges.
+  */
+ struct fw_rsc_devmem {
+-	u32 da;
+-	u32 pa;
++	u64 da;
++	u64 pa;
+ 	u32 len;
+ 	u32 flags;
+ 	u32 reserved;
+@@ -256,7 +256,7 @@ struct fw_rsc_trace {
+  * dynamically allocation of the vring's device address is supported.
+  */
+ struct fw_rsc_vdev_vring {
+-	u32 da;
++	u64 da;
+ 	u32 align;
+ 	u32 num;
+ 	u32 notifyid;
+@@ -334,7 +334,7 @@ struct rproc_mem_entry {
+ 	bool is_iomem;
+ 	dma_addr_t dma;
+ 	size_t len;
+-	u32 da;
++	u64 da;
+ 	void *priv;
+ 	char name[32];
+ 	struct list_head node;
+@@ -623,7 +623,7 @@ struct rproc_subdev {
+ struct rproc_vring {
+ 	void *va;
+ 	int num;
+-	u32 da;
++	u64 da;
+ 	u32 align;
+ 	int notifyid;
+ 	struct rproc_vdev *rvdev;
+@@ -675,14 +675,14 @@ void rproc_add_carveout(struct rproc *rproc, struct rproc_mem_entry *mem);
+ 
+ struct rproc_mem_entry *
+ rproc_mem_entry_init(struct device *dev,
+-		     void *va, dma_addr_t dma, size_t len, u32 da,
++		     void *va, dma_addr_t dma, size_t len, u64 da,
+ 		     int (*alloc)(struct rproc *, struct rproc_mem_entry *),
+ 		     int (*release)(struct rproc *, struct rproc_mem_entry *),
+ 		     const char *name, ...);
+ 
+ struct rproc_mem_entry *
+ rproc_of_resm_mem_entry_init(struct device *dev, u32 of_resm_idx, size_t len,
+-			     u32 da, const char *name, ...);
++			     u64 da, const char *name, ...);
+ 
+ int rproc_boot(struct rproc *rproc);
+ int rproc_shutdown(struct rproc *rproc);
+diff --git a/include/soc/andes/sbi.h b/include/soc/andes/sbi.h
+index 6dda406e139f..d91fee51978b 100644
+--- a/include/soc/andes/sbi.h
++++ b/include/soc/andes/sbi.h
+@@ -41,7 +41,7 @@ enum sbi_ext_andes_fid {
+ 
+ 	/* Reset (ATCSMU) */
+ 	SBI_EXT_ANDES_RESTART,
+-	SBI_EXT_ANDES_SET_RESET_VEC,
++	SBI_EXT_ANDES_RESET_VEC,
+ 
+ 	/* Programmable physical memory attributes (PPMA) */
+ 	SBI_EXT_ANDES_SET_PPMA,
+@@ -52,6 +52,8 @@ enum sbi_ext_andes_fid {
+ 
+ 	/* HPM */
+ 	SBI_EXT_ANDES_HPM,
++	SBI_EXT_ANDES_OPENAMP_IDX,
++	SBI_EXT_ANDES_OPENAMP_SEND_IPI,
+ };
+ 
+ /* Programmable physical memory attributes (PPMA) */
+@@ -72,4 +74,7 @@ static inline void sbi_andes_set_trigger(unsigned int type,
+ void sbi_andes_write_powerbrake(unsigned int val);
+ long sbi_andes_read_powerbrake(void);
+ 
++void sbi_swplic_openamp_idx(uint8_t idx);
++void sbi_swplic_openamp_send_ipi(uint8_t target_hart);
++
+ #endif /* !__SOC_ANDES_SBI_H */
+-- 
+2.34.1
+

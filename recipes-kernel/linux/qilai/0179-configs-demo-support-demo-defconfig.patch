@@ -1,0 +1,39 @@
+From 6a96047e8c009fea53b1d205fbc0e5a6400fd3cf Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Thu, 9 May 2024 17:49:30 +0800
+Subject: [PATCH 179/191] configs: demo: support demo defconfig
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ arch/riscv/Makefile                  | 4 ++++
+ arch/riscv/configs/qilai_demo.config | 6 ++++++
+ 2 files changed, 10 insertions(+)
+ create mode 100644 arch/riscv/configs/qilai_demo.config
+
+diff --git a/arch/riscv/Makefile b/arch/riscv/Makefile
+index 450921d21526..b057c78be8aa 100644
+--- a/arch/riscv/Makefile
++++ b/arch/riscv/Makefile
+@@ -226,3 +226,7 @@ ae350_rv64_ax25_amp_defconfig:
+ PHONY += qilai_rv64_smp_defconfig
+ qilai_rv64_smp_defconfig:
+ 	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config smp.config sv39.config qilai.config qilai_openmp.config
++
++PHONY += qilai_rv64_smp_demo_defconfig
++qilai_rv64_smp_demo_defconfig:
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config smp.config sv39.config qilai.config qilai_openmp.config qilai_demo.config
+diff --git a/arch/riscv/configs/qilai_demo.config b/arch/riscv/configs/qilai_demo.config
+new file mode 100644
+index 000000000000..5ab25c70606d
+--- /dev/null
++++ b/arch/riscv/configs/qilai_demo.config
+@@ -0,0 +1,6 @@
++CONFIG_SND_SOC_ANDES=n
++CONFIG_BLK_DEV_INITRD=n
++CONFIG_SND_USB_AUDIO=y
++CONFIG_SND_HWDEP=y
++CONFIG_SND_RAWMIDI=y
++CONFIG_PARTITION_ADVANCED=y
+-- 
+2.34.1
+

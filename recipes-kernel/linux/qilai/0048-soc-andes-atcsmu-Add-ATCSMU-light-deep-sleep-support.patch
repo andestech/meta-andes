@@ -1,0 +1,404 @@
+From 73ccf5f9e48cec759a3fe5d197f97e7cf7d01b36 Mon Sep 17 00:00:00 2001
+From: Leo Yu-Chi Liang <ycliang@andestech.com>
+Date: Fri, 26 May 2023 08:57:56 +0800
+Subject: [PATCH 048/191] soc: andes: atcsmu: Add ATCSMU light/deep sleep
+ support
+
+Support light/deep sleep in ATCSMU using kernel suspend feature.
+
+ATCSMU provides light sleep (clock gating) and
+deep sleep (power gating) feature for power management.
+
+Setup wakeup event:
+- TTY:
+    - echo enabled > /sys/devices/platform/f0300000.serial/tty/ttyS0/power/wakeup
+    - echo enabled > /sys/devices/platform/soc/f0300000.serial/tty/ttyS0/power/wakeup (Built-in DTB)
+- RTC:
+    - echo enabled > /sys/devices/platform/f0600000.rtc/power/wakeup
+    - echo enabled > /sys/devices/platform/soc/f0600000.rtc/power/wakeup (Built-in DTB)
+
+Light sleep (clock gating):
+- echo standby > /sys/power/state
+
+Deep sleep (power gating):
+- echo mem > /sys/power/state
+- echo 0 > /sys/devices/system/cpu/cpu[x]/online
+
+Reformed from the following commits from AST520 Linux kernel
+(branch: RISCV-Linux-5.4-ast-v5_2_0-branch)
+- (f4aa4295eea8e) riscv: Power management
+- (61f97ce561d6e) Fix code in suspend to ram.
+- (e454bc2828438) riscv: Power management
+- (72be906d0b095) ATCSMU: Support ATCSMU
+- (7eada24d2ef7f) irq-sifive-plic: Fix plic interrupt disabled issue after executing light/deep sleep.
+- (c6c47563cf80f) ATCSMU: Remove debug message.
+- (703f0b251425e) ATCSMU: Support atcsmu with SBI CALL v0.2
+- (ef8bcb65af26d) atcsmu: Support 45-series CPU hotplug with deep sleep
+- (7660fb4930d63) atcsmu: Move atcsmu functions to OpenSBI.
+- (fbcc3ad40e1e1) atcsmu: Make sure hart0 is the primary cpu.
+- (d72880245a042) riscv: set suspend mode of main hart through andes SBI call
+- (3fff937eccbbe) riscv: update suspend mode functions
+- (ebc6ed2ab0d94) configs: Support SMU in qemu defconfig.
+
+Signed-off-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+
+Execution Flow:
+===============
+- echo standby > /sys/power/state
+- echo mem > /sys/power/state
+    - (main hart) pm framework: andes_pm_enter
+        -> atcsmu_{suspend2standby,suspend2ram}
+            -> vendor SBI call: sbi_andes_set_suspend_mode
+            -> vendor SBI call: sbi_andes_enter_suspend_mode
+                -> OpenSBI: wfi (light/deep sleep)
+    - (other hart) cpu hotplug: do_idle (after "suspend_disable_secondary_cpus")
+        -> if (cpu_is_offline(cpu)) then "arch_cpu_idle_dead"
+            -> vendor SBI call: sbi_andes_set_suspend_mode
+                -> sret
+            -> sbi_cpu_stop
+                -> HSM SBI call: sbi_hsm_hart_stop
+                    -> ...
+                        -> ae350_enter_suspend_mode -> WFI
+---
+ arch/riscv/configs/amp.config           |   1 -
+ arch/riscv/configs/andes-support.config |   2 +
+ arch/riscv/kernel/cpu-hotplug.c         |   6 ++
+ drivers/soc/andes/Kconfig               |   8 ++
+ drivers/soc/andes/Makefile              |   1 +
+ drivers/soc/andes/atcsmu.c              | 135 ++++++++++++++++++++++++
+ drivers/soc/andes/pm.c                  |  15 ++-
+ include/linux/cpu.h                     |  12 +++
+ include/soc/andes/smu.h                 |  38 +++++++
+ 9 files changed, 215 insertions(+), 3 deletions(-)
+ create mode 100644 drivers/soc/andes/atcsmu.c
+
+diff --git a/arch/riscv/configs/amp.config b/arch/riscv/configs/amp.config
+index 63ae179e0984..513e8d24074b 100644
+--- a/arch/riscv/configs/amp.config
++++ b/arch/riscv/configs/amp.config
+@@ -1,4 +1,3 @@
+-CONFIG_ATCSMU=y
+ # CONFIG_ANDES_PPMA is not set
+ CONFIG_AMP=y
+ 
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+index 8df4241ad379..1297b84825f3 100644
+--- a/arch/riscv/configs/andes-support.config
++++ b/arch/riscv/configs/andes-support.config
+@@ -34,3 +34,5 @@ CONFIG_SND_FTSSP010_AC97=y
+ 
+ CONFIG_RTC_CLASS=y
+ CONFIG_RTC_DRV_ATCRTC100=y
++
++CONFIG_ANDES_ATCSMU=y
+diff --git a/arch/riscv/kernel/cpu-hotplug.c b/arch/riscv/kernel/cpu-hotplug.c
+index f7a832e3a1d1..068e783cb37c 100644
+--- a/arch/riscv/kernel/cpu-hotplug.c
++++ b/arch/riscv/kernel/cpu-hotplug.c
+@@ -15,6 +15,8 @@
+ #include <asm/numa.h>
+ #include <asm/sbi.h>
+ 
++#include <soc/andes/smu.h>
++
+ bool cpu_has_hotplug(unsigned int cpu)
+ {
+ 	if (cpu_ops[cpu]->cpu_stop)
+@@ -77,6 +79,10 @@ void arch_cpu_idle_dead(void)
+ 
+ 	(void)cpu_report_death();
+ 
++#ifdef CONFIG_ANDES_ATCSMU
++	atcsmu_set_suspend_mode();
++#endif
++
+ 	cpu_ops[smp_processor_id()]->cpu_stop();
+ 	/* It should never reach here */
+ 	BUG();
+diff --git a/drivers/soc/andes/Kconfig b/drivers/soc/andes/Kconfig
+index 650387879766..69147505c4b8 100644
+--- a/drivers/soc/andes/Kconfig
++++ b/drivers/soc/andes/Kconfig
+@@ -36,4 +36,12 @@ config PLATFORM_AHBDMA
+ 	bool "Platform AHB DMA support"
+ 	depends on ATCDMAC300
+ 
++config ANDES_ATCSMU
++	bool "Andes ATCSMU Support"
++	depends on RISCV && PLAT_AE350
++	help
++	  Andes System Management Unit (SMU) supports
++	  light/sleep and hotplug utilities. ATCSMU
++	  driver utilizes this hardware to implement
++	  power management.
+ endmenu
+diff --git a/drivers/soc/andes/Makefile b/drivers/soc/andes/Makefile
+index f37fa1e1c1f6..2e96ec5de773 100644
+--- a/drivers/soc/andes/Makefile
++++ b/drivers/soc/andes/Makefile
+@@ -7,3 +7,4 @@ obj-$(CONFIG_ATCDMAC300)	+= atcdmac300.o dmad_intc.o
+ obj-$(CONFIG_ANDES_CACHE)	+= cache.o
+ obj-$(CONFIG_ANDES_DMA_NONCOHERENT)	+= dma-noncoherent.o
+ obj-$(CONFIG_ANDES_PPMA)	+= ppma.o
++obj-$(CONFIG_ANDES_ATCSMU)	+= atcsmu.o
+diff --git a/drivers/soc/andes/atcsmu.c b/drivers/soc/andes/atcsmu.c
+new file mode 100644
+index 000000000000..90f024497fdc
+--- /dev/null
++++ b/drivers/soc/andes/atcsmu.c
+@@ -0,0 +1,135 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/platform_device.h>
++#include <linux/interrupt.h>
++#include <linux/io.h>
++#include <linux/of.h>
++#include <linux/reboot.h>
++#include <linux/suspend.h>
++
++#include <asm/tlbflush.h>
++#include <asm/sbi.h>
++#include <asm/csr.h>
++#include <soc/andes/andes.h>
++#include <soc/andes/sbi.h>
++#include <soc/andes/smu.h>
++
++// define in drivers/soc/andes/pm.c
++extern int suspend_begin;
++
++struct atcsmu atcsmu;
++EXPORT_SYMBOL(atcsmu);
++
++void sbi_andes_set_suspend_mode(unsigned int suspend_mode)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_SET_SUSPEND_MODE, suspend_mode,
++		  0, 0, 0, 0, 0);
++}
++EXPORT_SYMBOL(sbi_andes_set_suspend_mode);
++
++void sbi_andes_enter_suspend_mode(int main_core, unsigned int wake_event)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_ENTER_SUSPEND_MODE, main_core,
++		  wake_event, 0, 0, 0, 0);
++}
++EXPORT_SYMBOL(sbi_andes_enter_suspend_mode);
++
++#ifdef CONFIG_ANDES_ATCSMU
++/* main hart */
++void atcsmu_suspend2ram(void)
++{
++	sbi_andes_set_suspend_mode(DEEP_SLEEP_MODE);
++	sbi_andes_enter_suspend_mode(true, *wake_event);
++}
++
++/* main hart */
++void atcsmu_suspend2standby(void)
++{
++	sbi_andes_set_suspend_mode(LIGHT_SLEEP_MODE);
++	sbi_andes_enter_suspend_mode(true, *wake_event);
++}
++
++/* other harts or hotplugging hart */
++/* arch/riscv/kernel/cpu-hotplug.c: arch_cpu_idle_dead */
++void atcsmu_set_suspend_mode(void)
++{
++	if (suspend_begin == PM_SUSPEND_MEM)
++		sbi_andes_set_suspend_mode(DEEP_SLEEP_MODE);
++	else if (suspend_begin == PM_SUSPEND_STANDBY)
++		sbi_andes_set_suspend_mode(LIGHT_SLEEP_MODE);
++	else
++		sbi_andes_set_suspend_mode(CPUHOTPLUG_DEEP_SLEEP_MODE);
++}
++#endif
++
++static int atcsmu_probe(struct platform_device *pdev)
++{
++	struct atcsmu *smu = &atcsmu;
++	int ret = -ENOENT;
++	int pcs = 0;
++
++	spin_lock_init(&smu->lock);
++
++	smu->res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!smu->res)
++		goto err_exit;
++
++	ret = -EBUSY;
++
++	smu->res = request_mem_region(smu->res->start,
++				      smu->res->end - smu->res->start + 1,
++				      pdev->name);
++	if (!smu->res)
++		goto err_exit;
++
++	ret = -EINVAL;
++
++	smu->base =
++		ioremap(smu->res->start, smu->res->end - smu->res->start + 1);
++	if (!smu->base)
++		goto err_ioremap;
++
++	for (pcs = 0; pcs < MAX_PCS_SLOT; pcs++)
++		writel(0xffdfffff, (void *)(smu->base + PCSN_WE_OFF(pcs)));
++
++	return 0;
++err_ioremap:
++	release_resource(smu->res);
++err_exit:
++	return ret;
++}
++
++static int __exit atcsmu_remove(struct platform_device *pdev)
++{
++	return 0;
++}
++
++#ifdef CONFIG_OF
++static const struct of_device_id atcsmu_of_id_table[] = {
++	{ .compatible = "andestech,atcsmu" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, atcsmu_of_id_table);
++#endif
++
++static struct platform_driver atcsmu_driver = {
++	.probe = atcsmu_probe,
++	.remove = __exit_p(atcsmu_remove),
++	.driver = {
++		.name = "atcsmu",
++		.of_match_table = of_match_ptr(atcsmu_of_id_table),
++	},
++};
++
++static int __init atcsmu_init(void)
++{
++	int ret = platform_driver_register(&atcsmu_driver);
++
++	return ret;
++}
++subsys_initcall(atcsmu_init);
+diff --git a/drivers/soc/andes/pm.c b/drivers/soc/andes/pm.c
+index 6c015380feee..4ffae1b4a96e 100644
+--- a/drivers/soc/andes/pm.c
++++ b/drivers/soc/andes/pm.c
+@@ -16,6 +16,7 @@ extern void __iomem *plic_regs;
+ 
+ int suspend_begin;
+ 
++#ifndef CONFIG_ANDES_ATCSMU
+ static void andes_suspend_cpu(void)
+ {
+ 	int i;
+@@ -35,19 +36,29 @@ static void andes_suspend_cpu(void)
+ wakeup:
+ 	return;
+ }
++#endif
+ 
+ static int andes_pm_enter(suspend_state_t state)
+ {
+ 	pr_debug("%s:state:%d\n", __func__, state);
+ 	switch (state) {
+ 	case PM_SUSPEND_STANDBY:
++#ifdef CONFIG_ANDES_ATCSMU
++		atcsmu_suspend2standby();
++#else
++		andes_suspend_cpu();
++#endif
++		return 0;
+ 	case PM_SUSPEND_MEM:
++#ifdef CONFIG_ANDES_ATCSMU
++		atcsmu_suspend2ram();
++#else
+ 		andes_suspend_cpu();
+-		break;
++#endif
++		return 0;
+ 	default:
+ 		return -EINVAL;
+ 	}
+-	return 0;
+ }
+ 
+ static int andes_pm_valid(suspend_state_t state)
+diff --git a/include/linux/cpu.h b/include/linux/cpu.h
+index 008bfa68cfab..ca0af659235d 100644
+--- a/include/linux/cpu.h
++++ b/include/linux/cpu.h
+@@ -163,6 +163,18 @@ static inline int suspend_disable_secondary_cpus(void)
+ 	if (IS_ENABLED(CONFIG_PM_SLEEP_SMP_NONZERO_CPU))
+ 		cpu = -1;
+ 
++	/*
++	 * Kernel cpu_id is not mhartid.
++	 * Make sure "primary cpu" corresponds to mhartid 0.
++	 */
++
++	if (IS_ENABLED(CONFIG_ANDES_ATCSMU)) {
++		for_each_possible_cpu(cpu) {
++			if (cpuid_to_hartid_map(cpu) == 0)
++				break;
++		}
++	}
++
+ 	return freeze_secondary_cpus(cpu);
+ }
+ static inline void suspend_enable_secondary_cpus(void)
+diff --git a/include/soc/andes/smu.h b/include/soc/andes/smu.h
+index 07d7953e0dcc..e63b6f518c6f 100644
+--- a/include/soc/andes/smu.h
++++ b/include/soc/andes/smu.h
+@@ -7,7 +7,45 @@
+ #define _ASM_ANDES_SMU_H
+ 
+ #include <asm/sbi.h>
++#define MAX_PCS_SLOT	7
++
++#define PCS0_WE_OFF     0x90
++#define PCS0_CTL_OFF    0x94
++#define PCS0_STATUS_OFF 0x98
++
++/*
++ * PCS0 --> Always on power domain, includes the JTAG tap and
++ *          DMI_AHB bus in NCEJDTM200
++ * PCS1 --> Power domain for debug subsystem
++ * PCS2 --> Main power domain, includes the system bus and
++ *          AHB, APB peripheral IPs
++ * PCS3 --> Power domain for Core0 and L2C
++ * PCSN --> Power domain for Core (N-3)
++ */
++
++#define PCSN_WE_OFF(n)          (n * 0x20 + PCS0_WE_OFF)
++#define CN_PCS_WE_OFF(n)        ((n + 3) * 0x20 + PCS0_WE_OFF)
++#define CN_PCS_STATUS_OFF(n)    ((n + 3) * 0x20 + PCS0_STATUS_OFF)
++#define CN_PCS_CTL_OFF(n)       ((n + 3) * 0x20 + PCS0_CTL_OFF)
++
++struct atcsmu {
++	void __iomem *base;
++	struct resource *res;
++	spinlock_t lock;
++};
+ 
+ extern unsigned int *wake_event;
+ 
++/* main hart (drivers/soc/andes/pm.c) */
++void atcsmu_suspend2standby(void);
++void atcsmu_suspend2ram(void);
++
++/* other hart (arch/riscv/kernel/cpu-hotplug.c) */
++void atcsmu_set_suspend_mode(void);
++
++#define NORMAL_MODE                 0
++#define LIGHT_SLEEP_MODE            1
++#define DEEP_SLEEP_MODE             2
++#define CPUHOTPLUG_DEEP_SLEEP_MODE  3
++
+ #endif
+-- 
+2.34.1
+

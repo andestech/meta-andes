@@ -1,0 +1,49 @@
+From 06da6a461aded9fd93b6969af5949982eace3d19 Mon Sep 17 00:00:00 2001
+From: Rick Chen <rick@andestech.com>
+Date: Thu, 14 Oct 2021 15:15:33 +0800
+Subject: [PATCH 015/191] mmc: andes: ftsdc010g: add new readl_fixup() when
+ driver probing
+
+Reformed from the following patches on RISCV-Linux-5.4:
+- (86c6918870fe) riscv: Fix readl_fixup undefined problem
+- (b2f4eef97091) riscv: Add error return code when readl_fixup() failed
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ drivers/mmc/host/ftsdc010g.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/drivers/mmc/host/ftsdc010g.c b/drivers/mmc/host/ftsdc010g.c
+index fa7a5e62e25f..0f929775ace2 100644
+--- a/drivers/mmc/host/ftsdc010g.c
++++ b/drivers/mmc/host/ftsdc010g.c
+@@ -1348,6 +1348,8 @@ static struct ftsdc_mmc_config
+ 
+ static int __init ftsdc_probe(struct platform_device *pdev)
+ {
++	int (*read_fixup)(void __iomem *addr, unsigned int val,
++		unsigned int shift_bits);
+ 	struct ftsdc_host *host;
+ 	struct mmc_host	*mmc;
+ 	struct ftsdc_mmc_config *pdata = NULL;
+@@ -1408,6 +1410,17 @@ static int __init ftsdc_probe(struct platform_device *pdev)
+ 		goto probe_free_mem_region;
+ 	}
+ 
++	/* Check revision register */
++	read_fixup = symbol_get(readl_fixup);
++	ret = read_fixup(host->base + SDC_REVISION_REG, 0x00030107, 0);
++	symbol_put(readl_fixup);
++	if (!ret) {
++		dev_err(&pdev->dev,
++			"bitmap revision mismatch(ftsdc)\n");
++		ret = -ENXIO;
++		goto probe_free_mem_region;
++	}
++
+ 	host->irq = irq;
+ 
+ 	ret = request_irq(host->irq, ftsdc_irq, 0, DRIVER_NAME, host);
+-- 
+2.34.1
+

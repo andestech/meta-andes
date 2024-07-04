@@ -1,0 +1,27 @@
+From dd737c022b40bc454873014f469f3af5fad1624c Mon Sep 17 00:00:00 2001
+From: charles <dminus@andestech.com>
+Date: Thu, 25 Jan 2024 17:19:14 +0800
+Subject: [PATCH 183/191] riscv: andes: add GPL to readl_fixup() EXPORT_SYMBOL
+
+The commit e9b5e1f857b655deaab662e11b68fe09aa9c428e :
+
+modules: only allow symbol_get of EXPORT_SYMBOL_GPL modules
+
+Signed-off-by: charles <dminus@andestech.com>
+---
+ arch/riscv/kernel/riscv_ksyms.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/riscv/kernel/riscv_ksyms.c b/arch/riscv/kernel/riscv_ksyms.c
+index f9f69bc14a1b..b65468bab0d3 100644
+--- a/arch/riscv/kernel/riscv_ksyms.c
++++ b/arch/riscv/kernel/riscv_ksyms.c
+@@ -15,4 +15,4 @@ EXPORT_SYMBOL(memmove);
+ EXPORT_SYMBOL(__memset);
+ EXPORT_SYMBOL(__memcpy);
+ EXPORT_SYMBOL(__memmove);
+-EXPORT_SYMBOL(readl_fixup);
++EXPORT_SYMBOL_GPL(readl_fixup);
+-- 
+2.34.1
+

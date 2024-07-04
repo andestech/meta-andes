@@ -1,0 +1,102 @@
+From 2fc9521f3e75005eb3cf96a39af6ae755f2f8075 Mon Sep 17 00:00:00 2001
+From: Heiko Stuebner <heiko@sntech.de>
+Date: Wed, 12 Oct 2022 01:18:40 +0200
+Subject: [PATCH 065/191] RISC-V: Cache SBI vendor values
+
+sbi_get_mvendorid(), sbi_get_marchid() and sbi_get_mimpid() might get
+called multiple times, though the values of these CSRs should not change
+during the runtime of a specific machine.
+
+Though the values can be different depending on which hart of the system
+they get called. So hook into the newly introduced cpuinfo struct to allow
+retrieving these cached values via new functions.
+
+Also use arch_initcall for the cpuinfo setup instead, as that now clearly
+is "architecture specific initialization" and also makes these information
+available slightly earlier.
+
+[caching vendor ids]
+
+Suggested-by: Atish Patra <atishp@atishpatra.org>
+[using cpuinfo struct as cache]
+Suggested-by: Anup Patel <apatel@ventanamicro.com>
+Link: https://lore.kernel.org/all/20221011231841.2951264-2-heiko@sntech.de/
+Signed-off-by: Heiko Stuebner <heiko@sntech.de>
+Signed-off-by: Palmer Dabbelt <palmer@rivosinc.com>
+---
+ arch/riscv/include/asm/sbi.h |  5 +++++
+ arch/riscv/kernel/cpu.c      | 30 +++++++++++++++++++++++++++---
+ 2 files changed, 32 insertions(+), 3 deletions(-)
+
+diff --git a/arch/riscv/include/asm/sbi.h b/arch/riscv/include/asm/sbi.h
+index 9baddaee5623..8cb7c579aa21 100644
+--- a/arch/riscv/include/asm/sbi.h
++++ b/arch/riscv/include/asm/sbi.h
+@@ -327,4 +327,9 @@ int sbi_err_map_linux_errno(int err);
+ static inline int sbi_remote_fence_i(const struct cpumask *cpu_mask) { return -1; }
+ static inline void sbi_init(void) {}
+ #endif /* CONFIG_RISCV_SBI */
++
++unsigned long riscv_cached_mvendorid(unsigned int cpu_id);
++unsigned long riscv_cached_marchid(unsigned int cpu_id);
++unsigned long riscv_cached_mimpid(unsigned int cpu_id);
++
+ #endif /* _ASM_RISCV_SBI_H */
+diff --git a/arch/riscv/kernel/cpu.c b/arch/riscv/kernel/cpu.c
+index 852ecccd8920..1b9a5a66e55a 100644
+--- a/arch/riscv/kernel/cpu.c
++++ b/arch/riscv/kernel/cpu.c
+@@ -70,8 +70,6 @@ int riscv_of_parent_hartid(struct device_node *node, unsigned long *hartid)
+ 	return -1;
+ }
+ 
+-#ifdef CONFIG_PROC_FS
+-
+ struct riscv_cpuinfo {
+ 	unsigned long mvendorid;
+ 	unsigned long marchid;
+@@ -79,6 +77,30 @@ struct riscv_cpuinfo {
+ };
+ static DEFINE_PER_CPU(struct riscv_cpuinfo, riscv_cpuinfo);
+ 
++unsigned long riscv_cached_mvendorid(unsigned int cpu_id)
++{
++	struct riscv_cpuinfo *ci = per_cpu_ptr(&riscv_cpuinfo, cpu_id);
++
++	return ci->mvendorid;
++}
++EXPORT_SYMBOL(riscv_cached_mvendorid);
++
++unsigned long riscv_cached_marchid(unsigned int cpu_id)
++{
++	struct riscv_cpuinfo *ci = per_cpu_ptr(&riscv_cpuinfo, cpu_id);
++
++	return ci->marchid;
++}
++EXPORT_SYMBOL(riscv_cached_marchid);
++
++unsigned long riscv_cached_mimpid(unsigned int cpu_id)
++{
++	struct riscv_cpuinfo *ci = per_cpu_ptr(&riscv_cpuinfo, cpu_id);
++
++	return ci->mimpid;
++}
++EXPORT_SYMBOL(riscv_cached_mimpid);
++
+ static int riscv_cpuinfo_starting(unsigned int cpu)
+ {
+ 	struct riscv_cpuinfo *ci = this_cpu_ptr(&riscv_cpuinfo);
+@@ -113,7 +135,9 @@ static int __init riscv_cpuinfo_init(void)
+ 
+ 	return 0;
+ }
+-device_initcall(riscv_cpuinfo_init);
++arch_initcall(riscv_cpuinfo_init);
++
++#ifdef CONFIG_PROC_FS
+ 
+ #define __RISCV_ISA_EXT_DATA(UPROP, EXTID) \
+ 	{							\
+-- 
+2.34.1
+

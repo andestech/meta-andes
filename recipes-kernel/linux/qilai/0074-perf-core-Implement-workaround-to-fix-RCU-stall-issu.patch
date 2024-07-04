@@ -1,0 +1,73 @@
+From 0264e91228a41e77b8543c6cfc4159d6e8fab7cb Mon Sep 17 00:00:00 2001
+From: Locus Wei-Han Chen <locus84@andestech.com>
+Date: Tue, 6 Jun 2023 13:53:23 +0800
+Subject: [PATCH 074/191] perf/core: Implement workaround to fix RCU stall
+ issue when using perf record
+
+This patch is a workaround for now. As the root cause has not yet been
+identified, we will continue to search for the root cause and resolve it
+in the future.
+
+When using the 'perf record' command, an RCU (Read-Copy-Update) stall
+issue is encountered.
+The error log is shown as below:
+
+[ 52.012118  ] rcu: INFO: rcu_preempt detected stalls on CPUs/tasks:
+[ 52.030451  ] rcu: 3-...0: (2 ticks this GP)
+idle=366c/1/0x4000000000000002 softirq=378/378 fqs=2615
+[ 52.057510  ] (detected by 1, t=5259 jiffies, g=1437, q=13 ncpus=4)
+[ 52.076009  ] Task dump for CPU 3:
+[ 52.085725  ] task:perf-exec state:R running task stack:0
+pid:96 ppid:93 flags:0x0000000a
+[ 52.115443  ] Call Trace:
+[ 52.122860  ] [] __schedule+0x4cc/0x554
+
+We have found that RCU stall is due to an excessive number of perf
+interrupts. Although the perf process itself seems to be functioning
+properly, but there is a potential issue with the Linux timer subsystem
+that causes the perf period to remain consistently at 1. As a result,
+overflow interrupts are triggered on every event, resulting in a large
+number of perf interrupts.
+
+We have discovered that modifying the parameters passed into
+perf_adjust_period() to calculate the difference of HPMcounter every
+time, instead of relying on the last period value, can effectively
+change the value of the period and prevent from the occurrence of RCU
+stall issues.
+
+Note again that this is only a workaround, not a final solution. This
+patch should be reverted once the root cause is found.
+
+Signed-off-by: Locus Wei-Han Chen <locus84@andestech.com>
+---
+ kernel/events/core.c | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/events/core.c b/kernel/events/core.c
+index 7be484d765b6..0674bb16c8a9 100644
+--- a/kernel/events/core.c
++++ b/kernel/events/core.c
+@@ -9280,8 +9280,18 @@ __perf_event_account_interrupt(struct perf_event *event, int throttle)
+ 
+ 		hwc->freq_time_stamp = now;
+ 
+-		if (delta > 0 && delta < 2*TICK_NSEC)
+-			perf_adjust_period(event, delta, hwc->last_period, true);
++		/*
++		 * This is a workaround that "should" be reverted once the
++		 * root cause is found.
++		 */
++		event->pmu->stop(event, PERF_EF_UPDATE);
++		u64 now_count = local64_read(&event->count);
++		s64 delta_count = now_count - hwc->freq_count_stamp;
++		hwc->freq_count_stamp = now_count;
++
++		if ((delta > 0) && (delta < 2 * TICK_NSEC) && (delta_count > 0))
++			perf_adjust_period(event, delta, delta_count, true);
++		event->pmu->start(event, delta_count > 0 ? PERF_EF_RELOAD : 0);
+ 	}
+ 
+ 	return ret;
+-- 
+2.34.1
+

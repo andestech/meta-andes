@@ -1,0 +1,26 @@
+From f8381bafc43b4099588b4b6112b195579bea2d31 Mon Sep 17 00:00:00 2001
+From: CL Wang <cl634@andestech.com>
+Date: Wed, 3 Jan 2024 17:48:40 +0800
+Subject: [PATCH 161/191] IIC: andes: atciic100: Pass slave device DTS settings
+ to the I2C framework for slave device initialization.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/i2c/busses/i2c-atciic100.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/i2c/busses/i2c-atciic100.c b/drivers/i2c/busses/i2c-atciic100.c
+index b7780cf5457e..fe1031479d1e 100644
+--- a/drivers/i2c/busses/i2c-atciic100.c
++++ b/drivers/i2c/busses/i2c-atciic100.c
+@@ -466,6 +466,7 @@ static int atciic_probe(struct platform_device *pdev)
+ 	padap->algo = &atciic_algorithm;
+ 	padap->class = I2C_CLASS_HWMON;
+ 	padap->dev.parent = &pdev->dev;
++	padap->dev.of_node = pdev->dev.of_node;
+ 	padap->algo_data = iface;
+ 	padap->timeout = 3 * HZ;
+ 	padap->retries = 1;
+-- 
+2.34.1
+

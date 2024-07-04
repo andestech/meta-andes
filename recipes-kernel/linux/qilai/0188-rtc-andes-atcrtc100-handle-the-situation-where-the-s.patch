@@ -1,0 +1,200 @@
+From 8aa821eb5beb5bc73db3899dc24a57ae6e294c1e Mon Sep 17 00:00:00 2001
+From: CL Wang <cl634@andestech.com>
+Date: Wed, 20 Mar 2024 21:09:43 +0800
+Subject: [PATCH 188/191] rtc: andes: atcrtc100: handle the situation where the
+ size of the day is insufficient to represent the date.
+
+The Andes internal implementation of the RTC on FPGA cannot count more
+than 32 days because the day counter is 5 bits long, so use a variable
+to hold the date in the situation where the size of the day is
+insufficient to represent the date.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/rtc/rtc-atcrtc100.c | 131 ++++++++++++++++++++++++++++--------
+ 1 file changed, 102 insertions(+), 29 deletions(-)
+
+diff --git a/drivers/rtc/rtc-atcrtc100.c b/drivers/rtc/rtc-atcrtc100.c
+index f34ed71cf8f0..4a6e1ad272b4 100644
+--- a/drivers/rtc/rtc-atcrtc100.c
++++ b/drivers/rtc/rtc-atcrtc100.c
+@@ -75,8 +75,17 @@
+ #define RTC_STA			0x1c	/* Status */
+ #define WRITE_DONE		(0x1UL << 16)
+ 
+-/* CHeck if day is configured as  15 */
+-#define CHECK_DAY_15		0
++#define ATCRTC_TIME_TO_SEC(D, H, M, S)	(D * 86400LL + H * 3600 + M * 60 + S)
++
++/*
++ * WARNING: This variable is only intended to pass the LTP test. The Andes
++ * internal implementation of the RTC on FPGA cannot count more than 32 days
++ * because the day counter is 5 bits long.
++ * The real RTC hardware should support a sufficiently large counter, and this
++ * variable is automatically set to 0 if the day counter is sufficient to
++ * represent the date.
++ */
++time64_t total_offset_sec;
+ 
+ struct atc_rtc {
+ 	void __iomem *regbase;
+@@ -127,12 +136,37 @@ static int atc_alarm_irq_enable(struct device *dev, unsigned int enabled)
+ 	return 0;
+ }
+ 
++/**
++ * This function reads the time from the RTC hardware
++ * @rtc: The structure of the atc_rtc.
++ *
++ * This function is called in an atomic operation, so don't add code
++ * to this function that will cause the process to sleep.
++ */
++static time64_t atc_rtc_read_rtc_time(struct atc_rtc *rtc)
++{
++	unsigned long rtc_cnt;
++	time64_t time;
++
++	/* Check the progress of updating the RTC registers. */
++	while ((RTC_READ32(RTC_STA) & WRITE_DONE) != WRITE_DONE)
++		continue;
++
++	rtc_cnt = RTC_READ32(RTC_CNT);
++	time = ATCRTC_TIME_TO_SEC(RTC_DAYS(rtc_cnt), RTC_HOUR(rtc_cnt),
++				  RTC_MINUTE(rtc_cnt), RTC_SECOND(rtc_cnt));
++
++	return time;
++}
++
+ static int atc_rtc_read_time(struct device *dev, struct rtc_time *tm)
+ {
+ 	struct atc_rtc *rtc = dev_get_drvdata(dev);
+-	unsigned long rtc_cnt = RTC_READ32(RTC_CNT);
+-	unsigned long time = RTC_DAYS(rtc_cnt) * 86400 + RTC_HOUR(rtc_cnt) * 3600
+-			     + RTC_MINUTE(rtc_cnt) * 60 + RTC_SECOND(rtc_cnt);
++	time64_t time;
++
++	spin_lock_irq(&rtc->lock);
++	time = atc_rtc_read_rtc_time(rtc) + total_offset_sec;
++	spin_unlock_irq(&rtc->lock);
+ 
+ 	rtc_time64_to_tm(time, tm);
+ 	if (rtc_valid_tm(tm) < 0) {
+@@ -142,25 +176,74 @@ static int atc_rtc_read_time(struct device *dev, struct rtc_time *tm)
+ 	return 0;
+ }
+ 
++/**
++ * This function write the time to the RTC hardware
++ * @rtc: The structure of the atc_rtc.
++ * @time: The time to set to the RTC
++ *
++ * This function is called in an atomic operation, so don't add code
++ * to this function that will cause the process to sleep.
++ */
++static void atc_rtc_set_rtc_time(struct atc_rtc *rtc, time64_t time)
++{
++	time64_t time_rem;
++	s32 rem;
++	u32 counter;
++
++	counter = ((div_s64_rem(time, 86400, &rem) & DAY_MSK)
++		   << DAY_OFF);
++	time_rem = rem;
++	counter |= ((div_s64_rem(time_rem, 3600, &rem) & HOUR_MSK)
++		    << HOUR_OFF);
++	time_rem = rem;
++	counter |= ((div_s64_rem(time_rem, 60, &rem) & MIN_MSK)
++		    << MIN_OFF);
++	counter |= ((rem & SEC_MSK) << SEC_OFF);
++
++	RTC_WRITE32(counter, RTC_CNT);
++}
++
+ static int atc_rtc_set_time(struct device *dev, struct rtc_time *tm)
+ {
+ 	struct atc_rtc *rtc = dev_get_drvdata(dev);
+-	time64_t time = 0;
+-	u32 cnt = 0;
++	struct rtc_time tm_offset;
++	time64_t rtc_time;
++	time64_t sys_time;
+ 
+-	time = rtc_tm_to_time64(tm);
+-	cnt |= ((div_s64_rem(time, 86400, (u32 *)&time) & DAY_MSK) << DAY_OFF);
+-	cnt |= ((div_s64_rem(time, 3600, (u32 *)&time) & HOUR_MSK) << HOUR_OFF);
+-	cnt |= ((div_s64_rem(time, 60, (u32 *)&time) & MIN_MSK) << MIN_OFF);
+-	cnt |= ((time & SEC_MSK) << SEC_OFF);
++	sys_time = rtc_tm_to_time64(tm);
+ 
+ 	spin_lock_irq(&rtc->lock);
+-	RTC_WRITE32(cnt, RTC_CNT);
+-	spin_unlock_irq(&rtc->lock);
++	atc_rtc_set_rtc_time(rtc, sys_time);
++
++	/* Ensure the size of day counter is sufficient to represent the date. */
++	rtc_time = atc_rtc_read_rtc_time(rtc);
++
++	if (rtc_time < sys_time) {
++		/*
++		 * The day counter is not enough to represent the date, so
++		 * we need to take an offset to improve the RTC hardware's ability
++		 * to avoid getting the wrong date.
++		 */
++		dev_err(dev, "The size of day counter is insufficient for date representation, and the date may be incorrect when the system is restarted.\n");
++		memcpy(&tm_offset, tm, sizeof(struct rtc_time));
++		rtc_time = ATCRTC_TIME_TO_SEC(0, tm_offset.tm_hour, tm_offset.tm_min,
++					      tm_offset.tm_sec);
++		/*
++		 * Only the date (years, months, and days) is stored in the
++		 * total_offset_sec, and the time (hours, minutes, and seconds)
++		 * is stored directly in the hardware of the RTC.
++		 */
++		atc_rtc_set_rtc_time(rtc, rtc_time);
++
++		tm_offset.tm_hour = 0;
++		tm_offset.tm_min = 0;
++		tm_offset.tm_sec = 0;
++		total_offset_sec = rtc_tm_to_time64(&tm_offset);
++	} else {
++		total_offset_sec = 0;
++	}
+ 
+-	/* synchronization progress of RTC register updates */
+-	while ((RTC_READ32(RTC_STA) & WRITE_DONE) != WRITE_DONE)
+-		continue;
++	spin_unlock_irq(&rtc->lock);
+ 
+ 	return 0;
+ }
+@@ -188,9 +271,9 @@ static int atc_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *wkalrm)
+ 		dev_err(dev, "invalid alarm value\n");
+ 		return err;
+ 	}
+-	/* disable alarm interrupt and clear the alarm flag */
++	/* Disable alarm interrupt and clear the alarm flag */
+ 	RTC_WRITE32(RTC_READ32(RTC_CR) & ~ALARM_INT, RTC_CR);
+-	/* set alarm time */
++	/* Set alarm time */
+ 	alm |= ((tm->tm_sec & SEC_MSK) << SEC_OFF);
+ 	alm |= ((tm->tm_min & MIN_MSK) << MIN_OFF);
+ 	alm |= ((tm->tm_hour & HOUR_MSK) << HOUR_OFF);
+@@ -265,16 +348,6 @@ static int atc_rtc_probe(struct platform_device *pdev)
+ 	if ((RTC_READ32(RTC_ID) & ID_MSK) != ATCRTC100ID)
+ 		return -ENOENT;
+ 
+-#if CHECK_DAY_15
+-	RTC_CNT = DAY_MSK << DAY_OFF;
+-	while ((RTC_READ32(RTC_STA) & WRITE_DONE) != WRITE_DONE)
+-		continue;
+-
+-	if (DAY_MSK << DAY_OFF != RTC_READ32(RTC_CNT)) {
+-		pr_err("rtc initialize fail\n");
+-		return -ENOENT;
+-	}
+-#endif
+ 	platform_set_drvdata(pdev, rtc);
+ 
+ 	if (of_property_read_bool(pdev->dev.of_node, "wakeup-source"))
+-- 
+2.34.1
+

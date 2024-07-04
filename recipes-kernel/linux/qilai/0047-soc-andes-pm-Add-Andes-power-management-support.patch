@@ -1,0 +1,269 @@
+From 190c8436445d4efc9bee5e420f8e93ce58509ae3 Mon Sep 17 00:00:00 2001
+From: Leo Yu-Chi Liang <ycliang@andestech.com>
+Date: Fri, 26 May 2023 08:45:25 +0800
+Subject: [PATCH 047/191] soc: andes: pm: Add Andes power management support
+
+Support kernel power management utility on Andes ae350 fpga board.
+
+Harts stay in wfi loop in kernel once we trigger light/deep sleep
+by "echo {standby, mem} > /sys/power/state" command, and are only
+woken up by the external interrupt sources.
+
+Reformed from the following commits in AST520 Linux kernel
+(branch: RISCV-Linux-5.4-ast-v5_2_0-branch)
+- (f4aa4295eea8e) riscv: Power management
+- (61f97ce561d6e) Fix code in suspend to ram.
+- (e454bc2828438) riscv: Power management
+- (72be906d0b095) ATCSMU: Support ATCSMU
+- (7eada24d2ef7f) irq-sifive-plic: Fix plic interrupt disabled issue after executing light/deep sleep.
+- (c6c47563cf80f) ATCSMU: Remove debug message.
+- (703f0b251425e) ATCSMU: Support atcsmu with SBI CALL v0.2
+- (ef8bcb65af26d) atcsmu: Support 45-series CPU hotplug with deep sleep
+- (7660fb4930d63) atcsmu: Move atcsmu functions to OpenSBI.
+- (fbcc3ad40e1e1) atcsmu: Make sure hart0 is the primary cpu.
+- (d72880245a042) riscv: set suspend mode of main hart through andes SBI call
+- (3fff937eccbbe) riscv: update suspend mode functions
+- (ebc6ed2ab0d94) configs: Support SMU in qemu defconfig.
+
+Signed-off-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+---
+ arch/riscv/Kconfig                |  3 ++
+ drivers/irqchip/irq-sifive-plic.c | 39 ++++++++++++++
+ drivers/soc/andes/Makefile        |  3 +-
+ drivers/soc/andes/pm.c            | 88 +++++++++++++++++++++++++++++++
+ include/soc/andes/smu.h           | 13 +++++
+ 5 files changed, 144 insertions(+), 2 deletions(-)
+ create mode 100644 drivers/soc/andes/pm.c
+ create mode 100644 include/soc/andes/smu.h
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 293d0245c159..cefa6103f6f0 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -709,6 +709,9 @@ config PORTABLE
+ 	select OF
+ 	select MMU
+ 
++config ARCH_SUSPEND_POSSIBLE
++	def_bool RISCV_SBI
++
+ menu "Power management options"
+ 
+ source "kernel/power/Kconfig"
+diff --git a/drivers/irqchip/irq-sifive-plic.c b/drivers/irqchip/irq-sifive-plic.c
+index 2f4784860df5..6b01efe842db 100644
+--- a/drivers/irqchip/irq-sifive-plic.c
++++ b/drivers/irqchip/irq-sifive-plic.c
+@@ -32,6 +32,7 @@
+ 
+ #define MAX_DEVICES			1024
+ #define MAX_CONTEXTS			15872
++#define MAX_USE_REGS   (MAX_DEVICES / 32)
+ 
+ /*
+  * Each interrupt source has a priority register associated with it.
+@@ -62,6 +63,9 @@
+ 
+ #define PLIC_QUIRK_EDGE_INTERRUPT	0
+ 
++unsigned int *wake_event;
++void __iomem *plic_regs;
++
+ struct plic_priv {
+ 	struct cpumask lmask;
+ 	struct irq_domain *irqdomain;
+@@ -147,6 +151,35 @@ static void plic_irq_eoi(struct irq_data *d)
+ 	writel(d->hwirq, handler->hart_base + CONTEXT_CLAIM);
+ }
+ 
++static int plic_set_wake(struct irq_data *d, unsigned int on)
++{
++	u32 offset = d->hwirq / 32;
++	int cpu;
++
++	if (on)
++		__assign_bit(d->hwirq, (unsigned long *)wake_event, true);
++	else
++		__assign_bit(d->hwirq, (unsigned long *)wake_event, false);
++
++	for_each_cpu(cpu, cpu_possible_mask) {
++		struct plic_handler *handler = per_cpu_ptr(&plic_handlers, cpu);
++
++		if (handler->present && on) {
++			unsigned int interrupt_enable[MAX_USE_REGS];
++			u32 __iomem *reg = handler->enable_base +
++					   (d->hwirq / 32) * sizeof(u32);
++
++			interrupt_enable[offset] = readl(reg);
++
++			__assign_bit(d->hwirq,
++				     (unsigned long *)interrupt_enable, true);
++
++			writel(interrupt_enable[offset], reg);
++		}
++	}
++	return 0;
++}
++
+ #ifdef CONFIG_SMP
+ static int plic_set_affinity(struct irq_data *d,
+ 			     const struct cpumask *mask_val, bool force)
+@@ -197,6 +230,7 @@ static struct irq_chip plic_chip = {
+ 	.irq_mask	= plic_irq_mask,
+ 	.irq_unmask	= plic_irq_unmask,
+ 	.irq_eoi	= plic_irq_eoi,
++	.irq_set_wake	= plic_set_wake,
+ #ifdef CONFIG_SMP
+ 	.irq_set_affinity = plic_set_affinity,
+ #endif
+@@ -344,6 +378,10 @@ static int __init __plic_init(struct device_node *node,
+ 	struct plic_priv *priv;
+ 	struct plic_handler *handler;
+ 
++	wake_event = kzalloc((MAX_USE_REGS) * sizeof(u32), GFP_KERNEL);
++	if (WARN_ON(!wake_event))
++		return -ENOMEM;
++
+ 	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+ 	if (!priv)
+ 		return -ENOMEM;
+@@ -351,6 +389,7 @@ static int __init __plic_init(struct device_node *node,
+ 	priv->plic_quirks = plic_quirks;
+ 
+ 	priv->regs = of_iomap(node, 0);
++	plic_regs = priv->regs;
+ 	if (WARN_ON(!priv->regs)) {
+ 		error = -EIO;
+ 		goto out_free_priv;
+diff --git a/drivers/soc/andes/Makefile b/drivers/soc/andes/Makefile
+index 66e90c83c48c..f37fa1e1c1f6 100644
+--- a/drivers/soc/andes/Makefile
++++ b/drivers/soc/andes/Makefile
+@@ -1,10 +1,9 @@
+ # SPDX-License-Identifier: GPL-2.0
+ # Copyright (C) 2023 Andes Technology Corporation.
+ 
+-obj-y	+= andes_sbi.o
++obj-y	+= andes_sbi.o pm.o
+ obj-y	+= inject_init.o
+ obj-$(CONFIG_ATCDMAC300)	+= atcdmac300.o dmad_intc.o
+ obj-$(CONFIG_ANDES_CACHE)	+= cache.o
+ obj-$(CONFIG_ANDES_DMA_NONCOHERENT)	+= dma-noncoherent.o
+ obj-$(CONFIG_ANDES_PPMA)	+= ppma.o
+-
+diff --git a/drivers/soc/andes/pm.c b/drivers/soc/andes/pm.c
+new file mode 100644
+index 000000000000..6c015380feee
+--- /dev/null
++++ b/drivers/soc/andes/pm.c
+@@ -0,0 +1,88 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++#include <linux/init.h>
++#include <linux/suspend.h>
++#include <linux/device.h>
++#include <linux/printk.h>
++
++#include <soc/andes/smu.h>
++
++extern void __iomem *plic_regs;
++#define PLIC_PEND_OFF 0x1000
++#define MAX_DEVICES 1024
++#define MAX_USE_REGS (MAX_DEVICES / 32)
++
++int suspend_begin;
++
++static void andes_suspend_cpu(void)
++{
++	int i;
++	unsigned int wake;
++	u32 __iomem *reg = plic_regs + PLIC_PEND_OFF;
++
++	while (true) {
++		__asm__ volatile("wfi");
++		for (i = 0; i < MAX_USE_REGS; i++) {
++			if (wake_event[i]) {
++				wake = readl(reg + i);
++				if (wake_event[i] & wake)
++					goto wakeup;
++			}
++		}
++	}
++wakeup:
++	return;
++}
++
++static int andes_pm_enter(suspend_state_t state)
++{
++	pr_debug("%s:state:%d\n", __func__, state);
++	switch (state) {
++	case PM_SUSPEND_STANDBY:
++	case PM_SUSPEND_MEM:
++		andes_suspend_cpu();
++		break;
++	default:
++		return -EINVAL;
++	}
++	return 0;
++}
++
++static int andes_pm_valid(suspend_state_t state)
++{
++	switch (state) {
++	case PM_SUSPEND_ON:
++	case PM_SUSPEND_STANDBY:
++	case PM_SUSPEND_MEM:
++		return 1;
++	default:
++		return -EINVAL;
++	}
++}
++
++static int andes_pm_begin(suspend_state_t state)
++{
++	suspend_begin = state;
++	return 0;
++}
++
++static void andes_pm_end(void)
++{
++	suspend_begin = 0;
++}
++
++static const struct platform_suspend_ops andes_pm_ops = {
++	.valid	= andes_pm_valid,
++	.begin	= andes_pm_begin,
++	.enter	= andes_pm_enter,
++	.end	= andes_pm_end,
++};
++
++static int __init andes_pm_init(void)
++{
++	suspend_set_ops(&andes_pm_ops);
++	return 0;
++}
++late_initcall(andes_pm_init);
+diff --git a/include/soc/andes/smu.h b/include/soc/andes/smu.h
+new file mode 100644
+index 000000000000..07d7953e0dcc
+--- /dev/null
++++ b/include/soc/andes/smu.h
+@@ -0,0 +1,13 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++
++#ifndef _ASM_ANDES_SMU_H
++#define _ASM_ANDES_SMU_H
++
++#include <asm/sbi.h>
++
++extern unsigned int *wake_event;
++
++#endif
+-- 
+2.34.1
+

@@ -1,0 +1,63 @@
+From 30bfa3b4c32819eacaa43b12eabbef150973bf77 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Thu, 11 May 2023 21:09:33 +0800
+Subject: [PATCH 072/191] tools: perf: andes: Add Andes L2C events to JSON
+ files
+
+We add 2 custom firmware events to count L2C accesses and access_miss,
+which can be monitored with following commands:
+
+  $ perf stat -e r8000000000000016,r8000000000000017 <cmd>
+  or
+  $ perf stat -e andes_l2c_accesses,andes_l2c_access_misses <cmd>
+
+L2C events do not supported counter overflow (cannot sample with
+perf record).
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ .../pmu-events/arch/riscv/andes/AX45/firmware.json   |  6 ++++++
+ .../pmu-events/arch/riscv/riscv-sbi-firmware.json    | 12 ++++++++++++
+ 2 files changed, 18 insertions(+)
+
+diff --git a/tools/perf/pmu-events/arch/riscv/andes/AX45/firmware.json b/tools/perf/pmu-events/arch/riscv/andes/AX45/firmware.json
+index 9b4a032186a7..61e42c1813fa 100644
+--- a/tools/perf/pmu-events/arch/riscv/andes/AX45/firmware.json
++++ b/tools/perf/pmu-events/arch/riscv/andes/AX45/firmware.json
+@@ -64,5 +64,11 @@
+   },
+   {
+     "ArchStdEvent": "FW_HFENCE_VVMA_ASID_RECEIVED"
++  },
++  {
++    "ArchStdEvent": "ANDES_L2C_ACCESSES"
++  },
++  {
++    "ArchStdEvent": "ANDES_L2C_ACCESS_MISSES"
+   }
+ ]
+diff --git a/tools/perf/pmu-events/arch/riscv/riscv-sbi-firmware.json b/tools/perf/pmu-events/arch/riscv/riscv-sbi-firmware.json
+index a9939823b14b..8d421db638c6 100644
+--- a/tools/perf/pmu-events/arch/riscv/riscv-sbi-firmware.json
++++ b/tools/perf/pmu-events/arch/riscv/riscv-sbi-firmware.json
+@@ -130,5 +130,17 @@
+     "ConfigCode": "0x8000000000000015",
+     "EventName": "FW_HFENCE_VVMA_ASID_RECEIVED",
+     "BriefDescription": "Received HFENCE.VVMA with ASID request from other HART event"
++  },
++  {
++    "PublicDescription": "L2-Cache accesses",
++    "ConfigCode": "0x8000000000000016",
++    "EventName": "ANDES_L2C_ACCESSES",
++    "BriefDescription": "L2-Cache accesses"
++  },
++  {
++    "PublicDescription": "L2-Cache access misses",
++    "ConfigCode": "0x8000000000000017",
++    "EventName": "ANDES_L2C_ACCESS_MISSES",
++    "BriefDescription": "L2-Cache access misses"
+   }
+ ]
+-- 
+2.34.1
+

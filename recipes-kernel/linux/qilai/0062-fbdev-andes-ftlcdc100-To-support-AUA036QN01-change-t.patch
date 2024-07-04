@@ -1,0 +1,29 @@
+From 4b126e332a7a99424173c194e2e66367fbe9f010 Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Fri, 9 Jun 2023 15:26:28 +0800
+Subject: [PATCH 062/191] fbdev: andes: ftlcdc100: To support AUA036QN01,
+ change the FFB mode from 24BPP to 16BPP.
+
+1. To support AUA036QN01, change the FFB mode from 24BPP to 16BPP.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ arch/riscv/configs/andes-support.config | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+index 1b676cc36ea1..30e0b70cd6dc 100644
+--- a/arch/riscv/configs/andes-support.config
++++ b/arch/riscv/configs/andes-support.config
+@@ -28,7 +28,7 @@ CONFIG_GPIO_ATCGPIO100=y
+ CONFIG_FB_FTLCDC100=y
+ CONFIG_PANEL_AUA036QN01=y
+ CONFIG_FFB_MODE_RGB=y
+-CONFIG_FFB_MODE_24BPP=y
++CONFIG_FFB_MODE_16BPP=y
+ 
+ CONFIG_SND_FTSSP010=y
+ CONFIG_SND_FTSSP010_AC97=y
+-- 
+2.34.1
+

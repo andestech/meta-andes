@@ -1,0 +1,66 @@
+From e80c02780a690d550aee8441c4642f093ccdd7a7 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Wed, 25 Oct 2023 16:51:03 +0800
+Subject: [PATCH 143/191] andes: perf: Fix event encoding of 0x32 on 25 and
+ 65-series
+
+This patch fixes the encoding of 0x32, which represents a different
+event on the 25 and 65 series CPU.
+
+- 25 series: Replay for load-after-store or store-after-store
+             cases
+- 45 series: No such event
+- 65 series: Replay for load with memory-order violations or
+             correctable ECC error
+
+Fixes: 260bcf5c6c47 ("andes: perf: add andes event to JSON file")
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ tools/perf/pmu-events/arch/riscv/andes/A25/riscvstd.json  | 2 +-
+ tools/perf/pmu-events/arch/riscv/andes/AX25/riscvstd.json | 2 +-
+ tools/perf/pmu-events/arch/riscv/andes/AX65/riscvstd.json | 4 ++--
+ 3 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/tools/perf/pmu-events/arch/riscv/andes/A25/riscvstd.json b/tools/perf/pmu-events/arch/riscv/andes/A25/riscvstd.json
+index 71cf1fc3f7b2..cafc84b0a787 100644
+--- a/tools/perf/pmu-events/arch/riscv/andes/A25/riscvstd.json
++++ b/tools/perf/pmu-events/arch/riscv/andes/A25/riscvstd.json
+@@ -251,7 +251,7 @@
+ 	},
+ 	{
+ 	"EventCode": "0x32",
+-	"EventName": "replay_load_store",
++	"EventName": "replay_las_sas",
+ 	"BriefDescription": "Replay for load-after-store or store-after-store cases"
+ 	}
+ ]
+diff --git a/tools/perf/pmu-events/arch/riscv/andes/AX25/riscvstd.json b/tools/perf/pmu-events/arch/riscv/andes/AX25/riscvstd.json
+index 71cf1fc3f7b2..cafc84b0a787 100644
+--- a/tools/perf/pmu-events/arch/riscv/andes/AX25/riscvstd.json
++++ b/tools/perf/pmu-events/arch/riscv/andes/AX25/riscvstd.json
+@@ -251,7 +251,7 @@
+ 	},
+ 	{
+ 	"EventCode": "0x32",
+-	"EventName": "replay_load_store",
++	"EventName": "replay_las_sas",
+ 	"BriefDescription": "Replay for load-after-store or store-after-store cases"
+ 	}
+ ]
+diff --git a/tools/perf/pmu-events/arch/riscv/andes/AX65/riscvstd.json b/tools/perf/pmu-events/arch/riscv/andes/AX65/riscvstd.json
+index 916712a2e123..fa2ac3df5a83 100644
+--- a/tools/perf/pmu-events/arch/riscv/andes/AX65/riscvstd.json
++++ b/tools/perf/pmu-events/arch/riscv/andes/AX65/riscvstd.json
+@@ -256,7 +256,7 @@
+ 	},
+ 	{
+ 	"EventCode": "0x32",
+-	"EventName": "replay_las_sas",
+-	"BriefDescription": "Replay for load-after-store or store-after-store cases"
++	"EventName": "replay_load_order_ecc_err",
++	"BriefDescription": "Replay for load with memory-order violations or correctable ECC error"
+ 	}
+ ]
+-- 
+2.34.1
+

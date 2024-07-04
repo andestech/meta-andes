@@ -1,0 +1,78 @@
+From 0213595490f7268642bcc560d1627ff060ba288d Mon Sep 17 00:00:00 2001
+From: Rick Chen <rick@andestech.com>
+Date: Wed, 22 Mar 2023 09:30:31 +0800
+Subject: [PATCH 019/191] riscv: andes: fix ex_table mismatch
+
+It has been changed exception table as relative after this commit
+
+bb1f85d6046f0db757ac52ed60a5eba5df394819
+riscv: switch to relative exception tables
+
+Meanwhile struct exception_table_entry has been reconstruct.
+Hence driver_access.S shall be reused __ex_table sections in
+asm-extable.h , otherwise the ex_table searching will be out
+of control and crush the system.
+
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ arch/riscv/lib/driver_access.S | 34 ++++++----------------------------
+ 1 file changed, 6 insertions(+), 28 deletions(-)
+
+diff --git a/arch/riscv/lib/driver_access.S b/arch/riscv/lib/driver_access.S
+index 6fffafd7c79d..12d3a5eff05f 100644
+--- a/arch/riscv/lib/driver_access.S
++++ b/arch/riscv/lib/driver_access.S
+@@ -1,44 +1,22 @@
+ #include <linux/linkage.h>
+ #include <asm/asm.h>
+ #include <asm/csr.h>
++#include <asm/asm-extable.h>
+ 
+-	.altmacro
+ 	.macro fixup op reg addr lbl
+-	LOCAL _epc
+-_epc:
++100:
+ 	\op \reg, \addr
+-	.section __ex_table,"a"
+-	.balign RISCV_SZPTR
+-	RISCV_PTR _epc, \lbl
+-	.previous
++	_asm_extable	100b, \lbl
+ 	.endm
+ 
+-/*
+-	a0: driver register address
+-	a1: correct value
+-	a2: shift bits
+-	if register value is not equal a1
+-	return 0
+-*/
+ ENTRY(readl_fixup)
+-
+ 	fixup lw	t0, (a0), 2f
+-	fence	i, r
++	fence	i,r
+ 	srl	t0, t0, a2
+-	bne	t0, a1, error
++	bne	t0, a1, 2f
+ 	li	a0, 1
+ 	ret
+-
+-error:
+-	li	a0, 0
+-	ret
+-
+-ENDPROC(readl_fixup)
+-
+-	.section .fixup,"ax"
+-	.balign 4
+-	/* Fixup code for readl_fixup */
+ 2:
+ 	li	a0, 0
+ 	ret
+-	.previous
++ENDPROC(readl_fixup)
+-- 
+2.34.1
+

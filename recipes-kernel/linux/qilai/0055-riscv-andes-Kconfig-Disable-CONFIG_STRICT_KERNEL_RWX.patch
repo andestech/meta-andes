@@ -1,0 +1,34 @@
+From 0f25f995ec1bc4dfaef34ff5dc6469a19e2927bc Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Tue, 6 Jun 2023 15:27:18 +0800
+Subject: [PATCH 055/191] riscv: andes: Kconfig: Disable
+ CONFIG_STRICT_KERNEL_RWX
+
+https://gitea.andestech.com/RD-SW/linux/issues/30
+https://gitea.andestech.com/RD-SW/linux_cicd/issues/10#issuecomment-75180
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Kconfig | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index cefa6103f6f0..33bfeb5eb92c 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -29,12 +29,8 @@ config RISCV
+ 	select ARCH_HAS_PTE_SPECIAL
+ 	select ARCH_HAS_SET_DIRECT_MAP if MMU
+ 	select ARCH_HAS_SET_MEMORY if MMU
+-	select ARCH_HAS_STRICT_KERNEL_RWX if MMU && !XIP_KERNEL
+-	select ARCH_HAS_STRICT_MODULE_RWX if MMU && !XIP_KERNEL
+ 	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
+ 	select ARCH_HAS_UBSAN_SANITIZE_ALL
+-	select ARCH_OPTIONAL_KERNEL_RWX if ARCH_HAS_STRICT_KERNEL_RWX
+-	select ARCH_OPTIONAL_KERNEL_RWX_DEFAULT
+ 	select ARCH_STACKWALK
+ 	select ARCH_SUPPORTS_ATOMIC_RMW
+ 	select ARCH_SUPPORTS_DEBUG_PAGEALLOC if MMU
+-- 
+2.34.1
+

@@ -1,0 +1,44 @@
+From b356f80ace0c4242d5d20924fe6d4d7624fcba00 Mon Sep 17 00:00:00 2001
+From: Andy Chiu <andy.chiu@sifive.com>
+Date: Mon, 5 Jun 2023 11:07:13 +0000
+Subject: [PATCH 111/191] riscv: signal: validate altstack to reflect Vector
+
+Some extensions, such as Vector, dynamically change footprint on a
+signal frame, so MINSIGSTKSZ is no longer accurate. For example, an
+RV64V implementation with vlen = 512 may occupy 2K + 40 + 12 Bytes of a
+signal frame with the upcoming support. And processes that do not
+execute any vector instructions do not need to reserve the extra
+sigframe. So we need a way to guard the allocation size of the sigframe
+at process runtime according to current status of V.
+
+Thus, provide the function sigaltstack_size_valid() to validate its size
+based on current allocation status of supported extensions.
+
+Signed-off-by: Andy Chiu <andy.chiu@sifive.com>
+Reviewed-by: Conor Dooley <conor.dooley@microchip.com>
+Reviewed-by: Heiko Stuebner <heiko.stuebner@vrull.eu>
+Tested-by: Heiko Stuebner <heiko.stuebner@vrull.eu>
+Link: https://lore.kernel.org/r/20230605110724.21391-17-andy.chiu@sifive.com
+Signed-off-by: Palmer Dabbelt <palmer@rivosinc.com>
+---
+ arch/riscv/kernel/signal.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/arch/riscv/kernel/signal.c b/arch/riscv/kernel/signal.c
+index bbe72425be5a..9581b883f3ee 100644
+--- a/arch/riscv/kernel/signal.c
++++ b/arch/riscv/kernel/signal.c
+@@ -545,3 +545,10 @@ void __init init_rt_signal_env(void)
+ 	 */
+ 	signal_minsigstksz = get_rt_frame_size(true);
+ }
++
++#ifdef CONFIG_DYNAMIC_SIGFRAME
++bool sigaltstack_size_valid(size_t ss_size)
++{
++	return ss_size > get_rt_frame_size(false);
++}
++#endif /* CONFIG_DYNAMIC_SIGFRAME */
+-- 
+2.34.1
+

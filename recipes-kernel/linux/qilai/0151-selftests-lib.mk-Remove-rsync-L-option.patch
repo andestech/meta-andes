@@ -1,0 +1,30 @@
+From c8b44395b9d7c2a55f60b57906b836330c950399 Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Tue, 25 Jul 2023 18:12:34 +0800
+Subject: [PATCH 151/191] selftests/lib.mk: Remove rsync "-L" option
+
+rsync "-L" option will transform symlink into referent file/dir.
+The exec/execveat testcase is failing because the rsync "-L" option
+causes it can't find the symlink.
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ tools/testing/selftests/lib.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/testing/selftests/lib.mk b/tools/testing/selftests/lib.mk
+index 05400462c779..9f32a73ebac7 100644
+--- a/tools/testing/selftests/lib.mk
++++ b/tools/testing/selftests/lib.mk
+@@ -86,7 +86,7 @@ endif
+ 
+ define INSTALL_SINGLE_RULE
+ 	$(if $(INSTALL_LIST),@mkdir -p $(INSTALL_PATH))
+-	$(if $(INSTALL_LIST),rsync -aL $(INSTALL_LIST) $(INSTALL_PATH)/)
++	$(if $(INSTALL_LIST),rsync -a $(INSTALL_LIST) $(INSTALL_PATH)/)
+ endef
+ 
+ define INSTALL_RULE
+-- 
+2.34.1
+

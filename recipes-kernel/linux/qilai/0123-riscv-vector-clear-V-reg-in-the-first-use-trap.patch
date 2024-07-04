@@ -1,0 +1,41 @@
+From 4a2666e143486a91434aaf5280aa0bd01a4bbc36 Mon Sep 17 00:00:00 2001
+From: Andy Chiu <andy.chiu@sifive.com>
+Date: Tue, 27 Jun 2023 01:55:54 +0000
+Subject: [PATCH 123/191] riscv: vector: clear V-reg in the first-use trap
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+If there is no context switch happens after we enable V for a process,
+then we return to user space with whatever left on the CPU's V registers
+accessible to the process. The leaked data could belong to another
+process's V-context saved from last context switch, impacting process's
+confidentiality on the system.
+
+To prevent this from happening, we clear V registers by restoring
+zero'd V context after turining on V.
+
+Fixes: cd054837243b ("riscv: Allocate user's vector context in the first-use trap")
+Signed-off-by: Andy Chiu <andy.chiu@sifive.com>
+Reviewed-by: Björn Töpel <bjorn@rivosinc.com>
+Link: https://lore.kernel.org/r/20230627015556.12329-2-andy.chiu@sifive.com
+Signed-off-by: Palmer Dabbelt <palmer@rivosinc.com>
+---
+ arch/riscv/kernel/vector.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/riscv/kernel/vector.c b/arch/riscv/kernel/vector.c
+index c7167207c1f6..90067bb6e780 100644
+--- a/arch/riscv/kernel/vector.c
++++ b/arch/riscv/kernel/vector.c
+@@ -167,6 +167,7 @@ bool riscv_v_first_use_handler(struct pt_regs *regs)
+ 		return true;
+ 	}
+ 	riscv_v_vstate_on(regs);
++	riscv_v_vstate_restore(current, regs);
+ 	return true;
+ }
+ 
+-- 
+2.34.1
+

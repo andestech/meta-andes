@@ -1,0 +1,2276 @@
+From dfa920ca86b46948e071fa933508368e8dabfdfc Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Tue, 9 May 2023 18:28:56 +0800
+Subject: [PATCH 038/191] sound: andes: ftssp010: Support for audio playback
+ through legacy DMAC.
+
+1. Support for audio playback through legacy DMAC.
+2. Update kernel configuration to support the ALSA feature.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ arch/riscv/configs/andes-support.config |    3 +
+ arch/riscv/configs/andes_defconfig      |   16 +
+ sound/Kconfig                           |    2 +
+ sound/Makefile                          |    2 +-
+ sound/v5/FTSSP010_ALSA.c                | 1467 +++++++++++++++++++++++
+ sound/v5/FTSSP010_UDA1345TS.h           |   82 ++
+ sound/v5/FTSSP010_W83972D.h             |   25 +
+ sound/v5/FTSSP010_lib.c                 |  540 +++++++++
+ sound/v5/Kconfig                        |   23 +
+ sound/v5/Makefile                       |   10 +
+ 10 files changed, 2169 insertions(+), 1 deletion(-)
+ create mode 100644 sound/v5/FTSSP010_ALSA.c
+ create mode 100644 sound/v5/FTSSP010_UDA1345TS.h
+ create mode 100644 sound/v5/FTSSP010_W83972D.h
+ create mode 100644 sound/v5/FTSSP010_lib.c
+ create mode 100644 sound/v5/Kconfig
+ create mode 100644 sound/v5/Makefile
+
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+index 842d2d99bc8f..d5adc060c4ce 100644
+--- a/arch/riscv/configs/andes-support.config
++++ b/arch/riscv/configs/andes-support.config
+@@ -23,3 +23,6 @@ CONFIG_I2C_BOARDINFO=y
+ CONFIG_I2C_CHARDEV=y
+ CONFIG_I2C_ATCIIC100=y
+ CONFIG_ATCIIC_IRQ=y
++
++CONFIG_SND_FTSSP010=y
++CONFIG_SND_FTSSP010_AC97=y
+diff --git a/arch/riscv/configs/andes_defconfig b/arch/riscv/configs/andes_defconfig
+index 7a754e3a282c..fb9401afe72d 100644
+--- a/arch/riscv/configs/andes_defconfig
++++ b/arch/riscv/configs/andes_defconfig
+@@ -175,3 +175,19 @@ CONFIG_RCU_EQS_DEBUG=y
+ # CONFIG_FTRACE is not set
+ # CONFIG_RUNTIME_TESTING_MENU is not set
+ CONFIG_MEMTEST=y
++
++CONFIG_SOUND=y
++CONFIG_SOUND_OSS_CORE=y
++CONFIG_SOUND_OSS_CORE_PRECLAIM=y
++CONFIG_SND=y
++CONFIG_SND_TIMER=y
++CONFIG_SND_PCM=y
++CONFIG_SND_OSSEMUL=y
++CONFIG_SND_PCM_OSS=y
++CONFIG_SND_PCM_OSS_PLUGINS=y
++CONFIG_SND_PCM_TIMER=y
++CONFIG_SND_SUPPORT_OLD_API=y
++CONFIG_SND_PROC_FS=y
++CONFIG_SND_VERBOSE_PROCFS=y
++CONFIG_SND_DRIVERS=y
++CONFIG_SND_HDA_PREALLOC_SIZE=64
+diff --git a/sound/Kconfig b/sound/Kconfig
+index e56d96d2b11c..352588a40db6 100644
+--- a/sound/Kconfig
++++ b/sound/Kconfig
+@@ -77,6 +77,8 @@ source "sound/mips/Kconfig"
+ 
+ source "sound/sh/Kconfig"
+ 
++source "sound/v5/Kconfig"
++
+ # the following will depend on the order of config.
+ # here assuming USB is defined before ALSA
+ source "sound/usb/Kconfig"
+diff --git a/sound/Makefile b/sound/Makefile
+index 04ef04b1168f..f1ca85b3a292 100644
+--- a/sound/Makefile
++++ b/sound/Makefile
+@@ -6,7 +6,7 @@ obj-$(CONFIG_SOUND) += soundcore.o
+ obj-$(CONFIG_DMASOUND) += oss/dmasound/
+ obj-$(CONFIG_SND) += core/ i2c/ drivers/ isa/ pci/ ppc/ arm/ sh/ synth/ usb/ \
+ 	firewire/ sparc/ spi/ parisc/ pcmcia/ mips/ soc/ atmel/ hda/ x86/ xen/ \
+-	virtio/
++	v5/ virtio/
+ obj-$(CONFIG_SND_AOA) += aoa/
+ 
+ # This one must be compilable even if sound is configured out
+diff --git a/sound/v5/FTSSP010_ALSA.c b/sound/v5/FTSSP010_ALSA.c
+new file mode 100644
+index 000000000000..8822775a032f
+--- /dev/null
++++ b/sound/v5/FTSSP010_ALSA.c
+@@ -0,0 +1,1467 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2018 Andes Technology Corporation
++ *
++ */
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/delay.h>
++#include <soc/andes/dmad.h>
++#include <linux/dma-mapping.h>
++#include <sound/core.h>
++#include <sound/pcm.h>
++#include <sound/initval.h>
++#include <sound/asound.h>
++#include <linux/i2c.h>
++#include <sound/control.h>
++#include <linux/interrupt.h>
++#include <linux/of.h>
++#include <linux/of_device.h>
++#include <asm/irq.h>
++#include "FTSSP010_UDA1345TS.h"
++#include <linux/uaccess.h>
++
++struct alc5630_data;
++
++#if (!defined(CONFIG_PLATFORM_AHBDMA))
++#warning needs ahb dma to wrok
++#endif
++
++/* ---------------------------------------------------------------------------
++ * Define the debug level of FTSSP_DEBUG
++ */
++#define FTSSP_DEBUG         0
++#define FTSSP_DEBUG_VERBOSE 0
++#define FTSSP_PROC_FS       0
++
++#undef VVDBG
++#if (FTSSP_DEBUG_VERBOSE)
++#define VVDBG(vvar...)
++#else
++#define VVDBG(vvar...)
++#endif
++
++#undef ERR
++#define ERR(vvar...)	pr_err(vvar)
++
++#undef INFO
++#define INFO(vvar...)	pr_err(vvar)
++
++#if (FTSSP_DEBUG)
++#undef DBG
++#define DBG(vvar...)	pr_err(vvar)
++#else
++#define DBG(vvar...)
++#endif
++
++#if (FTSSP_DEBUG_VERBOSE)
++#undef VDBG
++#define VDBG(vvar...)	pr_err(vvar)
++#else
++#define VDBG(vvar...)
++#endif
++
++/* ---------------------------------------------------------------------------
++ * Preserved size of memory space for audio DMA ring
++ */
++#define FTSSP_HW_DMA_SIZE		(512 * 1024)
++
++/* Buffer sizes reported to ALSA layer - AC97 mode */
++
++/* ring size, exported to application */
++#define AC97_HW_BUFFER_BYTES_MAX	(42 * 1024)
++/* should not exceed AC97_HW_PERIOD_BYTES_MAX */
++#define AC97_HW_PERIOD_BYTES_MIN	(2 * 1024)
++/* AC97_HW_PERIOD_BYTES_MAX * AC97_HW_PERIODS_MAX <= AC97_HW_BUFFER_SIZE */
++#define AC97_HW_PERIOD_BYTES_MAX	(8 * 1024)
++/* 3 <= AC97_HW_PERIODS_MIN <= AC97_HW_PERIODS_MAX */
++#define AC97_HW_PERIODS_MIN		3
++/* AC97_HW_PERIOD_BYTES_MAX * AC97_HW_PERIODS_MAX <= AC97_HW_BUFFER_SIZE */
++#define AC97_HW_PERIODS_MAX		5
++
++/* Driver internal dma buffer size, x2 for S16_LE(16-bits) to AC97 (20-bits),
++ * x6 for sampling rate converion from minimum 8k to AC97 48k.
++ *
++ * Note that AC97 mode cannot do playback and recording simultaneouly. So we
++ * use up all FTSSP_HW_DMA_SIZE of memory.
++ */
++#define AC97_HW_DMA_SIZE		(AC97_HW_BUFFER_BYTES_MAX * 2 * 6)
++
++/* Buffer sizes reported to ALSA layer - I2S mode */
++
++/* ring size, exported to application */
++#define I2S_HW_BUFFER_BYTES_MAX		(256 * 1024)
++/* should not exceed I2S_HW_PERIOD_BYTES_MAX */
++#define I2S_HW_PERIOD_BYTES_MIN		(2 * 1024)
++/* I2S_HW_PERIOD_BYTES_MAX * I2S_HW_PERIODS_MAX <= I2S_HW_BUFFER_SIZE */
++#define I2S_HW_PERIOD_BYTES_MAX		(32 * 1024)
++/* 3 <= I2S_HW_PERIODS_MIN <= I2S_HW_PERIODS_MAX */
++#define I2S_HW_PERIODS_MIN		3
++/* I2S_HW_PERIOD_BYTES_MAX * I2S_HW_PERIODS_MAX <= I2S_HW_BUFFER_SIZE */
++#define I2S_HW_PERIODS_MAX		8
++
++/* Page-in size for playback and capture each.  Note that I2S mode can do
++ * playback and recording simultaneouly, so this size should be less than or
++ * equal to FTSSP_HW_DMA_SIZE/2
++ */
++#define I2S_HW_DMA_SIZE			(I2S_HW_BUFFER_BYTES_MAX)
++
++/* ---------------------------------------------------------------------------
++ * Audio formats
++ */
++#define AC97_CODEC_FORMATS		(SNDRV_PCM_FMTBIT_S16_LE)
++#define AC97_CODEC_SAMPLE_RATES		(SNDRV_PCM_RATE_48000 | \
++					 SNDRV_PCM_RATE_44100 | \
++					 SNDRV_PCM_RATE_32000 | \
++					 SNDRV_PCM_RATE_16000 | \
++					 SNDRV_PCM_RATE_8000)
++
++#define AC97_CODEC_SAMPLE_RATE_MIN	(8000)
++#define AC97_CODEC_SAMPLE_RATE_MAX	(48000)
++
++#define I2S_CODEC_FORMATS		(SNDRV_PCM_FMTBIT_S16_LE)
++#define I2S_CODEC_SAMPLE_RATES		(SNDRV_PCM_RATE_48000 | \
++					 SNDRV_PCM_RATE_44100 | \
++					 SNDRV_PCM_RATE_32000 | \
++					 SNDRV_PCM_RATE_22050 | \
++					 SNDRV_PCM_RATE_16000 | \
++					 SNDRV_PCM_RATE_11025 | \
++					 SNDRV_PCM_RATE_8000)
++#define I2S_CODEC_SAMPLE_RATE_MIN	(8000)
++#define I2S_CODEC_SAMPLE_RATE_MAX	(48000)
++
++
++/* ---------------------------------------------------------------------------
++ * Configuration
++ */
++#if (CONFIG_PROC_FS == 0)
++#undef FTSSP_PROC_FS
++#define FTSSP_PROC_FS 0
++#else
++#if (FTSSP_PROC_FS)
++#include <sound/info.h>
++#endif  /* FTSSP_PROC_FS */
++#endif  /* CONFIG_PROC_FS */
++
++#define FTSSP_CARD_ID		"ftssp010"
++#define FTSSP_DRIVER_NAME	"ftssp"
++
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("Faraday Technology Corp.");
++MODULE_DESCRIPTION("FTSSP010 Linux 2.6 Driver");
++
++static int cardno;
++/* Driver mode */
++#ifdef CONFIG_SND_FTSSP010_AC97
++static int ac97 = 1;
++#else
++static int ac97;
++#endif
++
++// ----------------------------------------------
++module_param(cardno, int, 0);
++MODULE_PARM_DESC(cardno, "FTSSP No.");
++
++module_param(ac97, int, 0);
++MODULE_PARM_DESC(ac97, "AC97 mode");
++// ----------------------------------------------
++
++/* ---------------------------------------------------------------------------
++ * Structures
++ */
++
++/* private data for card */
++typedef struct {
++	struct platform_device	*pdev;
++	struct snd_card *card;
++	struct snd_pcm  *pcm;
++	struct snd_pcm_substream *substream_tx;
++	struct snd_pcm_substream *substream_rx;
++#if (FTSSP_PROC_FS)
++	struct snd_info_entry *info_buf_max;
++	struct snd_info_entry *info_period_min;
++	struct snd_info_entry *info_period_max;
++	struct snd_info_entry *info_periods_min;
++	struct snd_info_entry *info_periods_max;
++#endif
++} ftssp_chip;
++
++/* dma request descriptors */
++dmad_chreq dma_chreq_tx = {
++	.channel = -1,
++	.drq     = NULL,
++};
++
++dmad_chreq dma_chreq_rx = {
++	.channel = -1,
++	.drq     = NULL,
++};
++
++/* Holds ALSA card instance pointers */
++struct snd_card *ftssp_cards[SSP_FTSSP010_COUNT];
++
++/* snd_pcm_hardware */
++static struct snd_pcm_hardware snd_ftssp_pcm_hw = {
++	.info               = SNDRV_PCM_INFO_INTERLEAVED,
++	.formats            = I2S_CODEC_FORMATS,
++	.rates              = I2S_CODEC_SAMPLE_RATES,
++	.rate_min           = I2S_CODEC_SAMPLE_RATE_MIN,
++	.rate_max           = I2S_CODEC_SAMPLE_RATE_MAX,
++	.channels_min       = 1,
++	.channels_max       = 2,
++	.buffer_bytes_max   = I2S_HW_BUFFER_BYTES_MAX,
++	.period_bytes_min   = I2S_HW_PERIOD_BYTES_MIN,
++	.period_bytes_max   = I2S_HW_PERIOD_BYTES_MAX,
++	.periods_min        = I2S_HW_PERIODS_MIN,
++	.periods_max        = I2S_HW_PERIODS_MAX,
++};
++
++/* private data for a substream (playback or capture) */
++/* function pointer for set up AHBDMA for this substream */
++typedef void (*start_t)(int cardno, unsigned int use_dma);
++typedef void (*pmu_set_clocking_t)(unsigned int);
++typedef void (*ftssp010_config_t)(int cardno, unsigned int is_stereo,
++				  unsigned int speed, int use8bit);
++
++typedef struct {
++	u32                busy;
++	spinlock_t         dma_lock;
++	unsigned long	dma_area_va;
++
++	int                dma_width;
++	unsigned int       tx_period;
++	unsigned int       rx_period;
++
++	start_t            start;
++	pmu_set_clocking_t pmu_set_clocking;
++	ftssp010_config_t  hw_config;
++} ftssp_substream;
++
++static ftssp_substream ftssp010_substreams[2] = {
++	/* Playback substream */
++	{
++		.busy = 0,
++		.start = ftssp010_start_tx,
++		.pmu_set_clocking = pmu_set_i2s_clocking,
++		.hw_config = ftssp010_config_tx,
++	},
++	/* Capture substream */
++	{
++		.busy = 0,
++		.start = ftssp010_start_rx,
++		.pmu_set_clocking = pmu_set_i2s_clocking,
++		.hw_config = ftssp010_config_rx,
++	}
++};
++
++/* (AC97 only) Convert 16 bits PCM data in user buffer to/from 20 bits PCM data
++ * (32 bits actaully in dma buffer) for AC97 codec.
++ */
++static int snd_ftssp_playback_copy(struct snd_pcm_substream *substream,
++	int channel, snd_pcm_uframes_t pos, void *usr_buf,
++	snd_pcm_uframes_t count)
++{
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	ftssp_substream *ftssp010_substream =
++		(ftssp_substream *) runtime->private_data;
++
++	u32 *dma_va = NULL;
++	u16 *usr_va = usr_buf;
++	int copy_words;
++	int pcm_data;
++	dmad_chreq *dma_chreq;
++	u32 sw_ptr;
++
++	/* convert to frames */
++	pos = bytes_to_frames(substream->runtime, pos);
++	count = bytes_to_frames(substream->runtime, count);
++
++	/* frames_to_bytes(runtime, pos + count) * 2(bytes/per pcm) /
++	 * 4(bytes per dma unit)
++	 */
++	sw_ptr = (u32)frames_to_bytes(runtime, pos + count) >> 1;
++
++	switch (runtime->rate) {
++	case 8000:
++		sw_ptr *= 6;
++		dma_va = (unsigned int *)(ftssp010_substream->dma_area_va +
++				frames_to_bytes(runtime, pos * 6) * 2);
++
++		VVDBG("%s: pos(0x%08x) count(0x%08x) next_pos(0x%08x)\n",
++			__func__, (u32)pos, (u32)count, (u32)(pos + count));
++		VVDBG("%s: va base(0x%08x) range (0x%08x ~ 0x%08x)\n",
++			__func__, (u32)ftssp010_substream->dma_area_va,
++			(u32)dma_va,
++			(u32)dma_va +
++			(u32)2 * frames_to_bytes(runtime, count * 6));
++
++		if (runtime->channels == 1) {
++			while (count--) {
++				pcm_data = 0;
++				get_user(pcm_data, usr_va++);
++				dma_va[0] = (pcm_data & 0xffff) << 4;
++				dma_va[1] = dma_va[2] = dma_va[3] =
++				dma_va[4] = dma_va[5] = dma_va[0];
++				//memcpy(&dma_va[1], &dma_va[0], 5 * 4 * 1);
++				dma_va += 6;
++			}
++		} else {  // assume 2 channels
++			while (count--) {
++				pcm_data = 0;
++				get_user(pcm_data, usr_va++);
++				dma_va[0] = (pcm_data & 0xffff) << 4;
++
++				pcm_data = 0;
++				get_user(pcm_data, usr_va++);
++				dma_va[1] = (pcm_data & 0xffff) << 4;
++
++				dma_va[2] = dma_va[4] = dma_va[6] =
++				dma_va[8] = dma_va[10] = dma_va[0];
++				dma_va[3] = dma_va[5] = dma_va[7] =
++				dma_va[9] = dma_va[11] = dma_va[0];
++				//memcpy(&dma_va[2], &dma_va[0], 5 * 4 * 2);
++				dma_va += 12;
++			}
++		}
++		break;
++
++	case 16000:
++		sw_ptr *= 3;
++
++		dma_va = (unsigned int *)(ftssp010_substream->dma_area_va +
++				frames_to_bytes(runtime, pos * 3) * 2);
++
++		VVDBG("%s: pos(0x%08x) count(0x%08x) next_pos(0x%08x)\n",
++			__func__, (u32)pos, (u32)count, (u32)(pos + count));
++		VVDBG("%s: va base(0x%08x) range (0x%08x ~ 0x%08x)\n",
++			__func__, (u32)ftssp010_substream->dma_area_va,
++			(u32)dma_va,
++			(u32)dma_va +
++			(u32)2 * frames_to_bytes(runtime, count * 3));
++
++		if (runtime->channels == 1) {
++			while (count--) {
++				pcm_data = 0;
++				get_user(pcm_data, usr_va++);
++				dma_va[0] = (pcm_data & 0xffff) << 4;
++				dma_va[1] = dma_va[2] = dma_va[0];
++				//memcpy(&dma_va[1], &dma_va[0], 2 * 4 * 1);
++				dma_va += 3;
++			}
++		} else {  // assume 2 channels
++			while (count--) {
++				pcm_data = 0;
++				get_user(pcm_data, usr_va++);
++				dma_va[0] = (pcm_data & 0xffff) << 4;
++
++				pcm_data = 0;
++				get_user(pcm_data, usr_va++);
++				dma_va[1] = (pcm_data & 0xffff) << 4;
++
++				dma_va[2] = dma_va[4] = dma_va[0];
++				dma_va[3] = dma_va[5] = dma_va[1];
++				//memcpy(&dma_va[2], &dma_va[0], 2 * 4 * 2);
++				dma_va += 6;
++			}
++		}
++		break;
++
++	case 48000:
++	default:
++		dma_va = (unsigned int *)(ftssp010_substream->dma_area_va +
++				frames_to_bytes(runtime, pos) * 2);
++		copy_words = 2 * frames_to_bytes(runtime, count) / sizeof(u32);
++
++		VVDBG("%s: pos(0x%08x) count(0x%08x) next_pos(0x%08x)\n",
++			__func__, (u32)pos, (u32)count, (u32)(pos + count));
++		VVDBG("%s: va base(0x%08x) range (0x%08x ~ 0x%08x)\n",
++			__func__, (u32)ftssp010_substream->dma_area_va,
++			(u32)dma_va,
++			(u32)dma_va + (u32)copy_words*4);
++
++		while (copy_words--) {
++			get_user(pcm_data, usr_va++);
++			*dma_va++ = (pcm_data & 0xffff) << 4;
++		}
++		break;
++	}
++
++	dma_chreq = &dma_chreq_tx;
++
++	if (dmad_update_ring_sw_ptr(dma_chreq, sw_ptr,
++		(runtime->status->state == SNDRV_PCM_STATE_RUNNING) ? 1:0) != 0) {
++		ERR("%s: failed to update sw-pointer!\n", __func__);
++		return -ENODEV;
++	}
++
++	return 0;
++}
++
++static int snd_ftssp_capture_copy(struct snd_pcm_substream *substream,
++	int channel, snd_pcm_uframes_t pos, void *usr_buf,
++	snd_pcm_uframes_t count)
++{
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	ftssp_substream *ftssp010_substream =
++		(ftssp_substream *) runtime->private_data;
++
++	u32 *dma_va = NULL;
++	u16 *usr_va = usr_buf;
++	/* convert to frames */
++	pos = bytes_to_frames(substream->runtime, pos);
++	count = bytes_to_frames(substream->runtime, count);
++
++	switch (runtime->rate) {
++	case 8000:
++		dma_va = (unsigned int *)(ftssp010_substream->dma_area_va +
++				 frames_to_bytes(runtime, pos * 6) * 2);
++
++		VVDBG("%s: pos(0x%08x) count(0x%08x) next_pos(0x%08x)\n",
++			__func__, (u32)pos, (u32)count, (u32)(pos + count));
++		VVDBG("%s: va base(0x%08x) range (0x%08x ~ 0x%08x)\n",
++			__func__, (u32)ftssp010_substream->dma_area_va,
++			(u32)dma_va,
++			(u32)dma_va +
++			(u32)2 * frames_to_bytes(runtime, count * 6));
++
++		if (runtime->channels == 1) {
++			while (count--) {
++				put_user((u16)(dma_va[0] >> 4), usr_va++);
++				dma_va += 6;
++			}
++		} else {
++			while (count--) {
++				put_user((u16)(dma_va[0] >> 4), usr_va);
++				usr_va++;
++				put_user((u16)(dma_va[0] >> 4), usr_va);
++
++				/* [hw-limit] only slot-3 has valid data in
++				 *   recording mode -- check TAG_DATA_MONO
++				 *   defined in "FTSSP010_lib.c".  Mask out
++				 *   one channel to avoid hi-freq noise.
++				 */
++				usr_va += 1;
++				dma_va += 12;
++			}
++		}
++		break;
++
++	case 16000:
++		dma_va = (unsigned int *)(ftssp010_substream->dma_area_va +
++				 frames_to_bytes(runtime, pos * 3) * 2);
++
++		VVDBG("%s: pos(0x%08x) count(0x%08x) next_pos(0x%08x)\n",
++			__func__, (u32)pos, (u32)count, (u32)(pos + count));
++		VVDBG("%s: va base(0x%08x) range (0x%08x ~ 0x%08x)\n",
++			__func__, (u32)ftssp010_substream->dma_area_va,
++			(u32)dma_va,
++			(u32)dma_va +
++			(u32)2 * frames_to_bytes(runtime, count * 3));
++
++		if (runtime->channels == 1) {
++			while (count--) {
++				put_user((u16)(dma_va[0] >> 4), usr_va++);
++				dma_va += 3;
++			}
++		} else {
++			while (count--) {
++				put_user((u16)(dma_va[0] >> 4), usr_va);
++				usr_va++;
++				put_user((u16)(dma_va[0] >> 4), usr_va);
++
++				/* [hw-limit] only slot-3 has valid data in
++				 *   recording mode -- check TAG_DATA_MONO
++				 *   defined in "FTSSP010_lib.c".  Mask out
++				 *   one channel to avoid hi-freq noise.
++				 */
++				usr_va++;
++				dma_va += 6;
++			}
++		}
++		break;
++
++	case 48000:
++	default:
++		dma_va = (unsigned int *)(ftssp010_substream->dma_area_va +
++				frames_to_bytes(runtime, pos) * 2);
++
++		VVDBG("%s: pos(0x%08x) count(0x%08x) next_pos(0x%08x)\n",
++			__func__, (u32)pos, (u32)count, (u32)(pos + count));
++		VVDBG("%s: va base(0x%08x) range (0x%08x ~ 0x%08x)\n",
++			__func__, (u32)ftssp010_substream->dma_area_va,
++			(u32)dma_va,
++			(u32)dma_va +
++			(u32)2 * frames_to_bytes(runtime, count));
++
++		if (runtime->channels == 1) {
++			while (count--) {
++				put_user((u16)(dma_va[0] >> 4), usr_va++);
++				dma_va += 1;
++			}
++		} else {
++			while (count--) {
++				put_user((u16)(dma_va[0] >> 4), usr_va);
++				usr_va++;
++				put_user((u16)(dma_va[0] >> 4), usr_va);
++
++				/* [hw-limit] only slot-3 has valid data in
++				 *   recording mode -- check TAG_DATA_MONO
++				 *   defined in "FTSSP010_lib.c".  Mask out
++				 *   one channel to avoid hi-freq noise.
++				 */
++				usr_va += 1;
++				dma_va += 2;
++			}
++		}
++		break;
++	}
++
++	return 0;
++}
++
++/**
++ * These dma callbacks are called in interrupt context.
++ * @data: pointer to the chip-wide structure.
++ *        TODO: use stream-specifc data
++ */
++__maybe_unused static void ftssp_dma_callback_tx(int ch, u16 int_status, void *data)
++{
++	ftssp_chip *chip = (ftssp_chip *)data;
++
++	if (!ac97) {
++		/* in i2s mode, no indication to driver for user data length.
++		 * For simplicity, just go ahead by one period
++		 */
++
++		struct snd_pcm_runtime *runtime = chip->substream_tx->runtime;
++		ftssp_substream *ftssp010_substream =
++			(ftssp_substream *)runtime->private_data;
++		u32 sw_ptr;
++		u32 tx_period = ftssp010_substream->tx_period + 1;
++
++		if (tx_period == runtime->periods)
++			sw_ptr = runtime->buffer_size;
++		else
++			sw_ptr = tx_period * runtime->period_size;
++
++		sw_ptr = (u32)frames_to_bytes(runtime, sw_ptr) >> 1;
++
++		if (dmad_update_ring_sw_ptr(&dma_chreq_tx, (u32)sw_ptr, 0))
++			ERR("%s: failed to update sw-pointer!\n", __func__);
++
++		ftssp010_substream->tx_period = tx_period % runtime->periods;
++	}
++
++	snd_pcm_period_elapsed(chip->substream_tx);
++}
++
++__maybe_unused static void ftssp_dma_callback_rx(int ch, u16 int_status, void *data)
++{
++	ftssp_chip *chip = (ftssp_chip *)data;
++	struct snd_pcm_runtime *runtime = chip->substream_rx->runtime;
++	ftssp_substream *ftssp010_substream =
++		(ftssp_substream *)runtime->private_data;
++
++	u32 sw_ptr;
++	u32 rx_period = ftssp010_substream->rx_period + 1;
++
++	if (rx_period == runtime->periods)
++		sw_ptr = runtime->buffer_size;
++	else
++		sw_ptr = rx_period * runtime->period_size;
++
++	if (ac97) {
++		switch (runtime->rate) {
++		case 8000:
++			sw_ptr = sw_ptr * 6;
++			break;
++		case 16000:
++			sw_ptr = sw_ptr * 3;
++			break;
++		case 48000:
++		default:
++			break;
++		}
++	}
++	sw_ptr = (u32)frames_to_bytes(runtime, sw_ptr) >> 1;
++
++	if (dmad_update_ring_sw_ptr(&dma_chreq_rx, (u32)sw_ptr, 0) != 0)
++		ERR("%s: failed to update sw-pointer!\n", __func__);
++
++	ftssp010_substream->rx_period = rx_period % runtime->periods;
++
++	snd_pcm_period_elapsed(chip->substream_rx);
++}
++
++static inline int snd_ftssp_dma_ch_alloc(struct snd_pcm_substream *substream)
++{
++	dmad_chreq *ch_req __maybe_unused = 0;
++
++#ifdef CONFIG_PLATFORM_AHBDMA
++	if (substream->pstr->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++		ch_req = &dma_chreq_tx;
++		ch_req->completion_cb    = ftssp_dma_callback_tx;
++		ch_req->ahb_req.tx_dir   = DMAD_DIR_A0_TO_A1;
++#if defined(CONFIG_PLAT_AG101P)
++		if ((inl(PMU_BASE) & AMERALD_MASK) == AMERALD_PRODUCT_ID)
++			ch_req->ahb_req.dev_reqn = DMAC_REQN_I2SAC97TX_AMERALD;
++		else
++#endif
++			/*TX DST handshake mode addr0 --> addr1
++			 * tx_dir == 0, addr1 set handshake ID
++			 */
++			ch_req->ahb_req.dev_reqn = DMAC_REQN_I2SAC97TX;
++	} else {
++		ch_req = &dma_chreq_rx;
++		ch_req->completion_cb    = ftssp_dma_callback_rx;
++		ch_req->ahb_req.tx_dir   = DMAD_DIR_A1_TO_A0;
++#if defined(CONFIG_PLAT_AG101P)
++		if ((inl(PMU_BASE) & AMERALD_MASK) == AMERALD_PRODUCT_ID)
++			ch_req->ahb_req.dev_reqn = DMAC_REQN_I2SAC97RX_AMERALD;
++		else
++#endif
++			/*RX SRC handshake mode, addr1 --> addr0
++			 *tx_dir == 1, addr1 set handshake ID
++			 */
++			ch_req->ahb_req.dev_reqn  = DMAC_REQN_I2SAC97RX;
++	}
++
++	ch_req->controller           = DMAD_DMAC_AHB_CORE;
++	ch_req->flags                = DMAD_FLAGS_RING_MODE;
++	ch_req->ring_base            = 0;
++	ch_req->dev_addr             = (dma_addr_t)FTSSP010_DATA_PA(cardno);
++	ch_req->periods              = 0;
++	ch_req->period_size          = 0;
++
++	ch_req->ahb_req.sync         = 1;
++	ch_req->ahb_req.priority     = DMAC_CSR_CHPRI_2;
++	ch_req->ahb_req.hw_handshake = 1;
++	ch_req->ahb_req.burst_size   = DMAC_CSR_SIZE_1;
++
++	if (ac97) {
++		ch_req->ahb_req.ring_width   = DMAC_CSR_WIDTH_32;
++		ch_req->ahb_req.ring_ctrl    = DMAC_CSR_AD_INC;
++		ch_req->ahb_req.ring_reqn    = DMAC_REQN_NONE;
++		ch_req->ahb_req.dev_width    = DMAC_CSR_WIDTH_32;
++		ch_req->ahb_req.dev_ctrl     = DMAC_CSR_AD_FIX;
++	} else {
++		ch_req->ahb_req.ring_width   = DMAC_CSR_WIDTH_16;
++		ch_req->ahb_req.ring_ctrl    = DMAC_CSR_AD_INC;
++		ch_req->ahb_req.ring_reqn    = DMAC_REQN_NONE;
++		ch_req->ahb_req.dev_width    = DMAC_CSR_WIDTH_16;
++		ch_req->ahb_req.dev_ctrl     = DMAC_CSR_AD_FIX;
++	}
++
++	ch_req->completion_data = (void *)snd_pcm_substream_chip(substream);
++
++	if (dmad_channel_alloc(ch_req) != 0) {
++		ERR("%s: AHBDMA channel allocation failed\n", __func__);
++		goto _err_exit;
++	}
++
++	DBG("%s: AHBDMA channel allocated (ch: %d) ring_mode\n",
++		__func__, ch_req->channel);
++
++	return 0;
++
++_err_exit:
++
++#endif /* CONFIG_PLATFORM_AHBDMA */
++
++	return -ENODEV;
++}
++
++static inline ftssp_substream *ftssp010_substream_new(int stream_id)
++{
++	ftssp_substream *s = NULL;
++
++	switch (stream_id) {
++	case SNDRV_PCM_STREAM_PLAYBACK:
++		s = &ftssp010_substreams[0];
++		break;
++	case SNDRV_PCM_STREAM_CAPTURE:
++		s = &ftssp010_substreams[1];
++		break;
++	default:
++		ERR("%s: wrong stream type (%d)\n", __func__, stream_id);
++		return NULL;
++	}
++
++	if (s->busy) {
++		ERR("%s: device busy!\n", __func__);
++		return NULL;
++	}
++	s->busy = 1;
++
++	spin_lock_init(&s->dma_lock);
++
++	return s;
++}
++
++static int snd_ftssp_pcm_open(struct snd_pcm_substream *substream)
++{
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	int stream_id = substream->pstr->stream;
++
++	VDBG("%s, %s\n", __func__,
++		(substream->pstr->stream == SNDRV_PCM_STREAM_PLAYBACK) ?
++		"playback" : "capture");
++
++	/* Both playback and capture share a hardware description */
++	runtime->hw = snd_ftssp_pcm_hw;
++
++	/* Allocate & Initialize stream-specific data */
++	runtime->private_data = ftssp010_substream_new(stream_id);
++
++	if (runtime->private_data)
++		return snd_ftssp_dma_ch_alloc(substream);
++	else
++		return -EBUSY;
++}
++
++static int snd_ftssp_pcm_close(struct snd_pcm_substream *substream)
++{
++	int stream_id = substream->pstr->stream;
++	ftssp_substream *ftssp010_substream =
++		(ftssp_substream *)substream->runtime->private_data;
++
++	VDBG("%s, %s\n", __func__,
++		(substream->pstr->stream == SNDRV_PCM_STREAM_PLAYBACK) ?
++		"playback" : "capture");
++
++	if (stream_id == SNDRV_PCM_STREAM_PLAYBACK)
++		dmad_channel_free(&dma_chreq_tx);
++	else
++		dmad_channel_free(&dma_chreq_rx);
++
++	ftssp010_substream->busy = 0;
++	return 0;
++}
++
++static int snd_ftssp_pcm_hw_params(struct snd_pcm_substream *substream,
++	struct snd_pcm_hw_params *hw_params)
++{
++	VDBG("%s, %s\n", __func__,
++		(substream->pstr->stream == SNDRV_PCM_STREAM_PLAYBACK) ?
++		"playback" : "capture");
++
++	if (ac97)
++		return snd_pcm_lib_malloc_pages(substream, AC97_HW_DMA_SIZE);
++	else
++		return snd_pcm_lib_malloc_pages(substream, I2S_HW_DMA_SIZE);
++}
++
++static int snd_ftssp_pcm_hw_free(struct snd_pcm_substream *substream)
++{
++	VDBG("%s, %s\n", __func__,
++		(substream->pstr->stream == SNDRV_PCM_STREAM_PLAYBACK) ?
++		"playback" : "capture");
++
++	if (substream->pstr->stream == SNDRV_PCM_STREAM_PLAYBACK)
++		dmad_drain_requests(&dma_chreq_tx, 1);
++	else
++		dmad_drain_requests(&dma_chreq_rx, 1);
++
++	return snd_pcm_lib_free_pages(substream);
++}
++
++/* Prepare FTSSP010 AHBDMA for playback & capture */
++static int snd_ftssp_pcm_prepare(struct snd_pcm_substream *substream)
++{
++	ftssp_chip *chip = snd_pcm_substream_chip(substream);
++	struct snd_pcm_runtime *runtime = substream->runtime;
++
++	ftssp_substream *ftssp010_substream =
++		(ftssp_substream *)runtime->private_data;
++
++	int stream_id = substream->pstr->stream;
++	dmad_chreq *dma_chreq;
++	unsigned int period_size, buffer_size;
++
++	if (stream_id == SNDRV_PCM_STREAM_PLAYBACK)
++		dma_chreq = &dma_chreq_tx;
++	else
++		dma_chreq = &dma_chreq_rx;
++
++	period_size = frames_to_bytes(runtime, runtime->period_size);
++	buffer_size = frames_to_bytes(runtime, runtime->buffer_size);
++
++	if (runtime->format != SNDRV_PCM_FORMAT_S16_LE)
++		return -ENODEV;
++
++	if (ac97) {
++		switch (runtime->rate) {
++		case 8000:
++			period_size *= 12;
++			buffer_size *= 12;
++			break;
++		case 16000:
++			period_size *= 6;
++			buffer_size *= 6;
++			break;
++		case 48000:
++		default:
++			period_size *= 2;
++			buffer_size *= 2;
++			break;
++		}
++
++		ftssp010_substream->dma_width = 4;
++	} else {
++		ftssp010_substream->dma_width = 2;
++	}
++
++	dmad_drain_requests(dma_chreq, 1);
++
++	dma_chreq->ring_base   = (dma_addr_t)runtime->dma_addr;
++	dma_chreq->periods     = (dma_addr_t)runtime->periods;
++	if (ac97) {
++		dma_chreq->period_size = (dma_addr_t)(period_size >> 2);
++		dma_chreq->ring_size   = (dma_addr_t)(buffer_size >> 2);
++	} else {
++		dma_chreq->period_size = (dma_addr_t)(period_size >> 1);
++		dma_chreq->ring_size   = (dma_addr_t)(buffer_size >> 1);
++	}
++	dmad_update_ring(dma_chreq);
++
++	/* Set PMU, FTSSP010, and DMA */
++	spin_lock(&ftssp010_substream->dma_lock);
++
++	/* keep DMA buffer VA for copy() callback */
++	// todo: support playback/capture simultaneously
++	ftssp010_substream->dma_area_va = (unsigned long)runtime->dma_area;
++
++	if (ac97) {
++		ftssp010_substream->pmu_set_clocking(48000);
++		ftssp010_substream->hw_config(cardno,
++			runtime->channels > 1 ? 1 : 0, /* 1: stereo, 0: mono */
++			runtime->rate, ftssp010_substream->dma_width);
++	} else {
++		ftssp010_substream->pmu_set_clocking(runtime->rate);
++		ftssp010_substream->hw_config(cardno,
++			runtime->channels > 1 ? 1 : 0, /* 1: stereo, 0: mono */
++			runtime->rate, ftssp010_substream->dma_width);
++	}
++
++	if (stream_id == SNDRV_PCM_STREAM_PLAYBACK) {
++		ftssp010_substream->tx_period = 0;
++		chip->substream_tx = substream;
++	} else {
++		ftssp010_substream->rx_period = 0;
++		chip->substream_rx = substream;
++	}
++
++	spin_unlock(&ftssp010_substream->dma_lock);
++
++	return 0;
++}
++
++static inline int snd_ftssp_start_play(ftssp_substream *ftssp010_substream,
++	struct snd_pcm_runtime *runtime)
++{
++	int err = 0;
++
++	if (ac97) {
++		/* in ac97 mode, user data was fed to dma buffer through
++		 * driver-provided copy callback
++		 */
++		err = dmad_kickoff_requests(&dma_chreq_tx);
++		if (err != 0) {
++			ERR("%s: failed to kickoff dma!\n", __func__);
++			return err;
++		}
++	} else {
++		/* in i2s mode, no indication to driver for user data length
++		 * (except start threshold). For simplicity at start, just go
++		 * ahead by one cycle
++		 */
++
++		u32 sw_ptr =
++			(u32)frames_to_bytes(runtime, runtime->buffer_size) >> 1;
++
++		err = dmad_update_ring_sw_ptr(&dma_chreq_tx, sw_ptr, 0);
++		if (err != 0) {
++			ERR("%s: failed to update sw-pointer!\n", __func__);
++			return err;
++		}
++
++		err = dmad_kickoff_requests(&dma_chreq_tx);
++		if (err != 0) {
++			ERR("%s: failed to kickoff dma!\n", __func__);
++			return err;
++		}
++	}
++	ftssp010_substream->start(cardno, 1);
++
++	return 0;
++}
++
++static inline int snd_ftssp_start_record(ftssp_substream *ftssp010_substream,
++	struct snd_pcm_runtime *runtime)
++{
++	int err = 0;
++	u32 sw_ptr = (u32)frames_to_bytes(runtime, runtime->buffer_size);
++
++	if (ac97) {
++		switch (runtime->rate) {
++		case 8000:
++			sw_ptr = (sw_ptr * 3);
++			break;
++		case 16000:
++			sw_ptr = (sw_ptr * 3) >> 1;
++			break;
++		case 48000:
++		default:
++			sw_ptr = sw_ptr >> 1;
++			break;
++		}
++	} else {
++		sw_ptr = sw_ptr >> 1;
++	}
++
++	err = dmad_update_ring_sw_ptr(&dma_chreq_rx, sw_ptr, 0);
++	if (err != 0) {
++		ERR("%s: failed to update sw-pointer!\n", __func__);
++		return err;
++	}
++
++	err = dmad_kickoff_requests(&dma_chreq_rx);
++	if (err != 0) {
++		ERR("%s: failed to kickoff dma!\n", __func__);
++		return err;
++	}
++
++	ftssp010_substream->start(cardno, 1);
++
++	return 0;
++}
++
++/* Triggers AHBDMA for playback & capture */
++static int snd_ftssp_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
++{
++	ftssp_substream *ftssp010_substream =
++		(ftssp_substream *)substream->runtime->private_data;
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	int err = 0;
++	int stream_id = substream->pstr->stream;
++
++	/* note local interrupts are already disabled in the midlevel code */
++	spin_lock(&ftssp010_substream->dma_lock);
++
++	switch (cmd) {
++	case SNDRV_PCM_TRIGGER_START:
++
++		VDBG("%s: SNDRV_PCM_TRIGGER_START state(0x%08x)\n",
++			__func__, (u32)runtime->status->state);
++
++		if (stream_id == SNDRV_PCM_STREAM_PLAYBACK) {
++			err = snd_ftssp_start_play(ftssp010_substream, runtime);
++		} else {
++			err = snd_ftssp_start_record(ftssp010_substream,
++				runtime);
++		}
++		break;
++
++	case SNDRV_PCM_TRIGGER_STOP:
++
++		VDBG("%s: SNDRV_PCM_TRIGGER_STOP state(0x%08x)\n",
++			__func__, (u32)substream->runtime->status->state);
++
++		if (stream_id == SNDRV_PCM_STREAM_PLAYBACK) {
++			ftssp010_stop_tx(cardno);
++			dmad_drain_requests(&dma_chreq_tx, 1);
++		} else {
++			ftssp010_stop_rx(cardno);
++			dmad_drain_requests(&dma_chreq_rx, 1);
++		}
++		break;
++	default:
++		err = -EINVAL;
++		break;
++	}
++
++	spin_unlock(&ftssp010_substream->dma_lock);
++	return err;
++}
++
++// pcm middle-layer call this function within irq (snd_pcm_period_elapsed) or
++// with local irq disabled (snd_pcm_lib_write1)
++static snd_pcm_uframes_t snd_ftssp_pcm_pointer(
++	struct snd_pcm_substream *substream)
++{
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	u32 hw_ptr;
++	snd_pcm_uframes_t ret;
++	int stream_id = substream->pstr->stream;
++
++
++	/* Fetch DMA pointer, with spin lock */
++	//spin_lock_irqsave(&ftssp010_substream->dma_lock, flags);
++
++	if (stream_id == SNDRV_PCM_STREAM_PLAYBACK)
++		hw_ptr = dmad_probe_ring_hw_ptr(&dma_chreq_tx);
++	else
++		hw_ptr = dmad_probe_ring_hw_ptr(&dma_chreq_rx);
++
++	//spin_unlock_irqrestore(&ftssp010_substream->dma_lock, flags);
++
++	if (ac97) {
++		ret = bytes_to_frames(runtime, hw_ptr << 1);
++
++		switch (runtime->rate) {
++		case 8000:
++			ret = ret / 6;
++			break;
++		case 16000:
++			ret = ret / 3;
++			break;
++		case 48000:
++		default:
++			break;
++		}
++	} else {
++		ret = bytes_to_frames(runtime, hw_ptr << 1);
++	}
++
++
++	VVDBG("%s: hw_ptr(0x%08x) ret(0x%08x)\n",
++		(stream_id == SNDRV_PCM_STREAM_PLAYBACK) ? "p" : "c",
++		(u32)hw_ptr, (u32)ret);
++
++	/* ALSA requires return value 0 <= ret < buffer_size */
++	if (ret >= runtime->buffer_size)
++		return 0;
++	return ret;
++}
++
++/* For FTSSP010 driver, operations are shared among playback & capture */
++static struct snd_pcm_ops snd_ftssp_playback_ops = {
++	.open      = snd_ftssp_pcm_open,
++	.close     = snd_ftssp_pcm_close,
++	.ioctl     = snd_pcm_lib_ioctl,
++	.hw_params = snd_ftssp_pcm_hw_params,
++	.hw_free   = snd_ftssp_pcm_hw_free,
++	.prepare   = snd_ftssp_pcm_prepare,
++	.trigger   = snd_ftssp_pcm_trigger,
++	.pointer   = snd_ftssp_pcm_pointer,
++};
++
++static struct snd_pcm_ops snd_ftssp_capture_ops = {
++	.open      = snd_ftssp_pcm_open,
++	.close     = snd_ftssp_pcm_close,
++	.ioctl     = snd_pcm_lib_ioctl,
++	.hw_params = snd_ftssp_pcm_hw_params,
++	.hw_free   = snd_ftssp_pcm_hw_free,
++	.prepare   = snd_ftssp_pcm_prepare,
++	.trigger   = snd_ftssp_pcm_trigger,
++	.pointer   = snd_ftssp_pcm_pointer,
++};
++
++/* ALSA PCM constructor */
++static int snd_ftssp_new_pcm(ftssp_chip *chip)
++{
++	struct snd_pcm *pcm;
++	int err;
++
++	/* PCM device #0 with 1 playback and 1 capture */
++	err = snd_pcm_new(chip->card, "ftssp_pcm", 0, 1, 1, &pcm);
++	if (err < 0)
++		return err;
++
++	pcm->private_data = chip;
++	strcpy(pcm->name, "ftssp_pcm device");
++	chip->pcm = pcm;
++
++	/* set operators for playback and capture*/
++	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK,
++		&snd_ftssp_playback_ops);
++
++	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_CAPTURE,
++		&snd_ftssp_capture_ops);
++
++	/* Pre-allocate buffer, as suggested by ALSA driver document */
++	// todo: support playback/capture simultaneously
++	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
++	&chip->pdev->dev, FTSSP_HW_DMA_SIZE, FTSSP_HW_DMA_SIZE);
++
++	/* Force half-duplex (on A320D, or AC97 mode) */
++	if (ac97)
++		pcm->info_flags |= SNDRV_PCM_INFO_HALF_DUPLEX;
++
++	return 0;
++}
++
++#if (FTSSP_PROC_FS)
++static void snd_ftssp_buf_max_read(struct snd_info_entry *entry,
++	struct snd_info_buffer *buffer)
++{
++	snd_iprintf(buffer, "%d\n", snd_ftssp_pcm_hw.buffer_bytes_max);
++}
++
++static void snd_ftssp_buf_max_write(struct snd_info_entry *entry,
++	struct snd_info_buffer *buffer)
++{
++	char tmp[128];
++	char *ptr_e;
++	u32 val;
++
++	if (buffer->size == 0)
++		return;
++
++	memset(tmp, 0, 128);
++	snd_info_get_str(tmp, buffer->buffer, 127);
++
++	val = simple_strtoul(tmp, &ptr_e, 10);
++	if (*ptr_e == 'k')
++		val *= 1024;
++	else if (*ptr_e == 'm')
++		val *= 1024 * 1024;
++
++	if (ac97) {
++		if (val > AC97_HW_BUFFER_BYTES_MAX)
++			val = AC97_HW_BUFFER_BYTES_MAX;
++	} else {
++		if (val > I2S_HW_BUFFER_BYTES_MAX)
++			val = I2S_HW_BUFFER_BYTES_MAX;
++	}
++
++	snd_ftssp_pcm_hw.buffer_bytes_max = (size_t)val;
++}
++
++static void snd_ftssp_period_min_read(struct snd_info_entry *entry,
++	struct snd_info_buffer *buffer)
++{
++	snd_iprintf(buffer, "%d\n", snd_ftssp_pcm_hw.period_bytes_min);
++}
++
++static void snd_ftssp_period_min_write(struct snd_info_entry *entry,
++	struct snd_info_buffer *buffer)
++{
++	char tmp[128];
++	char *ptr_e;
++	u32 val;
++
++	if (buffer->size == 0)
++		return;
++
++	memset(tmp, 0, 128);
++	snd_info_get_str(tmp, buffer->buffer, 127);
++
++	val = simple_strtoul(tmp, &ptr_e, 10);
++	if (*ptr_e == 'k')
++		val *= 1024;
++	else if (*ptr_e == 'm')
++		val *= 1024 * 1024;
++
++	snd_ftssp_pcm_hw.period_bytes_min = (size_t)val;
++
++	if ((val * snd_ftssp_pcm_hw.periods_max) >
++	    snd_ftssp_pcm_hw.buffer_bytes_max) {
++		INFO("\nWarning: period_bytes(%d) * periods(%d) exceeds hw_buffer_size(%d).\n",
++			snd_ftssp_pcm_hw.period_bytes_min,
++			snd_ftssp_pcm_hw.periods_max,
++			snd_ftssp_pcm_hw.buffer_bytes_max);
++		INFO("         Unexpected access violation may occur!\n");
++	}
++}
++
++static void snd_ftssp_period_max_read(struct snd_info_entry *entry,
++	struct snd_info_buffer *buffer)
++{
++	snd_iprintf(buffer, "%d\n", snd_ftssp_pcm_hw.period_bytes_max);
++}
++
++static void snd_ftssp_period_max_write(struct snd_info_entry *entry,
++	struct snd_info_buffer *buffer)
++{
++	char tmp[128];
++	char *ptr_e;
++	u32 val;
++
++	if (buffer->size == 0)
++		return;
++
++	memset(tmp, 0, 128);
++	snd_info_get_str(tmp, buffer->buffer, 127);
++
++	val = simple_strtoul(tmp, &ptr_e, 10);
++	if (*ptr_e == 'k')
++		val *= 1024;
++	else if (*ptr_e == 'm')
++		val *= 1024 * 1024;
++
++	snd_ftssp_pcm_hw.period_bytes_max = (size_t)val;
++
++	if ((val * snd_ftssp_pcm_hw.periods_max) >
++	    snd_ftssp_pcm_hw.buffer_bytes_max) {
++		INFO("\nWarning: period_bytes(%d) * periods(%d) exceeds hw_buffer_size(%d).\n",
++			snd_ftssp_pcm_hw.period_bytes_max,
++			snd_ftssp_pcm_hw.periods_max,
++			snd_ftssp_pcm_hw.buffer_bytes_max);
++		INFO("         Unexpected access violation may occur!\n");
++	}
++}
++
++static void snd_ftssp_periods_min_read(struct snd_info_entry *entry,
++	struct snd_info_buffer *buffer)
++{
++	snd_iprintf(buffer, "%d\n", snd_ftssp_pcm_hw.periods_min);
++}
++
++static void snd_ftssp_periods_min_write(struct snd_info_entry *entry,
++	struct snd_info_buffer *buffer)
++{
++	char tmp[128];
++	char *ptr_e;
++	u32 val;
++
++	if (buffer->size == 0)
++		return;
++
++	memset(tmp, 0, 128);
++	snd_info_get_str(tmp, buffer->buffer, 127);
++
++	val = simple_strtoul(tmp, &ptr_e, 10);
++	if (*ptr_e == 'k')
++		val *= 1024;
++	else if (*ptr_e == 'm')
++		val *= 1024 * 1024;
++
++	snd_ftssp_pcm_hw.periods_min = (size_t)val;
++
++	if ((val * snd_ftssp_pcm_hw.period_bytes_max) >
++	    snd_ftssp_pcm_hw.buffer_bytes_max) {
++		INFO("\nWarning: period_bytes(%d) * periods(%d) exceeds hw_buffer_size(%d).\n",
++			snd_ftssp_pcm_hw.period_bytes_max,
++			snd_ftssp_pcm_hw.periods_min,
++			snd_ftssp_pcm_hw.buffer_bytes_max);
++		INFO("         Unexpected access violation may occur!\n");
++	}
++}
++
++static void snd_ftssp_periods_max_read(struct snd_info_entry *entry,
++	struct snd_info_buffer *buffer)
++{
++	snd_iprintf(buffer, "%d\n", snd_ftssp_pcm_hw.periods_max);
++}
++
++static void snd_ftssp_periods_max_write(struct snd_info_entry *entry,
++	struct snd_info_buffer *buffer)
++{
++	char tmp[128];
++	char *ptr_e;
++	u32 val;
++
++	if (buffer->size == 0)
++		return;
++
++	memset(tmp, 0, 128);
++	snd_info_get_str(tmp, buffer->buffer, 127);
++
++	val = simple_strtoul(tmp, &ptr_e, 10);
++	if (*ptr_e == 'k')
++		val *= 1024;
++	else if (*ptr_e == 'm')
++		val *= 1024 * 1024;
++
++	snd_ftssp_pcm_hw.periods_max = (size_t)val;
++
++	if ((val * snd_ftssp_pcm_hw.period_bytes_max) >
++	    snd_ftssp_pcm_hw.buffer_bytes_max) {
++		INFO("\nWarning: period_bytes(%d) * periods(%d) exceeds hw_buffer_size(%d).\n",
++			snd_ftssp_pcm_hw.period_bytes_max,
++			snd_ftssp_pcm_hw.periods_max,
++			snd_ftssp_pcm_hw.buffer_bytes_max);
++		INFO("         Unexpected access violation may occur!\n");
++	}
++}
++#endif  //FTSSP_PROC_FS
++
++static inline void ftssp_ac97_init(void)
++{
++	/* Change codec-dependent callbacks to AC97 */
++	ftssp010_substreams[0].pmu_set_clocking = pmu_set_ac97_clocking;
++	ftssp010_substreams[0].hw_config        = ftssp010_config_ac97_play;
++	ftssp010_substreams[1].pmu_set_clocking = pmu_set_ac97_clocking;
++	ftssp010_substreams[1].hw_config        = ftssp010_config_ac97_rec;
++
++	snd_ftssp_playback_ops.copy_user = snd_ftssp_playback_copy;
++	snd_ftssp_playback_ops.copy_kernel = snd_ftssp_playback_copy;
++	snd_ftssp_capture_ops.copy_user  = snd_ftssp_capture_copy;
++	snd_ftssp_capture_ops.copy_kernel  = snd_ftssp_capture_copy;
++
++	snd_ftssp_pcm_hw.rates          = AC97_CODEC_SAMPLE_RATES;
++	snd_ftssp_pcm_hw.rate_min       = AC97_CODEC_SAMPLE_RATE_MIN;
++	snd_ftssp_pcm_hw.rate_max       = AC97_CODEC_SAMPLE_RATE_MAX;
++	snd_ftssp_pcm_hw.formats        = AC97_CODEC_FORMATS;
++	snd_ftssp_pcm_hw.buffer_bytes_max = AC97_HW_BUFFER_BYTES_MAX;
++	snd_ftssp_pcm_hw.period_bytes_min = AC97_HW_PERIOD_BYTES_MIN;
++	snd_ftssp_pcm_hw.period_bytes_max = AC97_HW_PERIOD_BYTES_MAX;
++	snd_ftssp_pcm_hw.periods_min      = AC97_HW_PERIODS_MIN;
++	snd_ftssp_pcm_hw.periods_max      = AC97_HW_PERIODS_MAX;
++}
++
++static int ftssp_alsa_init(struct platform_device *pdev)
++{
++	ftssp_chip *chip;
++	int err;
++
++	if (init_hw(cardno, ac97, NULL))
++		return -EIO;
++
++	if (ac97)
++		ftssp_ac97_init();
++
++	DBG("%s: FTSSP010 #%d (Physical Addr=0x%08X), mode: %s\n",
++		__func__,
++		cardno, SSP_FTSSP010_pa_base[cardno],
++		ac97 ? "ac97" : "i2s");
++
++	err = snd_card_new(&pdev->dev, SNDRV_DEFAULT_IDX1, FTSSP_CARD_ID,
++			THIS_MODULE, sizeof(ftssp_chip), &ftssp_cards[cardno]);
++
++	if (err < 0)
++		return err;
++
++	if (ac97) {
++		sprintf(ftssp_cards[cardno]->driver, FTSSP_DRIVER_NAME);
++		sprintf(ftssp_cards[cardno]->shortname,
++			FTSSP_DRIVER_NAME "_ac97");
++		sprintf(ftssp_cards[cardno]->longname,
++			FTSSP_DRIVER_NAME "_ac97 controller");
++	} else {
++		sprintf(ftssp_cards[cardno]->driver, FTSSP_DRIVER_NAME);
++		sprintf(ftssp_cards[cardno]->shortname,
++			FTSSP_DRIVER_NAME "_i2s");
++		sprintf(ftssp_cards[cardno]->longname,
++			FTSSP_DRIVER_NAME "_i2s controller");
++	}
++
++	// PCM
++	chip = (ftssp_chip *)(ftssp_cards[cardno]->private_data);
++	chip->pdev = pdev;
++	chip->card = ftssp_cards[cardno];
++
++	err = snd_ftssp_new_pcm(chip);
++	if (err) {
++		ERR("%s, Can't new PCM devices\n", __func__);
++		return -ENODEV;
++	}
++
++#if (FTSSP_PROC_FS)
++	// new a proc entries subordinate to card->proc_root for debugging
++	// /proc/card#/buf_max
++	snd_card_proc_new(chip->card, "buf_max", &chip->info_buf_max);
++	if (chip->info_buf_max) {
++		chip->info_buf_max->c.text.read = snd_ftssp_buf_max_read;
++		chip->info_buf_max->c.text.write = snd_ftssp_buf_max_write;
++	}
++	// /proc/card#/period_min
++	snd_card_proc_new(chip->card, "period_size_min",
++		&chip->info_period_min);
++	if (chip->info_period_min) {
++		chip->info_period_min->c.text.read = snd_ftssp_period_min_read;
++		chip->info_period_min->c.text.write =
++			snd_ftssp_period_min_write;
++	}
++	// /proc/card#/period_max
++	snd_card_proc_new(chip->card, "period_size_max",
++		&chip->info_period_max);
++	if (chip->info_period_max) {
++		chip->info_period_max->c.text.read = snd_ftssp_period_max_read;
++		chip->info_period_max->c.text.write =
++			snd_ftssp_period_max_write;
++	}
++	// /proc/card#/periods_min
++	snd_card_proc_new(chip->card, "periods_min", &chip->info_periods_min);
++	if (chip->info_periods_min) {
++		chip->info_periods_min->c.text.read =
++			snd_ftssp_periods_min_read;
++		chip->info_periods_min->c.text.write =
++			snd_ftssp_periods_min_write;
++	}
++	// /proc/card#/periods_max
++	snd_card_proc_new(chip->card, "periods_max", &chip->info_periods_max);
++	if (chip->info_periods_max) {
++		chip->info_periods_max->c.text.read =
++			snd_ftssp_periods_max_read;
++		chip->info_periods_max->c.text.write =
++			snd_ftssp_periods_max_write;
++	}
++#endif
++
++	// Register the card to ALSA
++	err = snd_card_register(chip->card);
++	if (err == 0)
++		INFO("%s card registered!\n", FTSSP_CARD_ID);
++
++	return err;
++}
++
++static int ftssp_alsa_i2c_i2s_exit(void)
++{
++	DBG("%s, cleaning up\n", __func__);
++
++	#ifndef CONFIG_SND_FTSSP010_AC97
++		i2c_del_driver(&alc5630_driver);
++	#endif
++
++	dmad_channel_free(&dma_chreq_tx);
++	dmad_channel_free(&dma_chreq_rx);
++	snd_card_free(ftssp_cards[cardno]);
++
++	return 0;
++}
++
++
++static int atf_ac97_probe(struct platform_device *pdev)
++{
++	int (*read_fixup)(void __iomem *addr, unsigned int val,
++		unsigned int shift_bits);
++	struct resource *r, *mem = NULL;
++	size_t mem_size;
++	int ret;
++
++	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	ssp2_pbase = r->start;
++	mem_size = resource_size(r);
++	mem = request_mem_region(r->start, mem_size, pdev->name);
++	if (mem == NULL) {
++		ERR("%s: request_mem_region failed\n", __func__);
++		return -ENXIO;
++	}
++
++	ssp2_vbase = (u32 *)ioremap(mem->start, mem_size);
++
++	/* Check SSP revision register */
++	read_fixup = symbol_get(readl_fixup);
++	ret = read_fixup((void __iomem *)(unsigned long)ssp2_vbase + 0x40,  0x00011506, 0);
++	symbol_put(readl_fixup);
++	if (!ret) {
++		ERR("%s: fail to read revision reg, bitmap no support ftssp\n", __func__);
++		return -ENXIO;
++	}
++
++	return ftssp_alsa_init(pdev);
++}
++
++static int atf_ac97_remove(struct platform_device *pdev)
++{
++	return ftssp_alsa_i2c_i2s_exit();
++}
++
++static const struct of_device_id atf_ac97_of_match[] = {
++	{ .compatible = "andestech,atfac97", },
++	{},
++};
++
++static struct platform_driver atf_ac97_driver = {
++	.driver = {
++		.name = "atfssp",
++		.owner = THIS_MODULE,
++		.of_match_table = atf_ac97_of_match,
++	},
++	.probe = atf_ac97_probe,
++	.remove = atf_ac97_remove,
++};
++module_platform_driver(atf_ac97_driver);
+diff --git a/sound/v5/FTSSP010_UDA1345TS.h b/sound/v5/FTSSP010_UDA1345TS.h
+new file mode 100644
+index 000000000000..5be819c8c954
+--- /dev/null
++++ b/sound/v5/FTSSP010_UDA1345TS.h
+@@ -0,0 +1,82 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (C) 2005 Andes Technology Corporation.
++ */
++
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/delay.h>
++#include <linux/dma-mapping.h>
++
++/* Programming sequence:
++ *	Suppose your playback format is 44.1KHz, 16 bit stereo
++ *	PIO mode:
++ *		pmu_set_i2s_clocking(44100);
++ *		ftssp010_config(1, 44100, 0);
++ *		ftssp010_start_tx(0);
++ *		while(ftssp010_tx_fifo_not_full()) {
++ *			Poke_your_PCM_data_to_FTSSP_data_port
++ *
++ *	DMA mode:
++ *		pmu_set_i2s_clocking(44100);
++ *		ftssp010_config(1, 44100);
++ *		<setup DMA controller, acquire DMA channel>
++ *		pmu_set_i2s_dma_channel(ch);
++ *		ftssp010_start_tx(1);
++ *		<wait DMA to complete..>
++ *		ftssp010_stop_tx();
++ */
++#define SSP_FTSSP010_COUNT	1
++#define PMU_BASE			(pmu_base)
++#define FTSSP010_DATA(x)		((u32 *)((uintptr_t)ssp2_vbase+0x18))
++#define FTSSP010_DATA_PA(x)		((u32 *)((uintptr_t)ssp2_pbase+0x18))
++
++/* Initialize FTSSP010 to output to UDA1345TS via I2S */
++#define FTSSP010_CONTROL0(x)		((u32 *)((uintptr_t)ssp2_vbase+0x0))
++#define FTSSP010_CONTROL0_OPM_STEREO	0xC
++#define FTSSP010_CONTROL0_OPM_MONO	0x8
++
++#define FTSSP010_CONTROL1(x)		((u32 *)((uintptr_t)ssp2_vbase+0x4))
++#define FTSSP010_CONTROL2(x)		((u32 *)((uintptr_t)ssp2_vbase+0x8))
++#define FTSSP010_STATUS(x)		((u32 *)((uintptr_t)ssp2_vbase+0xC))
++#define FTSSP010_INT_CONTROL(x)		((u32 *)((uintptr_t)ssp2_vbase+0x10))
++#define FTSSP010_INT_STATUS(x)		((u32 *)((uintptr_t)ssp2_vbase+0x14))
++#define FTSSP010_DATA(x)		((u32 *)((uintptr_t)ssp2_vbase+0x18))
++#define FTSSP010_INFO(x)		((u32 *)((uintptr_t)ssp2_vbase+0x1C))
++#define FTSSP010_ACLINK_SLOT_VALID(x)	((u32 *)((uintptr_t)ssp2_vbase+0x20))
++#define FTSSP010_ACLINK_CMD(x)		((u32 *)((uintptr_t)ssp2_vbase+0x28))
++#define FTSSP010_ACLINK_CMD_DATA(x)	((u32 *)((uintptr_t)ssp2_vbase+0x2c))
++
++extern resource_size_t	ssp2_pbase;
++extern u32 __iomem *ssp2_vbase;
++
++/* Drive PMU to generate I2S main clocking signal. Also configures PMU to set correct DMA REQ/ACK pair */
++extern void pmu_set_i2s_clocking(unsigned int speed);
++/* Programs PMU to set I2S/AC97 DMA Channel, ch=0-7 */
++extern void pmu_set_i2s_dma_channel(unsigned int ch);
++
++/* Drive PMU to generate AC97 main clocking signal. Also configures PMU to set correct DMA REQ/ACK pair */
++extern void pmu_set_ac97_clocking(unsigned int speed);
++
++/* Returns FTSSP010 status */
++extern void ftssp010_set_int_control(int cardno, unsigned int val);
++extern int ftssp010_get_status(int cardno);
++extern unsigned int ftssp010_get_int_status(int cardno);
++/* Polls FIFO full register */
++extern int  ftssp010_tx_fifo_not_full(int cardno);
++/* Configure FTSSP010 to a given sampling rate and channel number */
++extern void ftssp010_config_tx(int cardno, unsigned int is_stereo, unsigned int speed, int use8bit);
++extern void ftssp010_config_rx(int cardno, unsigned int is_stereo, unsigned int speed, int use8bit);
++
++/* Configure FTSSP010 to a given sampling rate and channel number */
++extern void ftssp010_config_ac97_play(int cardno, unsigned int is_stereo, unsigned int speed, int use8bit);
++
++extern void ftssp010_config_ac97_rec(int cardno, unsigned int is_stereo, unsigned int speed, int use8bit);
++
++/* Initialize FTSSP010 to output to UDA1345TS via I2S */
++extern void ftssp010_start_tx(int cardno, unsigned int use_dma);
++extern void ftssp010_start_rx(int cardno, unsigned int use_dma);
++extern void ftssp010_stop_tx(int cardno);
++extern void ftssp010_stop_rx(int cardno);
++extern int init_hw(unsigned int cardno, unsigned int ac97, struct i2c_client *client);
++
+diff --git a/sound/v5/FTSSP010_W83972D.h b/sound/v5/FTSSP010_W83972D.h
+new file mode 100644
+index 000000000000..35f484163d95
+--- /dev/null
++++ b/sound/v5/FTSSP010_W83972D.h
+@@ -0,0 +1,25 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ *  linux/driver/mmc/ftsdc010.h - Andestech MMC/SD driver
++ *  Andestech FTSSP010 Device Driver
++ *
++ *  Andestech (C) 2005 Faraday Corp. (http://www.Andestech.com)
++ *
++ *  All Rights Reserved
++ */
++
++
++/* Register Index for Winbond W83972D AC97 Codec */
++#define W83972D_RESET			0x0
++#define W83972D_STEREO_OUTPUT_CONTROL	0x2
++#define W83972D_MIC_VOLUME		0xE
++#define W83972D_LINE_IN_VOLUME		0x10
++#define W83972D_AUX_INPUT_CONTROL	0x16
++#define W83972D_PCM_OUTPUT_CONTROL	0x18
++#define W83972D_RECORD_SELECT		0x1A
++#define W83972D_RECORD_GAIN		0x1C
++#define W83972D_RECORD_GAIN_MIC		0x1E
++#define W83972D_EXT_AUDIO_CONTROL	0x2A
++#define W83972D_DAC_SAMPLE_RATE_CONTROL	0x2C
++#define W83972D_VER1			0x7C
++#define W83972D_VER2			0x7E
+diff --git a/sound/v5/FTSSP010_lib.c b/sound/v5/FTSSP010_lib.c
+new file mode 100644
+index 000000000000..d2cedd282251
+--- /dev/null
++++ b/sound/v5/FTSSP010_lib.c
+@@ -0,0 +1,540 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2018 Andes Technology Corporation
++ *
++ */
++
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/delay.h>
++#include <linux/i2c.h>
++#include <soc/andes/dmad.h>
++#include <linux/dma-mapping.h>
++#include "FTSSP010_UDA1345TS.h"
++
++/* control0 register */
++#define NACK		0x40000000
++/* control2 register value */
++#define SSP_ACCRST                  0x20    /* AC-Link Cold Reset Enable */
++#define SSP_ACWRST                  0x10    /* AC-Link Warm Reset Enable */
++#define SSP_TXFCLR                  0x8     /* TX FIFO Clear */
++#define SSP_RXFCLR                  0x4     /* RX FIFO Clear */
++#define SSP_TXDOE                   0x2     /* TX Data Output Enable */
++#define SSP_SSPEN                   0x1     /* SSP Enable */
++#define SSP_TFVE                    0x1f000 /* TX FIFO Valid Entries */
++#define SSP_RFVE                    0x1f0   /* RX FIFO Valid Entries */
++#define SSP_FIFO_THOD               0xc400
++/* status register */
++#define WBUSY			    0x08000000
++#define ACTXDATA		    0x01000000
++#define SSP_BUSY                    0x4
++
++u32 __iomem *ssp2_vbase;
++resource_size_t	ssp2_pbase;
++
++#ifdef CONFIG_PLAT_AG101P
++#define PMU_PDLLCR1		(pmu_base+0x34)
++#define PMU_MFPSR		(pmu_base+0x28)
++#define PMU_I2SAC97_REQACKCFG	(pmu_base+0xbc)
++#define PMU_C4			(pmu_base+0xc4)
++#endif
++#define SSPCLK_TO_SCLKDIV(sspclk_div2, bps)	((sspclk_div2)/(bps)-1)
++
++// Each client has this additional data
++struct alc5630_data {
++	struct i2c_client *client;
++	struct delayed_work     work;
++	unsigned long gpio2_value;
++	struct mutex mtx;
++};
++
++static int i2s_alc5630_read(unsigned int raddr, char *data, struct i2c_client *client)
++{
++#ifndef CONFIG_SND_FTSSP010_AC97
++	struct i2c_adapter *adap =  client->adapter;
++	int ret;
++#endif
++	struct i2c_msg msg;
++	int i2c_value;
++
++	//Reading ALC5630 register
++	msg.addr = raddr;
++	msg.flags = (client->flags & I2C_M_TEN) | I2C_M_RD;
++	msg.len = 1;
++	msg.buf = (char *)data;
++
++	//ret = i2c_transfer(adap, &msg, 1);
++#ifndef CONFIG_SND_FTSSP010_AC97
++	ret = i2c_transfer(adap, &msg, 1);
++
++	if (ret != 0) {
++		pr_err("i2c read failed\n");
++		return -1;
++	}
++#endif
++
++	i2c_value = (data[0]&0xff) << 8 | (data[1]&0xff);
++	return i2c_value;
++}
++
++static void i2s_alc5630_write(unsigned int raddr, unsigned int data, struct i2c_client *client)
++{
++#ifndef CONFIG_SND_FTSSP010_AC97
++	struct i2c_adapter *adap =  client->adapter;
++	int ret;
++#endif
++	struct i2c_msg msg;
++	char buf[3];
++
++	//Writing ALC5630 register
++	msg.addr = raddr;
++	msg.flags = (client->flags & I2C_M_TEN) | ~I2C_M_RD;
++	msg.len = 1;
++	buf[0] = (data >> 8) & 0xff;
++	buf[1] =  data & 0xff;
++	msg.buf = (char *)buf;
++	//ret = i2c_transfer(adap, &msg, 1);
++#ifndef CONFIG_SND_FTSSP010_AC97
++	ret = i2c_transfer(adap, &msg, 1);
++	if (ret != 0)
++		pr_err("i2c write failed\n");
++
++#endif
++}
++
++static void i2s_al5630_slave_stereo_mode(struct i2c_client *client)
++{
++	i2s_alc5630_write(0x34, 0x8000, client); // codec slave mode
++	i2s_alc5630_write(0x0c, 0x1010, client);
++	i2s_alc5630_write(0x10, 0xee03, client);
++	i2s_alc5630_write(0x1c, 0x0748, client);
++	i2s_alc5630_write(0x62, 0x0000, client);
++}
++
++//End ADD by river 2011.01.26
++
++
++/* Drive PMU to generate I2S main clocking signal. Also configures PMU to set correct DMA REQ/ACK pair */
++void pmu_set_i2s_clocking(unsigned int speed)
++{
++	unsigned int pmu_pdllcr1; /* PLL/DLL Control Register 1 */
++	/* Configure PMU to generate I2S main clock */
++	#ifdef CONFIG_PLAT_AG101
++	pmu_pdllcr1 = ioread32(PMU_PDLLCR1)&0xfff0ffff; /* Bit 19-16 are relevent */
++	#endif
++
++	switch (speed) {
++	case 8000:
++		pmu_pdllcr1 |= 0x00000000; /* 2.048MHz x2 */
++		break;
++	case 11025:
++		pmu_pdllcr1 |= 0x00010000; /* 2.8224MHz x2 */
++		break;
++	case 16000:
++		pmu_pdllcr1 |= 0x00020000; /* 4.096MHz x2 */
++		break;
++	case 22050:
++		pmu_pdllcr1 |= 0x00030000; /* 5.6448MHz x2 */
++		break;
++	case 32000:
++		pmu_pdllcr1 |= 0x00040000; /* 8.192MHz x2 */
++		break;
++	case 44100:
++		pmu_pdllcr1 |= 0x00050000; /* 11.2896Mhz x2 */
++		break;
++	case 48000:
++		pmu_pdllcr1 |= 0x00060000; /* 12.2880MHz x2 */
++		break;
++	default:
++		pr_err("%s: Unknown i2s speed %d\n", __func__, speed);
++	};
++
++	#ifdef CONFIG_PLAT_AG101
++	iowrite32(pmu_pdllcr1, PMU_PDLLCR1);
++	/* Configure PMU to select I2S output (instead of AC97) */
++	iowrite32(ioread32(PMU_MFPSR)&(~(1<<3)), PMU_MFPSR); /* clear bit 3 of MFPSR*/
++	#endif
++}
++
++/* Drive PMU to generate AC97 main clocking signal. Also configures PMU to set correct DMA REQ/ACK pair */
++void pmu_set_ac97_clocking(unsigned int speed)
++{
++	/* do nothing here */
++}
++
++/* Programs PMU to set I2S/AC97 DMA Channel, ch=0-7 */
++void pmu_set_i2s_dma_channel(unsigned int ch)
++{
++	#ifdef CONFIG_PLAT_AG101
++	ch &= 0x7;
++	//iowrite32((ioread32(PMU_I2SAC97_REQACKCFG)&(~0x7))|ch, PMU_I2SAC97_REQACKCFG);
++	iowrite32(0xa, PMU_I2SAC97_REQACKCFG);
++	iowrite32(0xb, PMU_C4);
++	#endif
++}
++
++static struct i2c_client *g_i2c_client;
++void ftssp010_set_int_control(int cardno, unsigned int val)
++{
++	iowrite32(val, FTSSP010_INT_CONTROL(cardno));
++}
++
++unsigned int ftssp010_get_int_status(int cardno)
++{
++	return ioread32(FTSSP010_INT_STATUS(cardno));
++}
++
++int ftssp010_get_status(int cardno)
++{
++	return ioread32(FTSSP010_STATUS(cardno));
++}
++
++int ftssp010_tx_fifo_not_full(int cardno)
++{
++	return (ioread32(FTSSP010_STATUS(cardno)) & 0x2) == 0x2;
++}
++
++int ftssp010_tx_fifo_vaild_entries(int cardno)
++{
++	return (ioread32(FTSSP010_STATUS(cardno))>>12) & 0x1f;
++}
++
++#include "FTSSP010_W83972D.h"
++
++// AC97 codec tags
++#define TAG_COMMAND	0xe000
++#define TAG_DATA	0x9800 /* Slot 3/4 */
++#define TAG_DATA_MONO	0x9000 /* Slot 3 */
++//#define TAG_DATA_LINE_IN	0x9000	/* Slot 3 */
++
++void ftssp010_ac97_write_codec(unsigned int reg, unsigned int data)
++{
++	int cnt = 0x1000000;
++
++	while ((ioread32(FTSSP010_STATUS(0)) & ACTXDATA) && cnt--)
++		;
++
++	if (!cnt)
++		pr_err("wait transfer buffer timeout\n");
++
++	iowrite32(0x0,  FTSSP010_INT_CONTROL(0));/*Disable interrupts & DMA req */
++	iowrite32(ioread32(FTSSP010_CONTROL2(0)) | (SSP_TXFCLR|SSP_RXFCLR), FTSSP010_CONTROL2(0));
++	iowrite32(TAG_COMMAND, FTSSP010_ACLINK_SLOT_VALID(0));
++	iowrite32(((reg<<16)|data), FTSSP010_ACLINK_CMD(0));
++	iowrite32(ioread32(FTSSP010_CONTROL2(0)) | (SSP_SSPEN|SSP_TXDOE), FTSSP010_CONTROL2(0));
++	cnt = 0x1000000;
++	while ((ioread32(FTSSP010_STATUS(0))&WBUSY) && cnt--)
++		;
++
++	if (!cnt)
++		pr_err("write ac97 timeout\n");
++	iowrite32(ioread32(FTSSP010_CONTROL2(0)) & (~(SSP_SSPEN|SSP_TXDOE)), FTSSP010_CONTROL2(0));
++}
++
++/*	Configure FTSSP010 to a given sampling rate and channel number
++ *	for AC97 mode in playback mode
++ */
++int init_hw(unsigned int cardno, unsigned int ac97, struct i2c_client *client)
++{
++	int cnt = 0x1000000;
++
++	g_i2c_client = client;
++
++	if (ac97) {
++		// Clear FFMT
++		iowrite32(ioread32(FTSSP010_CONTROL0(cardno)) & 0xfff, FTSSP010_CONTROL0(cardno));
++		// AC_link
++		iowrite32(ioread32(FTSSP010_CONTROL0(cardno)) | 0x4000, FTSSP010_CONTROL0(cardno));
++
++		iowrite32(0xc400,  FTSSP010_INT_CONTROL(cardno));
++		if ((ioread32(FTSSP010_INT_CONTROL(cardno))) != 0xc400)
++			return -EIO;
++
++		iowrite32(0x20, FTSSP010_CONTROL2(cardno));  /* Cold Reset AC-Link */
++		while (ioread32(FTSSP010_CONTROL2(cardno)) && cnt--)
++			;
++		if (!cnt)
++			return -EIO;
++
++	} else {
++		#ifdef CONFIG_PLAT_AG101
++		iowrite32(ioread32(PMU_MFPSR)&(~(1<<3)), PMU_MFPSR); /* clear bit 3 of MFPSR*/
++		iowrite32(0xa, PMU_I2SAC97_REQACKCFG);
++		iowrite32(0xb, PMU_C4);
++		#endif
++
++		i2s_al5630_slave_stereo_mode(client);
++		iowrite32(0x311c, FTSSP010_CONTROL0(cardno));	/* I2S Master */
++		iowrite32(0, FTSSP010_CONTROL1(cardno));	        /* I2S Master */
++		iowrite32(0xc400, FTSSP010_INT_CONTROL(cardno));	/* I2S Master */
++		iowrite32(0x40, FTSSP010_CONTROL2(cardno)); /* Reset AC-Link */
++	}
++	return 0;
++}
++static void _ftssp010_config_ac97(int cardno, unsigned int is_stereo, unsigned int speed, int is_rec)
++{
++	int cnt = 0x1000000;
++	/* Codec initialization */
++	iowrite32(ioread32(FTSSP010_CONTROL0(cardno))|NACK, FTSSP010_CONTROL0(cardno));
++	ftssp010_ac97_write_codec(W83972D_RESET, 0);
++
++	if (is_rec) {	/* Recording */
++		/* Mute output */
++		ftssp010_ac97_write_codec(W83972D_STEREO_OUTPUT_CONTROL, 0x8000);
++		/* Mute PCM */
++		//ftssp010_ac97_write_codec(W83972D_PCM_OUTPUT_CONTROL, 0x8000);
++
++		/* Register 0x10, Line-In/Mic Gain */
++		//ftssp010_ac97_write_codec(W83972D_AUX_INPUT_CONTROL, 0x808);
++		/* FIXME: REC from line-in only */
++
++		/* Register 0x1A, Record Select=StereoMix */
++		ftssp010_ac97_write_codec(W83972D_RECORD_SELECT, 0x0000 /*404*/);
++		ftssp010_ac97_write_codec(W83972D_MIC_VOLUME, 0x0040);
++		/* Register 0x1C, Record Gain=0db */
++		ftssp010_ac97_write_codec(W83972D_RECORD_GAIN_MIC, 0x0808);
++		ftssp010_ac97_write_codec(W83972D_PCM_OUTPUT_CONTROL, 0x8000);
++		ftssp010_ac97_write_codec(W83972D_RECORD_GAIN, 0x0808);
++	} else {	/* Playback */
++		/* Register 0x10, Mute Line-In/Mic Gain */
++		ftssp010_ac97_write_codec(W83972D_LINE_IN_VOLUME, 0x8000);
++		ftssp010_ac97_write_codec(W83972D_MIC_VOLUME, 0x8000);
++
++		/* Register 0x1A, Mute Record Gains */
++		ftssp010_ac97_write_codec(W83972D_RECORD_GAIN, 0x8000);
++		ftssp010_ac97_write_codec(W83972D_RECORD_GAIN_MIC, 0x8000);
++
++		/* Output */
++		ftssp010_ac97_write_codec(W83972D_STEREO_OUTPUT_CONTROL, 0);
++		ftssp010_ac97_write_codec(W83972D_PCM_OUTPUT_CONTROL, 0x808);
++	}
++
++	ftssp010_ac97_write_codec(W83972D_EXT_AUDIO_CONTROL, 0x1);
++	ftssp010_ac97_write_codec(W83972D_DAC_SAMPLE_RATE_CONTROL, speed);
++
++	iowrite32(ioread32(FTSSP010_CONTROL0(cardno))&~NACK, FTSSP010_CONTROL0(cardno));
++
++	/* Start data transfer */
++//	if(is_rec) {
++//		iowrite32(TAG_DATA_LINE_IN, FTSSP010_ACLINK_SLOT_VALID(cardno));
++//	} else {
++		if (is_stereo)
++			iowrite32(TAG_DATA, FTSSP010_ACLINK_SLOT_VALID(cardno));
++		else
++			iowrite32(TAG_DATA_MONO, FTSSP010_ACLINK_SLOT_VALID(cardno));
++//	}
++	while ((ioread32(FTSSP010_INT_STATUS(cardno)) & 0x3) && cnt--)
++		;
++}
++
++void ftssp010_config_ac97_play(int cardno, unsigned int is_stereo, unsigned int speed, int use8bit)
++{
++	_ftssp010_config_ac97(cardno, is_stereo, speed, 0);
++}
++
++void ftssp010_config_ac97_rec(int cardno, unsigned int is_stereo, unsigned int speed, int use8bit)
++{
++	_ftssp010_config_ac97(cardno, is_stereo, speed, 1);
++}
++
++/*
++ *	Configure FTSSP010 to a given sampling rate and channel number
++ *	for I2S mode
++ */
++void ftssp010_config(int cardno, unsigned int is_stereo, unsigned int speed, int width, int is_rec)
++{
++	int use8bit = (width == 1 ? 1 : 0);
++	unsigned int opm, bps = 2 * (use8bit ? 8 : 16);	/* bits per 1 second audio data. */
++	unsigned int fpclkdiv = 0;
++	struct alc5630_data *alc5630;
++	char data[3];
++
++	opm = is_stereo ? FTSSP010_CONTROL0_OPM_STEREO : FTSSP010_CONTROL0_OPM_MONO;
++	iowrite32(0x3100 | opm, FTSSP010_CONTROL0(cardno));	/* I2S Master */
++
++	/* configures CONTROL1 to use suitable clock divider.
++	 * the I2S clock is generated from PMU.
++	 */
++	bps *= speed;
++	switch (speed) {
++	case 8000:	/* SCLK : 256KHZ */
++		i2s_alc5630_write(0x44, 0x3ea0, g_i2c_client);
++		i2s_alc5630_write(0x60, 0x3174, g_i2c_client);
++		i2s_alc5630_write(0x62, 0x1010, g_i2c_client);
++		fpclkdiv = 0xBB;
++		break;
++	case 11025:	/* SCLK : 352.8KHZ */
++		i2s_alc5630_write(0x44, 0x3ea0, g_i2c_client);
++		i2s_alc5630_write(0x60, 0x3174, g_i2c_client);
++		i2s_alc5630_write(0x62, 0x1010, g_i2c_client);
++		fpclkdiv = 0x88;
++		break;
++	case 16000:	/* SCLK : 512KHZ */
++		i2s_alc5630_write(0x44, 0x3ea0, g_i2c_client);
++		i2s_alc5630_write(0x60, 0x3174, g_i2c_client);
++		i2s_alc5630_write(0x62, 0x1010, g_i2c_client);
++		fpclkdiv = 0x5f;
++		break;
++	case 22050:	/* SCLK : 705.6KHZ */
++		i2s_alc5630_write(0x44, 0x3ea0, g_i2c_client);
++		i2s_alc5630_write(0x60, 0x3174, g_i2c_client);
++		i2s_alc5630_write(0x62, 0x1010, g_i2c_client);
++		fpclkdiv = 0x45;
++		break;
++	case 24000:	/* SCLK : 768KHZ */
++		i2s_alc5630_write(0x44, 0x3ea0, g_i2c_client);
++		i2s_alc5630_write(0x60, 0x3174, g_i2c_client);
++		i2s_alc5630_write(0x62, 0x1010, g_i2c_client);
++		fpclkdiv = 0x3e;
++		break;
++	case 32000:	/* SCLK : 1024KHZ */
++		i2s_alc5630_write(0x44, 0x3ea0, g_i2c_client);
++		i2s_alc5630_write(0x60, 0x3174, g_i2c_client);
++		i2s_alc5630_write(0x62, 0x1010, g_i2c_client);
++		fpclkdiv = 0x2f;
++		break;
++	case 44100:	/* SCLK : 1.4112 MHZ */ /* 96 MHZ */
++		i2s_alc5630_write(0x44, 0x3ea0, g_i2c_client);
++		i2s_alc5630_write(0x60, 0x3174, g_i2c_client);
++		i2s_alc5630_write(0x62, 0x1010, g_i2c_client);
++		fpclkdiv = 0x22;
++		break;
++	case 48000: /* SCLK : 1.536 MHZ */
++		i2s_alc5630_write(0x44, 0x3ea0, g_i2c_client);
++		i2s_alc5630_write(0x60, 0x3174, g_i2c_client);
++		i2s_alc5630_write(0x62, 0x1010, g_i2c_client);
++		fpclkdiv = 0x1f;
++		break;
++	default:
++		pr_err("%s: unsupported speed %d\n", __func__, speed);
++		return;
++	};
++
++	if (!use8bit)
++		iowrite32(0xf0000|fpclkdiv, FTSSP010_CONTROL1(cardno));	/*  16bits */
++	else
++		iowrite32(0x70000|fpclkdiv, FTSSP010_CONTROL1(cardno));	/*  8bits */
++
++	if (is_rec)
++		iowrite32(ioread32(FTSSP010_INT_CONTROL(cardno))&(~0x0f15),  FTSSP010_INT_CONTROL(cardno));		/* Disable all interrupts */
++	else
++		iowrite32(ioread32(FTSSP010_INT_CONTROL(cardno))&(~0xf02a),  FTSSP010_INT_CONTROL(cardno));		/* Disable all interrupts */
++
++	iowrite32(0xc, FTSSP010_CONTROL2(cardno));	/* clear FIFOs */
++	alc5630 = i2c_get_clientdata(g_i2c_client);
++
++	if (is_rec) {
++		pr_err("%s for I2S mode in record.\n", __func__);
++		i2s_alc5630_write(0x0e, 0x0808, g_i2c_client);
++		i2s_alc5630_write(0x10, 0xee03, g_i2c_client);
++		i2s_alc5630_write(0x22, 0x0500, g_i2c_client);
++		i2s_alc5630_write(0x1c, 0x0748, g_i2c_client);
++		i2s_alc5630_write(0x14, 0x1f1f, g_i2c_client);
++		i2s_alc5630_write(0x12, 0xdfdf, g_i2c_client);
++		i2s_alc5630_write(0x26, 0x000f, g_i2c_client);
++		i2s_alc5630_write(0x3a, 0xffff, g_i2c_client);
++		i2s_alc5630_write(0x3c, 0xffff, g_i2c_client);
++		i2s_alc5630_write(0x3e, 0x80cf, g_i2c_client);
++		i2s_alc5630_write(0x44, 0x3ea0, g_i2c_client);
++		i2s_alc5630_write(0x42, 0x2000, g_i2c_client);
++		i2s_alc5630_write(0x40, 0x8c0a, g_i2c_client);
++		i2s_alc5630_write(0x02, 0x8080, g_i2c_client);
++		i2s_alc5630_write(0x04, 0x0000, g_i2c_client);
++	} else {
++		i2s_alc5630_write(0x0e, 0x0808, g_i2c_client);
++		i2s_alc5630_write(0x12, 0xcbcb, g_i2c_client);
++		i2s_alc5630_write(0x14, 0x7f7f, g_i2c_client);
++		i2s_alc5630_write(0x22, 0x0000, g_i2c_client);
++		i2s_alc5630_write(0x3e, 0x8000, g_i2c_client);
++		i2s_alc5630_write(0x40, 0x0c0a, g_i2c_client);
++		i2s_alc5630_write(0x42, 0x0000, g_i2c_client);
++		i2s_alc5630_write(0x26, 0x0000, g_i2c_client);
++		i2s_alc5630_write(0x3c, 0x2000, g_i2c_client);
++		i2s_alc5630_write(0x3a, 0x0002, g_i2c_client);
++		i2s_alc5630_write(0x3c, 0xa330, g_i2c_client);
++		i2s_alc5630_write(0x3a, 0xc843, g_i2c_client);
++		i2s_alc5630_write(0x3A, i2s_alc5630_read(0x3A, data, g_i2c_client)|0x0002, g_i2c_client);
++		i2s_alc5630_write(0x04, i2s_alc5630_read(0x04, data, g_i2c_client)|0x8080, g_i2c_client);
++		i2s_alc5630_write(0x3A, i2s_alc5630_read(0x3A, data, g_i2c_client)|0x0040, g_i2c_client);
++		i2s_alc5630_write(0x3c, i2s_alc5630_read(0x3C, data, g_i2c_client)|0x2000, g_i2c_client);
++		i2s_alc5630_write(0x3E, i2s_alc5630_read(0x3E, data, g_i2c_client)|0xfC00, g_i2c_client);
++		i2s_alc5630_write(0x5E, i2s_alc5630_read(0x5E, data, g_i2c_client)|0x0100, g_i2c_client);
++		i2s_alc5630_write(0x3A, i2s_alc5630_read(0x3A, data, g_i2c_client)|0x0200, g_i2c_client);
++		i2s_alc5630_write(0x3A, i2s_alc5630_read(0x3A, data, g_i2c_client)|0x0100, g_i2c_client);
++		i2s_alc5630_write(0x5E, i2s_alc5630_read(0x5E, data, g_i2c_client) & 0xfeff, g_i2c_client);
++		i2s_alc5630_write(0x1c, 0x0748, g_i2c_client);
++		i2s_alc5630_write(0x26, 0x000f, g_i2c_client);
++
++		if (alc5630->gpio2_value == 0x0)
++			i2s_alc5630_write(0x3A, (i2s_alc5630_read(0x3A, data, g_i2c_client) & 0xFBFF)|0x0040, g_i2c_client);
++		else
++			i2s_alc5630_write(0x3A, i2s_alc5630_read(0x3A, data, g_i2c_client)|0x0440, g_i2c_client);
++
++		i2s_alc5630_write(0x5E, i2s_alc5630_read(0x5E, data, g_i2c_client)|0x0020, g_i2c_client);
++		i2s_alc5630_write(0x5E, i2s_alc5630_read(0x5E, data, g_i2c_client)|0x00c0, g_i2c_client);
++		i2s_alc5630_write(0x04, i2s_alc5630_read(0x04, data, g_i2c_client) & 0x7f7f, g_i2c_client);
++		if (alc5630->gpio2_value == 0x0)
++			i2s_alc5630_write(0x02, 0x5F5F, g_i2c_client);
++		else
++			i2s_alc5630_write(0x02, 0x0000, g_i2c_client);
++	}
++}
++
++void ftssp010_config_tx(int cardno, unsigned int is_stereo, unsigned int speed, int width)
++{
++	return ftssp010_config(cardno, is_stereo, speed, width, 0);
++}
++
++void ftssp010_config_rx(int cardno, unsigned int is_stereo, unsigned int speed, int width)
++{
++	return ftssp010_config(cardno, is_stereo, speed, width, 1);
++}
++
++/* Configures FTSSP010 to start TX. If use_dma being nonzero,
++ * FTSSP010 will use hardware handshake for DMA
++ */
++void ftssp010_start_tx(int cardno, unsigned int use_dma)
++{
++	unsigned int bogus = 0x800 * 3;
++
++	if (use_dma) {
++		/* Enable H/W DMA Request and set TX DMA threshold to 12*/
++		iowrite32(ioread32(FTSSP010_INT_CONTROL(cardno)) | 0xc422, FTSSP010_INT_CONTROL(cardno));
++	}
++
++	iowrite32(ioread32(FTSSP010_CONTROL2(cardno)) | (SSP_SSPEN|SSP_TXDOE), FTSSP010_CONTROL2(cardno));
++	if (!use_dma) {
++		while (bogus > 0) {
++			while (!ftssp010_tx_fifo_not_full(cardno))
++				udelay(50);
++
++			iowrite32(0, FTSSP010_DATA(cardno));
++			bogus--;
++		}
++	}
++}
++
++/* Configures FTSSP010 to start RX. If use_dma being nonzero,
++ * FTSSP010 will use hardware handshake for DMA
++ */
++void ftssp010_start_rx(int cardno, unsigned int use_dma)
++{
++	if (use_dma) {
++		/* Enable H/W DMA Request and set RX DMA threshold to 2 */
++		iowrite32(ioread32(FTSSP010_INT_CONTROL(cardno)) | 0xc411, FTSSP010_INT_CONTROL(cardno));
++	}
++
++	iowrite32(ioread32(FTSSP010_CONTROL2(cardno)) | 0x3, FTSSP010_CONTROL2(cardno));
++}
++
++void ftssp010_stop_tx(int cardno)
++{
++	iowrite32(ioread32(FTSSP010_INT_CONTROL(cardno)) & (~0x22), FTSSP010_INT_CONTROL(cardno));
++	iowrite32(ioread32(FTSSP010_CONTROL2(0)) & (~(SSP_SSPEN|SSP_TXDOE)), FTSSP010_CONTROL2(0));
++}
++
++void ftssp010_stop_rx(int cardno)
++{
++	iowrite32(ioread32(FTSSP010_INT_CONTROL(cardno)) & (~0x11), FTSSP010_INT_CONTROL(cardno));
++}
++
+diff --git a/sound/v5/Kconfig b/sound/v5/Kconfig
+new file mode 100644
+index 000000000000..b5b1b4d6da3f
+--- /dev/null
++++ b/sound/v5/Kconfig
+@@ -0,0 +1,23 @@
++menu "ALSA RISCV devices"
++	depends on SND!=n && RISCV
++
++config SND_FTSSP010
++	tristate "Faraday FTSSP010 audio Driver"
++	depends on SND && RISCV
++	depends on ATCDMAC300
++	select SND_PCM
++#	select SND_AC97_CODEC
++
++choice
++	prompt "AC97/I2S/HDA selection"
++	depends on SND_FTSSP010
++	default SND_FTSSP010_AC97
++config SND_FTSSP010_AC97
++	bool "AC97"
++config SND_FTSSP010_I2S
++	bool "I2S"
++config SND_FTSSP010_HDA
++	bool "HDA"
++endchoice
++endmenu
++
+diff --git a/sound/v5/Makefile b/sound/v5/Makefile
+new file mode 100644
+index 000000000000..716a62f760dd
+--- /dev/null
++++ b/sound/v5/Makefile
+@@ -0,0 +1,10 @@
++ifeq ($(CONFIG_SND_FTSSP010_AC97),y)
++snd-ftssp010-objs := FTSSP010_ALSA.o FTSSP010_lib.o
++endif
++ifeq ($(CONFIG_SND_FTSSP010_I2S),y)
++snd-ftssp010-objs := FTSSP010_ALSA.o FTSSP010_lib.o
++endif
++ifeq ($(CONFIG_SND_FTSSP010_HDA),y)
++snd-ftssp010-objs := FTSSP010_HDA.o FTSSP010_HDA_lib.o
++endif
++obj-$(CONFIG_SND_FTSSP010) += snd-ftssp010.o
+-- 
+2.34.1
+

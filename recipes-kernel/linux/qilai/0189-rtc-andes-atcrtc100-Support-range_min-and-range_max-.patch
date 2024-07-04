@@ -1,0 +1,48 @@
+From 94f699c55ea61971a545059cd5fa9a3e97be3c7c Mon Sep 17 00:00:00 2001
+From: CL Wang <cl634@andestech.com>
+Date: Thu, 28 Mar 2024 15:24:39 +0800
+Subject: [PATCH 189/191] rtc: andes: atcrtc100: Support range_min and
+ range_max to extend RTC range.
+
+The maximum day counter available for the ATCRTC100 hardware is 15 bits
+long and can count up to 32767 days. This means that the ATCRTC100 hardware
+can count up to about 89 years, so we set range_min to 2000 and range_max
+to the end of the year 2089.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/rtc/rtc-atcrtc100.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/rtc/rtc-atcrtc100.c b/drivers/rtc/rtc-atcrtc100.c
+index 4a6e1ad272b4..d6742a95c508 100644
+--- a/drivers/rtc/rtc-atcrtc100.c
++++ b/drivers/rtc/rtc-atcrtc100.c
+@@ -77,6 +77,15 @@
+ 
+ #define ATCRTC_TIME_TO_SEC(D, H, M, S)	(D * 86400LL + H * 3600 + M * 60 + S)
+ 
++/*
++ * The maximum day counter available for the ATCRTC100 hardware is 15 bits
++ * long and can count up to 32767 days. This means that the ATCRTC100 hardware
++ * can count up to about 89 years, so we set range_min to 2000 and range_max
++ * to the end of the year 2089.
++ */
++#define ATCRTC_RTC_TIMESTAMP_END_2089	3786911999LL  /* 2089-12-31 23:59:59 */
++#define ATCRTC_RTC_TIMESTAMP_BEGIN_2000 RTC_TIMESTAMP_BEGIN_2000
++
+ /*
+  * WARNING: This variable is only intended to pass the LTP test. The Andes
+  * internal implementation of the RTC on FPGA cannot count more than 32 days
+@@ -355,6 +364,8 @@ static int atc_rtc_probe(struct platform_device *pdev)
+ 
+ 	rtc->rtc_dev = devm_rtc_allocate_device(&pdev->dev);
+ 	rtc->rtc_dev->ops = &rtc_ops;
++	rtc->rtc_dev->range_min = ATCRTC_RTC_TIMESTAMP_BEGIN_2000;
++	rtc->rtc_dev->range_max = ATCRTC_RTC_TIMESTAMP_END_2089;
+ 
+ 	if (IS_ERR(rtc->rtc_dev)) {
+ 		ret = PTR_ERR(rtc->rtc_dev);
+-- 
+2.34.1
+

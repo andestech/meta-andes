@@ -1,0 +1,115 @@
+From 264833c3a4a132acb24d4d43cb3c3efde08c2e52 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Thu, 22 Feb 2024 20:13:22 +0800
+Subject: [PATCH 166/191] i2c: andes: atci2c100: Fix the incorrect timiing
+ setting.
+
+1. Added a new function to calculate the correct timing setting.
+2. Add a clock node in the device tree for the i2c module.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ drivers/i2c/busses/i2c-atciic100.c | 51 +++++++++++++++++++++++++++---
+ 1 file changed, 46 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-atciic100.c b/drivers/i2c/busses/i2c-atciic100.c
+index fe1031479d1e..c2232997011f 100644
+--- a/drivers/i2c/busses/i2c-atciic100.c
++++ b/drivers/i2c/busses/i2c-atciic100.c
+@@ -87,10 +87,20 @@
+ #define RESET_IIC	0x5
+ 
+ /* Setup Register */
+-#define SETUP	0x2c
+-#define MASTER	(1 << 2)
+-#define ADDR10	(1 << 1)
+-#define IICEN	(1 << 0)
++#define SETUP           0x2c
++#define MASTER          (1<<2)
++#define ADDR10          (1<<1)
++#define IICEN           (1<<0)
++#define T_SP            50
++#define T_HDDAT         300
++#define T_SUDAT         250
++#define T_SCL_L_PERIOD  4000
++#define T_SCL_HI        4700
++#define TPM             0
++#define time_set(sp, hddat, sudat, scl_ratio, scl_hi) \
++		(((sudat & 0x1F) << 24) | ((sp & 0x7) << 21) \
++		| ((hddat & 0x1F) << 16) | ((scl_ratio & 0x1) << 13) \
++		| ((scl_hi & 0x1FF) << 4))
+ 
+ #define xget (buf[i++] = IIC(DAT))
+ #define xput (IIC(DAT) = buf[i++])
+@@ -153,6 +163,7 @@ struct atciic {
+ 	u16			saved_control;
+ 	void __iomem		*regs_base;
+ 	struct resource		*res;
++	unsigned long		clk_hz;
+ };
+ 
+ static u32 xrecev(struct atciic *iface)
+@@ -395,6 +406,27 @@ void __init ae300_add_device_i2c(struct i2c_board_info *devices, int nr_devices)
+ }
+ #endif /* SUPPORT_AT24C128_BY_BOARD */
+ 
++static u32 atciic_set_clock(unsigned long clk_hz)
++{
++	u32 t_sudat;
++	u32 t_sp;
++	u32 t_hddat;
++	u32 t_scl_ratio;
++	u32 t_scl_hi;
++
++	t_sp = (T_SP * clk_hz) / (1000000000 * (TPM + 1));
++	t_hddat = (((T_HDDAT * clk_hz / 1000000000) - 2)
++				/ (TPM + 1)) - 2 - t_sp;
++	t_sudat = (((T_SUDAT * clk_hz / 1000000000) - 2)
++				/ (TPM + 1)) - 2 - t_sp;
++	t_scl_hi = (((T_SCL_HI * clk_hz / 1000000000) - 2)
++				/ (TPM + 1)) - 2 - t_sp;
++	t_scl_ratio = ((((T_SCL_L_PERIOD * clk_hz / 1000000000) - 2)
++					/ (TPM + 1)) - 2 - t_sp) / t_scl_hi;
++
++	return time_set(t_sp, t_hddat, t_sudat, t_scl_ratio, t_scl_hi);
++}
++
+ /* Main initialization routine. */
+ static int atciic_probe(struct platform_device *pdev)
+ {
+@@ -403,6 +435,7 @@ static int atciic_probe(struct platform_device *pdev)
+ 	struct i2c_adapter *padap;
+ 	struct atciic *iface;
+ 	int rc, ret;
++	struct clk *clk;
+ 
+ #if SUPPORT_AT24C128_BY_BOARD
+ 	ae300_add_device_i2c(ae300_i2c_devices, ARRAY_SIZE(ae300_i2c_devices));
+@@ -459,6 +492,14 @@ static int atciic_probe(struct platform_device *pdev)
+ 		goto out_error_req_irq;
+ 	}
+ 
++	/* get clock */
++	clk = devm_clk_get(&pdev->dev, NULL);
++	if (IS_ERR(clk)) {
++		dev_err(&pdev->dev, "Unable to find the source clock and apply the default setting.");
++		iface->clk_hz = 50000000;
++	} else
++		iface->clk_hz = clk_get_rate(clk);
++
+ 	iface->mode = XFER_MODE;
+ 	init_completion(&(iface->complete));
+ 	padap = &iface->adap;
+@@ -481,7 +522,7 @@ static int atciic_probe(struct platform_device *pdev)
+ 	platform_set_drvdata(pdev, padap);
+ 	padap = platform_get_drvdata(pdev);
+ 	iface->fifolen = (1 << ((IIC(CFG) & FIFOSIZE_MASK) + 1));
+-	IIC(SETUP) |= (MASTER | IICEN);
++	IIC(SETUP) = MASTER | IICEN | atciic_set_clock(iface->clk_hz);
+ 
+ 	dev_info(&pdev->dev, "Andes i2c bus driver.\n");
+ 	return 0;
+-- 
+2.34.1
+

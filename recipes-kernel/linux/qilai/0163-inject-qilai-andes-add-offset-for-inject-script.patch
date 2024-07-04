@@ -1,0 +1,47 @@
+From 14bfdce3c040ef3dea53868f553fee983faea345 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Wed, 21 Feb 2024 11:58:19 +0800
+Subject: [PATCH 163/191] inject: qilai: andes: add offset for inject script
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ drivers/soc/andes/inject_init.c | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/soc/andes/inject_init.c b/drivers/soc/andes/inject_init.c
+index 24408731f8fc..c57f7c4545dc 100644
+--- a/drivers/soc/andes/inject_init.c
++++ b/drivers/soc/andes/inject_init.c
+@@ -8,12 +8,15 @@
+ #include <linux/init.h>
+ #include <linux/proc_fs.h>
+ #include <linux/seq_file.h>
++#include <linux/memblock.h>
+ 
+ #ifdef CONFIG_PROC_FS
+ 
+ // FIXME: make this FPGA-depedent
+-#define INJECT_START    0x100000
+-#define INJECT_SIZE     (0x200000 - INJECT_START)
++#define INJECT_START	(0x00100000)
++#define INJECT_SIZE	(0x00100000)
++#define RAM_MASK	~0xFFFFFF
++
+ 
+ static void *inject;
+ 
+@@ -49,7 +52,10 @@ static int __init inject_init(void)
+ {
+ 	unsigned char *p;
+ 
+-	inject = (void *)ioremap((phys_addr_t)INJECT_START, INJECT_SIZE);
++	phys_addr_t ram_base = RAM_MASK & memblock_start_of_DRAM();
++
++	inject = (void *)ioremap((phys_addr_t)(ram_base + INJECT_START), INJECT_SIZE);
++
+ 	p = (unsigned char *)inject;
+ 
+ 	if (p[0] == '#' && p[1] == '!')
+-- 
+2.34.1
+

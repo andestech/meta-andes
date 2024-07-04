@@ -1,0 +1,75 @@
+From 54fd26ae2b3c6f3d0dd0494389291d14052ecbdd Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Tue, 18 Jul 2023 17:50:24 +0800
+Subject: [PATCH 087/191] soc: andes: ppma:Replacing smp_processor_id() with
+ get/put_cpu() for preemption control.
+
+When the debug preemptible kernel is enabled, check_preemption_disabled() is performed when smp_processor_id() is called.
+In this change, we replace smp_processor_id with get_cpu/put_cpu to ensure cpu_id consistency.
+Why get_cpu/put_cpu can ensure the consistency of the cpu_id, because get_cpu() will disable preemption
+so the process can send the IPI to the appropriate CPU before the context switch.
+ #define get_cpu()		({ preempt_disable(); __smp_processor_id(); })
+ #define put_cpu()		preempt_enable()
+
+For details, please refer to Bugzilla-Bug28287 http://e-andes.andestech.com/bugzilla5/show_bug.cgi?id=28287
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/soc/andes/ppma.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/soc/andes/ppma.c b/drivers/soc/andes/ppma.c
+index 7987c020f0dd..f752ecc2fe15 100644
+--- a/drivers/soc/andes/ppma.c
++++ b/drivers/soc/andes/ppma.c
+@@ -22,7 +22,7 @@ EXPORT_SYMBOL(andes_probe_ppma);
+ void andes_set_ppma(phys_addr_t phys_addr, void *va_addr, size_t size)
+ {
+ 	int cpu_num = num_online_cpus();
+-	int id = smp_processor_id();
++	int id;
+ 	int i, err;
+ 	bool within_memory = pfn_valid(phys_addr >> PAGE_SHIFT);
+ 
+@@ -50,6 +50,7 @@ void andes_set_ppma(phys_addr_t phys_addr, void *va_addr, size_t size)
+ 	 * Send IPI
+ 	 * FIXME: we need online CPU mask, not the number
+ 	 */
++	id = get_cpu();
+ 	for (i = 0; i < cpu_num; i++) {
+ 		if (i == id)
+ 			continue;
+@@ -64,19 +65,21 @@ void andes_set_ppma(phys_addr_t phys_addr, void *va_addr, size_t size)
+ 	}
+ 
+ 	sbi_andes_set_ppma(&ppma_arg);
++	put_cpu();
+ }
+ EXPORT_SYMBOL(andes_set_ppma);
+ 
+ void andes_free_ppma(void *addr)
+ {
+ 	int cpu_num = num_online_cpus();
+-	int id = smp_processor_id();
++	int id;
+ 	int i, err;
+ 
+ 	/*
+ 	 * Send IPI
+ 	 * FIXME: we need online CPU mask, not the number
+ 	 */
++	id = get_cpu();
+ 	for (i = 0; i < cpu_num; i++) {
+ 		if (i == id)
+ 			continue;
+@@ -90,6 +93,6 @@ void andes_free_ppma(void *addr)
+ 	}
+ 
+ 	sbi_andes_free_ppma(addr);
+-
++	put_cpu();
+ }
+ EXPORT_SYMBOL(andes_free_ppma);
+-- 
+2.34.1
+

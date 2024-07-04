@@ -1,0 +1,81 @@
+From 9c2944e73736d33ce86c12ef784adaf31d5b4646 Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Tue, 5 Sep 2023 17:42:45 +0800
+Subject: [PATCH 154/191] Makefile: Exclude these test cases when
+ kselftest-merge merges config
+
+Excluded test cases:
+ * Build failed
+    bpf
+    seccomp
+    alsa
+    dma
+    dmabuf-heaps
+ * Not executed by default kselftest
+    ia64
+    kmod
+    locking
+    media_tests
+    nolibc
+    ntb
+    perf_events
+    prctl
+    ptp
+    rcutorture
+    safesetid
+    sched
+    uevent
+    user_events
+    watchdog
+    wireguar
+ * Used some network utilities that BusyBox does not support
+    drivers
+    net
+ * No virtual machine
+    vm
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ Makefile | 26 +++++++++++++++++++++++++-
+ 1 file changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 375efcfb91f8..76f3df80b46d 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1454,7 +1454,31 @@ kselftest-%: headers FORCE
+ PHONY += kselftest-merge
+ kselftest-merge:
+ 	$(if $(wildcard $(objtree)/.config),, $(error No .config exists, config your kernel first!))
+-	$(Q)find $(srctree)/tools/testing/selftests -name config | \
++	find $(srctree)/tools/testing/selftests -name config \
++	        -not -path '$(srctree)/tools/testing/selftests/bpf/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/seccomp/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/alsa/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/dma/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/dmabuf-heaps/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/drivers/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/ia64/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/kmod/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/locking/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/media_tests/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/net/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/nolibc/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/ntb/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/perf_events/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/prctl/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/ptp/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/rcutorture/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/safesetid/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/sched/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/uevent/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/user_events/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/vm/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/watchdog/*' \
++	        -not -path '$(srctree)/tools/testing/selftests/wireguar/*' | \
+ 		xargs $(srctree)/scripts/kconfig/merge_config.sh -m $(objtree)/.config
+ 	$(Q)$(MAKE) -f $(srctree)/Makefile olddefconfig
+ 
+-- 
+2.34.1
+

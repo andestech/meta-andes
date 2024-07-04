@@ -1,0 +1,41 @@
+From 1f2226da0cef09a1fd52d9194505ab82bdee9d5f Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Tue, 25 Jul 2023 16:47:19 +0800
+Subject: [PATCH 147/191] selftests/exec: Change the command interpreter of the
+ shell script to bash.
+
+This testcase will create a long pathname to execute. However, in "sh"
+Shell, it will fail to open the file due to the filename being too long.
+Therefore, we will change it to use "bash" to execute the script.
+
+execveat fail log:
+/bin/sh: can't open
+'/dev/fd/6/mnt/exec/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...': File name too long
+Check success of execveat(6, 'mnt/exec/xxxxxxxxxxx...yyyyyyyyyyyyyyyyyyy',
+0)... [FAIL] (child 370 exited with 2 not 127 nor 126)
+1 tests failed
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ tools/testing/selftests/exec/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/testing/selftests/exec/Makefile b/tools/testing/selftests/exec/Makefile
+index a0b8688b0836..21add85f454c 100644
+--- a/tools/testing/selftests/exec/Makefile
++++ b/tools/testing/selftests/exec/Makefile
+@@ -20,7 +20,7 @@ include ../lib.mk
+ $(OUTPUT)/subdir:
+ 	mkdir -p $@
+ $(OUTPUT)/script:
+-	echo '#!/bin/sh' > $@
++	echo '#!/bin/bash' > $@
+ 	echo 'exit $$*' >> $@
+ 	chmod +x $@
+ $(OUTPUT)/execveat.symlink: $(OUTPUT)/execveat
+-- 
+2.34.1
+

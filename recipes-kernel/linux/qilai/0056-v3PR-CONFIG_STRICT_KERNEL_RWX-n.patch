@@ -1,0 +1,42 @@
+From b7af37f71060018a054aef965194f3ddba6af99c Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Fri, 9 Jun 2023 08:16:09 +0800
+Subject: [PATCH 056/191] v3PR: CONFIG_STRICT_KERNEL_RWX=n
+
+---
+ arch/riscv/Kconfig                 | 4 ++++
+ arch/riscv/configs/andes_defconfig | 1 +
+ 2 files changed, 5 insertions(+)
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 33bfeb5eb92c..cefa6103f6f0 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -29,8 +29,12 @@ config RISCV
+ 	select ARCH_HAS_PTE_SPECIAL
+ 	select ARCH_HAS_SET_DIRECT_MAP if MMU
+ 	select ARCH_HAS_SET_MEMORY if MMU
++	select ARCH_HAS_STRICT_KERNEL_RWX if MMU && !XIP_KERNEL
++	select ARCH_HAS_STRICT_MODULE_RWX if MMU && !XIP_KERNEL
+ 	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
+ 	select ARCH_HAS_UBSAN_SANITIZE_ALL
++	select ARCH_OPTIONAL_KERNEL_RWX if ARCH_HAS_STRICT_KERNEL_RWX
++	select ARCH_OPTIONAL_KERNEL_RWX_DEFAULT
+ 	select ARCH_STACKWALK
+ 	select ARCH_SUPPORTS_ATOMIC_RMW
+ 	select ARCH_SUPPORTS_DEBUG_PAGEALLOC if MMU
+diff --git a/arch/riscv/configs/andes_defconfig b/arch/riscv/configs/andes_defconfig
+index b5556e42daf3..1adcc226b197 100644
+--- a/arch/riscv/configs/andes_defconfig
++++ b/arch/riscv/configs/andes_defconfig
+@@ -33,6 +33,7 @@ CONFIG_PM=y
+ CONFIG_CPU_IDLE=y
+ CONFIG_CPU_FREQ=y
+ CONFIG_JUMP_LABEL=y
++# CONFIG_STRICT_KERNEL_RWX is not set
+ CONFIG_MODULES=y
+ CONFIG_MODULE_UNLOAD=y
+ CONFIG_NET=y
+-- 
+2.34.1
+

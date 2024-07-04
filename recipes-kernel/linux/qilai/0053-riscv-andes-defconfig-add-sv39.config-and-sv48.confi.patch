@@ -1,0 +1,66 @@
+From a5dde166dc70b0edeffd98937ed8ec85a9df0be6 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Thu, 25 May 2023 19:20:24 +0800
+Subject: [PATCH 053/191] riscv: andes: defconfig: add sv39.config and
+ sv48.config to support switch satp mode
+
+sv32: ae350_rv32_[up/smp]_defconfig
+sv39: ae350_rv64_[up/smp]_defconfig
+sv48: ae350_rv64_[up/smp]_sv48_defconfig
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Makefile            | 14 +++++++++++---
+ arch/riscv/configs/sv39.config |  2 ++
+ arch/riscv/configs/sv48.config |  2 ++
+ 3 files changed, 15 insertions(+), 3 deletions(-)
+ create mode 100644 arch/riscv/configs/sv39.config
+ create mode 100644 arch/riscv/configs/sv48.config
+
+diff --git a/arch/riscv/Makefile b/arch/riscv/Makefile
+index 0e2704e10334..8d647d89741e 100644
+--- a/arch/riscv/Makefile
++++ b/arch/riscv/Makefile
+@@ -201,12 +201,20 @@ ae350_rv32_smp_defconfig:
+ 
+ PHONY += ae350_rv64_up_defconfig
+ ae350_rv64_up_defconfig:
+-	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config sv39.config
+ 
+ PHONY += ae350_rv64_smp_defconfig
+ ae350_rv64_smp_defconfig:
+-	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config smp.config
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config smp.config sv39.config
++
++PHONY += ae350_rv64_up_sv48_defconfig
++ae350_rv64_up_sv48_defconfig:
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config sv48.config
++
++PHONY += ae350_rv64_smp_sv48_defconfig
++ae350_rv64_smp_sv48_defconfig:
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config smp.config sv48.config
+ 
+ PHONY += ae350_rv64_ax25_amp_defconfig
+ ae350_rv64_ax25_amp_defconfig:
+-	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config amp.config
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config amp.config sv39.config
+diff --git a/arch/riscv/configs/sv39.config b/arch/riscv/configs/sv39.config
+new file mode 100644
+index 000000000000..899c7e52cde3
+--- /dev/null
++++ b/arch/riscv/configs/sv39.config
+@@ -0,0 +1,2 @@
++CONFIG_CMDLINE="no4lvl"
++CONFIG_CMDLINE_EXTEND=y
+diff --git a/arch/riscv/configs/sv48.config b/arch/riscv/configs/sv48.config
+new file mode 100644
+index 000000000000..2d0e26a5956b
+--- /dev/null
++++ b/arch/riscv/configs/sv48.config
+@@ -0,0 +1,2 @@
++CONFIG_CMDLINE="no5lvl"
++CONFIG_CMDLINE_EXTEND=y
+-- 
+2.34.1
+

@@ -1,0 +1,250 @@
+From 157d79701624ced0cd3d58f02b455ae6b236f0eb Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Wed, 21 Feb 2024 11:59:29 +0800
+Subject: [PATCH 164/191] dma: iocp: qilai: add dma and iocp support for qilai
+
+It support dma-coherent for SD and MEMCPY.
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ drivers/dma/atcdmac300g.c | 83 +++++++++++++++++++++++++++++++++++----
+ drivers/dma/atcdmac300g.h |  5 +++
+ drivers/soc/andes/cache.c |  4 +-
+ 3 files changed, 83 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/dma/atcdmac300g.c b/drivers/dma/atcdmac300g.c
+index 5c92d75bf4d8..af8412a080db 100644
+--- a/drivers/dma/atcdmac300g.c
++++ b/drivers/dma/atcdmac300g.c
+@@ -27,6 +27,7 @@
+ 	BIT(DMA_SLAVE_BUSWIDTH_4_BYTES))
+ 
+ static unsigned int init_nr_desc_per_channel = 64;
++struct platform_device *dmac_dev;
+ module_param(init_nr_desc_per_channel, uint, 0644);
+ MODULE_PARM_DESC(init_nr_desc_per_channel,
+ 		 "initial descriptors per channel (default: 64)");
+@@ -201,6 +202,9 @@ static void v5_desc_chain(struct v5_desc **first, struct v5_desc **prev,
+  */
+ static void v5_dostart(struct v5_dma_chan *v5chan, struct v5_desc *first)
+ {
++	struct v5_dma *v5dma = v5chan->device;
++	unsigned long dma_flags;
++
+ 	if (v5_chan_is_enabled(v5chan)) {
+ 		dev_err(chan2dev(&v5chan->chan_common),
+ 			"BUG: Attempted to start non-idle channel\n");
+@@ -213,6 +217,11 @@ static void v5_dostart(struct v5_dma_chan *v5chan, struct v5_desc *first)
+ 			v5_channel_readl(v5chan, CH_LLP_LOW_OFF));
+ 		return;
+ 	}
++
++	spin_lock_irqsave(&v5dma->dma_lock, dma_flags);
++	v5dma->pending_chan |= (1 << v5chan->chan_id);
++	spin_unlock_irqrestore(&v5dma->dma_lock, dma_flags);
++
+ 	vdbg_dump_regs(v5chan);
+ 	v5_channel_writel(v5chan, CH_CTL_OFF, first->lli.ctrl);
+ 	v5_channel_writel(v5chan, CH_SIZE_OFF, first->lli.tranSize);
+@@ -391,10 +400,51 @@ static irqreturn_t v5_dma_interrupt(int irq, void *dev_id)
+ {
+ 	struct v5_dma		*v5dma = (struct v5_dma *)dev_id;
+ 	struct v5_dma_chan	*v5chan;
++	unsigned long		dma_flags;
+ 	int			i;
+ 	u32			status;
+ 	int			ret = IRQ_NONE;
++	u32			int_ch;
++	u16			pending_ch;
++
++
++#if 1
++	/* porting from qilai */
++	status = v5_dma_readl(v5dma, INT_STA);
++	pending_ch = v5dma->pending_chan;
++	int_ch = pending_ch & V5_DMA_INT_ALL(status);
+ 
++	while (int_ch) {
++		spin_lock_irqsave(&v5dma->dma_lock, dma_flags);
++		v5dma->pending_chan &= ~int_ch;
++		spin_unlock_irqrestore(&v5dma->dma_lock, dma_flags);
++		v5_dma_writel(v5dma, INT_STA, V5_DMA_INT_CLR(int_ch));
++
++		for (i = 0; i < v5dma->dma_common.chancnt; i++) {
++			int_ch &= ~(1 << i);
++			v5chan = &v5dma->chan[i];
++
++			if (status & (V5_DMA_TC(i)))
++				set_bit(V5_IS_TC, &v5chan->status);
++
++			if (status & (V5_DMA_ABT(i) | V5_DMA_ERR(i)))
++				set_bit(V5_IS_ERR, &v5chan->status);
++
++			if (v5chan->status) {
++				ret = IRQ_HANDLED;
++				tasklet_schedule(&v5chan->tasklet);
++			}
++
++			if (!int_ch)
++				break;
++		}
++
++		status = v5_dma_readl(v5dma, INT_STA);
++		pending_ch = v5dma->pending_chan;
++		int_ch = pending_ch & V5_DMA_INT_ALL(status);
++	};
++#else
++	/* 6.1 */
+ 	do {
+ 		status = v5_dma_readl(v5dma, INT_STA);
+ 
+@@ -406,6 +456,7 @@ static irqreturn_t v5_dma_interrupt(int irq, void *dev_id)
+ 		v5_dma_writel(v5dma, INT_STA, status);
+ 
+ 		for (i = 0; i < v5dma->dma_common.chancnt; i++) {
++			int_ch &= ~(1 << i);
+ 			v5chan = &v5dma->chan[i];
+ 			if (status & (V5_DMA_TC(i)))
+ 				set_bit(V5_IS_TC, &v5chan->status);
+@@ -414,25 +465,28 @@ static irqreturn_t v5_dma_interrupt(int irq, void *dev_id)
+ 				set_bit(V5_IS_ERR, &v5chan->status);
+ 
+ 			if (v5chan->status) {
+-				tasklet_schedule(&v5chan->tasklet);
+ 				ret = IRQ_HANDLED;
++				tasklet_schedule(&v5chan->tasklet);
+ 			}
++
++			if (!int_ch)
++				break;
+ 		}
+ 	} while (status);
+-
++#endif
+ 	return ret;
+ }
+ 
+ static void v5_issue_pending(struct dma_chan *chan)
+ {
+ 	struct v5_dma_chan	*v5chan = to_v5_dma_chan(chan);
+-	unsigned long		flags;
++	unsigned long		ch_flags;
+ 
+-	spin_lock_irqsave(&v5chan->lock, flags);
++	spin_lock_irqsave(&v5chan->lock, ch_flags);
+ 	if (list_empty(&v5chan->active_list))
+ 		list_move(v5chan->queue.next, &v5chan->active_list);
+ 	v5_dostart(v5chan, v5_first_active(v5chan));
+-	spin_unlock_irqrestore(&v5chan->lock, flags);
++	spin_unlock_irqrestore(&v5chan->lock, ch_flags);
+ }
+ 
+ static inline unsigned int xfer_width(struct v5_dma *v5dma,
+@@ -486,7 +540,15 @@ v5_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dst, dma_addr_t src,
+ 		dst |= IOCP_MASK;
+ 		src |= IOCP_MASK;
+ 	}
+-	src_maxburst = DMAC_CSR_SIZE_1024;
++
++	if (IS_ENABLED(CONFIG_SOC_QILAI)) {
++		/* Based on the Qilai platform, the size of the burst must be less than 128 transfers */
++		src_maxburst = DMAC_CSR_SIZE_128;
++	} else {
++		/* The AE350 default value */
++		src_maxburst = DMAC_CSR_SIZE_1024;
++	}
++
+ 	src_width = dst_width = xfer_width(v5dma, src, dst, len);
+ 	convert_burst(&src_maxburst);
+ 	ctrl = v5_channel_readl(v5chan, CH_CTL_OFF);
+@@ -1116,6 +1178,7 @@ static int __init v5_dma_probe(struct platform_device *pdev)
+ 	int			irq;
+ 	int			err;
+ 	int			i;
++	int			rc;
+ 	const struct v5_dma_platform_data *plat_dat;
+ 	const __be32 *prop;
+ 	int len;
+@@ -1124,11 +1187,16 @@ static int __init v5_dma_probe(struct platform_device *pdev)
+ 	dma_cap_set(DMA_MEMCPY, v5dma_config.cap_mask);
+ 	dma_cap_set(DMA_CYCLIC, v5dma_config.cap_mask);
+ 
++	rc = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
++	if (rc)
++		return rc;
++
+ 	/* get DMA parameters from controller type */
+ 	plat_dat = v5_dma_get_driver_data(pdev);
+ 	if (!plat_dat)
+ 		return -ENODEV;
+ 
++	dmac_dev = pdev;
+ 	io = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!io)
+ 		return -EINVAL;
+@@ -1143,6 +1211,7 @@ static int __init v5_dma_probe(struct platform_device *pdev)
+ 	if (!v5dma)
+ 		return -ENOMEM;
+ 
++	spin_lock_init(&v5dma->dma_lock);
+ 	v5dma->io_regs = 0;
+ 	if (dev_is_dma_coherent(&pdev->dev)) {
+ 		u64 taddr;
+@@ -1174,7 +1243,7 @@ static int __init v5_dma_probe(struct platform_device *pdev)
+ 		v5dma->ch : plat_dat->nr_channels;
+ 
+ 	v5_dma_off(v5dma);
+-	err = request_irq(irq, v5_dma_interrupt, 0, "v5_dmac", v5dma);
++	err = request_irq(irq, v5_dma_interrupt, IRQF_SHARED, "v5_dmac", v5dma);
+ 	if (err)
+ 		goto err_irq;
+ 
+diff --git a/drivers/dma/atcdmac300g.h b/drivers/dma/atcdmac300g.h
+index fdb70903cd2f..c529018c077e 100644
+--- a/drivers/dma/atcdmac300g.h
++++ b/drivers/dma/atcdmac300g.h
+@@ -41,6 +41,9 @@ static inline void clrbl(addr_t bit, void __iomem *reg)
+ #define	V5_DMA_TC(x)			(0x1 << (TC_OFFSET + (x)))
+ #define	V5_DMA_ABT(x)			(0x1 << (ABT_OFFSET + (x)))
+ #define	V5_DMA_ERR(x)			(0x1 << (ERR_OFFSET + (x)))
++#define	V5_DMA_INT_ALL(x)		(((x >> TC_OFFSET) & 0xFF) | ((x >> ABT_OFFSET) & 0xFF) \
++					| ((x >> ERR_OFFSET) & 0xFF))
++#define	V5_DMA_INT_CLR(x)		((x << TC_OFFSET) | (x << ABT_OFFSET) | (x << ERR_OFFSET))
+ /* Channel Enable Register */
+ #define CH_EN				(DMAC_BASE + 0x34)
+ /* Channel Base Register */
+@@ -303,7 +306,9 @@ struct v5_dma {
+ 	struct dma_device	dma_common;
+ 	void __iomem		*regs;
+ 	void __iomem		*io_regs;
++	spinlock_t          dma_lock;
+ 	u32			ctl;
++	u16                 pending_chan;
+ 	u8			data_width;
+ 	u8			ch;
+ 	u8			all_chan_mask;
+diff --git a/drivers/soc/andes/cache.c b/drivers/soc/andes/cache.c
+index 1b088d4f6b83..3f1bddfc4cf9 100644
+--- a/drivers/soc/andes/cache.c
++++ b/drivers/soc/andes/cache.c
+@@ -83,7 +83,7 @@ void cpu_dcache_wb_range(unsigned long start, unsigned long end, int line_size,
+ 		custom_csr_write(CCTL_REG_UCCTLCOMMAND_NUM, CCTL_L1D_VA_WB);
+ 
+ 		if (l2c_base) {
+-			writel(pa,
++			writeq(pa,
+ 			       (void *)(l2c_base +
+ 					L2C_REG_CN_ACC_OFFSET(mhartid)));
+ 
+@@ -117,7 +117,7 @@ void cpu_dcache_inval_range(unsigned long start, unsigned long end,
+ 		custom_csr_write(CCTL_REG_UCCTLCOMMAND_NUM, CCTL_L1D_VA_INVAL);
+ 
+ 		if (l2c_base) {
+-			writel(pa,
++			writeq(pa,
+ 			       (void *)(l2c_base +
+ 					L2C_REG_CN_ACC_OFFSET(mhartid)));
+ 
+-- 
+2.34.1
+

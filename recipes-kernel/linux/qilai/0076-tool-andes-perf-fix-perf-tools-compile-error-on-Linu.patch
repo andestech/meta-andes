@@ -1,0 +1,41 @@
+From 2993b2b8bf834f20d3469e879db11ab8bbb54e82 Mon Sep 17 00:00:00 2001
+From: Eric Lin <tesheng@andestech.com>
+Date: Fri, 5 Jun 2020 13:32:55 +0800
+Subject: [PATCH 076/191] tool: andes: perf: fix perf tools compile error on
+ Linux5.4
+
+when compiling perf tools in Linux 5.4, it will
+encounter compile error like this:
+
+bench/futex.h:37:10: error: 'SYS_futex' undeclared
+(first use in this function); did you mean 'SYS_tee'?
+syscall(SYS_futex, uaddr, op | opflags, val, timeout, uaddr2, val3)
+          ^
+Add require definition to cope with 32 to 64 bit time_t compatibility,
+including fstat clone3 and other affected syscalls.
+
+Signed-off-by: Eric Lin <tesheng@andestech.com>
+---
+ tools/arch/riscv/include/uapi/asm/unistd.h | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/tools/arch/riscv/include/uapi/asm/unistd.h b/tools/arch/riscv/include/uapi/asm/unistd.h
+index f506cca520b0..0b4612042986 100644
+--- a/tools/arch/riscv/include/uapi/asm/unistd.h
++++ b/tools/arch/riscv/include/uapi/asm/unistd.h
+@@ -20,6 +20,12 @@
+ #define __ARCH_WANT_SET_GET_RLIMIT
+ #endif /* __LP64__ */
+ 
++#define __ARCH_WANT_NEW_STAT
++#define __ARCH_WANT_STAT64
++#define __ARCH_WANT_SET_GET_RLIMIT
++#define __ARCH_WANT_SYS_CLONE3
++#define __ARCH_WANT_TIME32_SYSCALLS
++
+ #include <asm-generic/unistd.h>
+ 
+ /*
+-- 
+2.34.1
+

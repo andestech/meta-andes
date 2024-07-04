@@ -1,0 +1,57 @@
+From 0995c13a96de59076459ed4347dd2f92e15d615e Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Fri, 3 May 2024 10:43:46 +0800
+Subject: [PATCH 174/191] remove unnecessary config
+
+---
+ arch/riscv/configs/qilai.config        |  3 +--
+ arch/riscv/configs/qilai_openmp.config | 10 ++++------
+ 2 files changed, 5 insertions(+), 8 deletions(-)
+
+diff --git a/arch/riscv/configs/qilai.config b/arch/riscv/configs/qilai.config
+index 285b47683d25..e4ce209f6440 100644
+--- a/arch/riscv/configs/qilai.config
++++ b/arch/riscv/configs/qilai.config
+@@ -1,4 +1,4 @@
+-# CONFIG_RISCV_PMU is not set
++CONFIG_RISCV_PMU
+ CONFIG_SOC_QILAI=y
+ CONFIG_PCIE_QILAI=y
+ CONFIG_RTC_CLASS=y
+@@ -43,7 +43,6 @@ CONFIG_DRM_VM=y
+ CONFIG_DRM_SCHED=y
+ CONFIG_DRM_VGEM=y
+ CONFIG_DRM_AMD_ACP=y
+-CONFIG_DRM_NOUVEAU=m
+ CONFIG_FB_MODE_HELPERS=y
+ CONFIG_FB_TILEBLITTING=y
+ CONFIG_FRAMEBUFFER_CONSOLE=y
+diff --git a/arch/riscv/configs/qilai_openmp.config b/arch/riscv/configs/qilai_openmp.config
+index 0ecce24ac219..cf8796500ef3 100644
+--- a/arch/riscv/configs/qilai_openmp.config
++++ b/arch/riscv/configs/qilai_openmp.config
+@@ -1,17 +1,15 @@
+ CONFIG_AMP=y
+ 
++CONFIG_REMOTEPROC=y
+ CONFIG_REMOTEPROC_CDEV=y
+ CONFIG_RPMSG_CTRL=y
+-CONFIG_RPMSG_CHAR=y
+-CONFIG_RPMSG_VIRTIO=y
++CONFIG_QILAI_REMOTEPROC=m
++CONFIG_RPMSG_CHAR=m
++CONFIG_RPMSG_VIRTIO=m
+ 
+-CONFIG_DRM=y
+-CONFIG_DRM_TTM=y
+ CONFIG_ATCSMU=y
+ CONFIG_UIO=y
+ CONFIG_UIO_PDRV_GENIRQ=y
+-CONFIG_REMOTEPROC=y
+-CONFIG_QILAI_REMOTEPROC=y
+ CONFIG_LOCALVERSION_AUTO=n
+ CONFIG_RISCV_SBI=y
+ CONFIG_NR_CPUS=5
+-- 
+2.34.1
+

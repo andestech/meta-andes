@@ -1,0 +1,273 @@
+From 3d233ebd49ab042f9ac0c000d96fad9f003f84ae Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Wed, 1 Feb 2023 11:32:06 +0800
+Subject: [PATCH 002/191] riscv: andes: defconfig: add andes_defconfig and
+ andes-support.config
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Makefile                     |  20 +++
+ arch/riscv/configs/amp.config           |  11 ++
+ arch/riscv/configs/andes-support.config |  12 ++
+ arch/riscv/configs/andes_defconfig      | 174 ++++++++++++++++++++++++
+ arch/riscv/configs/smp.config           |   2 +
+ 5 files changed, 219 insertions(+)
+ create mode 100644 arch/riscv/configs/amp.config
+ create mode 100644 arch/riscv/configs/andes-support.config
+ create mode 100644 arch/riscv/configs/andes_defconfig
+ create mode 100644 arch/riscv/configs/smp.config
+
+diff --git a/arch/riscv/Makefile b/arch/riscv/Makefile
+index 3cb876f83187..655085e64fe7 100644
+--- a/arch/riscv/Makefile
++++ b/arch/riscv/Makefile
+@@ -186,3 +186,23 @@ rv64_randconfig:
+ PHONY += rv32_defconfig
+ rv32_defconfig:
+ 	$(Q)$(MAKE) -f $(srctree)/Makefile defconfig 32-bit.config
++
++PHONY += ae350_rv32_up_defconfig
++ae350_rv32_up_defconfig:
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 32-bit.config
++
++PHONY += ae350_rv32_smp_defconfig
++ae350_rv32_smp_defconfig:
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 32-bit.config smp.config
++
++PHONY += ae350_rv64_up_defconfig
++ae350_rv64_up_defconfig:
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config
++
++PHONY += ae350_rv64_smp_defconfig
++ae350_rv64_smp_defconfig:
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config smp.config
++
++PHONY += ae350_rv64_ax25_amp_defconfig
++ae350_rv64_ax25_amp_defconfig:
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config amp.config
+diff --git a/arch/riscv/configs/amp.config b/arch/riscv/configs/amp.config
+new file mode 100644
+index 000000000000..11dbd76dfca9
+--- /dev/null
++++ b/arch/riscv/configs/amp.config
+@@ -0,0 +1,11 @@
++CONFIG_ATCSMU=y
++# CONFIG_PMA is not set
++CONFIG_AMP=y
++
++CONFIG_UIO=y
++CONFIG_UIO_PDRV_GENIRQ=y
++
++CONFIG_REMOTEPROC=y
++CONFIG_ANDES_REMOTEPROC=m
++CONFIG_RPMSG_CHAR=m
++CONFIG_RPMSG_VIRTIO=m
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+new file mode 100644
+index 000000000000..ff6179d4f903
+--- /dev/null
++++ b/arch/riscv/configs/andes-support.config
+@@ -0,0 +1,12 @@
++CONFIG_DEFAULT_HOSTNAME="andes-test"
++CONFIG_PLAT_AE350=y
++
++CONFIG_ANDES_CACHE=y
++CONFIG_ANDES_DMA_NONCOHERENT=y
++CONFIG_ANDES_PPMA=y
++
++CONFIG_FTMAC100=y
++CONFIG_MMC_FTSDCG=y
++CONFIG_ATCDMAC300G=y
++
++# CONFIG_RISCV_PMU is not set
+diff --git a/arch/riscv/configs/andes_defconfig b/arch/riscv/configs/andes_defconfig
+new file mode 100644
+index 000000000000..7a53b743ecc1
+--- /dev/null
++++ b/arch/riscv/configs/andes_defconfig
+@@ -0,0 +1,174 @@
++CONFIG_SYSVIPC=y
++CONFIG_POSIX_MQUEUE=y
++CONFIG_NO_HZ_IDLE=y
++CONFIG_HIGH_RES_TIMERS=y
++CONFIG_BPF_SYSCALL=y
++CONFIG_PREEMPT=y
++CONFIG_IKCONFIG=y
++CONFIG_IKCONFIG_PROC=y
++CONFIG_CGROUPS=y
++CONFIG_CGROUP_SCHED=y
++CONFIG_CFS_BANDWIDTH=y
++CONFIG_CGROUP_BPF=y
++CONFIG_NAMESPACES=y
++CONFIG_USER_NS=y
++CONFIG_CHECKPOINT_RESTORE=y
++CONFIG_BLK_DEV_INITRD=y
++CONFIG_INITRAMFS_SOURCE="rootfs-lite initramfs.txt.lite"
++# CONFIG_RD_BZIP2 is not set
++# CONFIG_RD_LZMA is not set
++# CONFIG_RD_XZ is not set
++# CONFIG_RD_LZO is not set
++# CONFIG_RD_LZ4 is not set
++# CONFIG_RD_ZSTD is not set
++# CONFIG_INITRAMFS_PRESERVE_MTIME is not set
++# CONFIG_SYSFS_SYSCALL is not set
++CONFIG_EMBEDDED=y
++CONFIG_PROFILING=y
++CONFIG_SOC_VIRT=y
++# CONFIG_RISCV_ISA_ZICBOM is not set
++CONFIG_PM=y
++CONFIG_CPU_IDLE=y
++CONFIG_JUMP_LABEL=y
++CONFIG_MODULES=y
++CONFIG_MODULE_UNLOAD=y
++CONFIG_NET=y
++CONFIG_PACKET=y
++CONFIG_UNIX=y
++CONFIG_NET_KEY=y
++CONFIG_INET=y
++# CONFIG_INET_DIAG is not set
++# CONFIG_WIRELESS is not set
++# CONFIG_ETHTOOL_NETLINK is not set
++CONFIG_DEVTMPFS=y
++CONFIG_DEVTMPFS_MOUNT=y
++CONFIG_BLK_DEV_LOOP=y
++CONFIG_VIRTIO_BLK=y
++CONFIG_SCSI=y
++CONFIG_BLK_DEV_SD=y
++CONFIG_BLK_DEV_SR=y
++CONFIG_SCSI_VIRTIO=y
++CONFIG_NETDEVICES=y
++# CONFIG_NET_VENDOR_ALACRITECH is not set
++# CONFIG_NET_VENDOR_AMAZON is not set
++# CONFIG_NET_VENDOR_AQUANTIA is not set
++# CONFIG_NET_VENDOR_ARC is not set
++# CONFIG_NET_VENDOR_ASIX is not set
++# CONFIG_NET_VENDOR_BROADCOM is not set
++# CONFIG_NET_VENDOR_CADENCE is not set
++# CONFIG_NET_VENDOR_CAVIUM is not set
++# CONFIG_NET_VENDOR_CORTINA is not set
++# CONFIG_NET_VENDOR_DAVICOM is not set
++# CONFIG_NET_VENDOR_ENGLEDER is not set
++# CONFIG_NET_VENDOR_EZCHIP is not set
++# CONFIG_NET_VENDOR_FUNGIBLE is not set
++# CONFIG_NET_VENDOR_GOOGLE is not set
++# CONFIG_NET_VENDOR_HUAWEI is not set
++# CONFIG_NET_VENDOR_INTEL is not set
++# CONFIG_NET_VENDOR_WANGXUN is not set
++# CONFIG_NET_VENDOR_LITEX is not set
++# CONFIG_NET_VENDOR_MELLANOX is not set
++# CONFIG_NET_VENDOR_MICREL is not set
++# CONFIG_NET_VENDOR_MICROCHIP is not set
++# CONFIG_NET_VENDOR_MICROSEMI is not set
++# CONFIG_NET_VENDOR_MICROSOFT is not set
++# CONFIG_NET_VENDOR_NI is not set
++# CONFIG_NET_VENDOR_NATSEMI is not set
++# CONFIG_NET_VENDOR_NETRONOME is not set
++# CONFIG_NET_VENDOR_PENSANDO is not set
++# CONFIG_NET_VENDOR_QUALCOMM is not set
++# CONFIG_NET_VENDOR_RENESAS is not set
++# CONFIG_NET_VENDOR_ROCKER is not set
++# CONFIG_NET_VENDOR_SAMSUNG is not set
++# CONFIG_NET_VENDOR_SEEQ is not set
++# CONFIG_NET_VENDOR_SOLARFLARE is not set
++# CONFIG_NET_VENDOR_SOCIONEXT is not set
++# CONFIG_NET_VENDOR_STMICRO is not set
++# CONFIG_NET_VENDOR_SYNOPSYS is not set
++# CONFIG_NET_VENDOR_VERTEXCOM is not set
++# CONFIG_NET_VENDOR_VIA is not set
++# CONFIG_NET_VENDOR_WIZNET is not set
++# CONFIG_NET_VENDOR_XILINX is not set
++# CONFIG_WLAN is not set
++CONFIG_INPUT_MOUSEDEV=y
++CONFIG_SERIAL_8250=y
++CONFIG_SERIAL_8250_CONSOLE=y
++CONFIG_SERIAL_OF_PLATFORM=y
++CONFIG_VIRTIO_CONSOLE=y
++CONFIG_HW_RANDOM=y
++CONFIG_HW_RANDOM_VIRTIO=y
++CONFIG_I2C=y
++CONFIG_GPIOLIB=y
++CONFIG_DEBUG_GPIO=y
++CONFIG_GPIO_SYSFS=y
++CONFIG_GPIO_SIFIVE=y
++CONFIG_POWER_SUPPLY=y
++# CONFIG_HWMON is not set
++CONFIG_FB=y
++CONFIG_FRAMEBUFFER_CONSOLE=y
++# CONFIG_USB_SUPPORT is not set
++CONFIG_MMC=y
++CONFIG_MMC_SDHCI=y
++CONFIG_MMC_SDHCI_PLTFM=y
++CONFIG_MMC_SDHCI_CADENCE=y
++CONFIG_DMADEVICES=y
++CONFIG_SYNC_FILE=y
++CONFIG_VIRTIO_BALLOON=y
++CONFIG_VIRTIO_INPUT=y
++CONFIG_VIRTIO_MMIO=y
++# CONFIG_VHOST_MENU is not set
++# CONFIG_IOMMU_SUPPORT is not set
++CONFIG_EXT2_FS=y
++CONFIG_EXT4_FS=y
++CONFIG_EXT4_FS_POSIX_ACL=y
++CONFIG_EXT4_FS_SECURITY=y
++CONFIG_EXPORTFS_BLOCK_OPS=y
++CONFIG_FANOTIFY=y
++CONFIG_MSDOS_FS=y
++CONFIG_VFAT_FS=y
++CONFIG_TMPFS=y
++CONFIG_TMPFS_POSIX_ACL=y
++CONFIG_HUGETLBFS=y
++CONFIG_CONFIGFS_FS=y
++# CONFIG_EFIVAR_FS is not set
++# CONFIG_MISC_FILESYSTEMS is not set
++CONFIG_NFS_FS=y
++CONFIG_NFS_V3_ACL=y
++CONFIG_NFS_V4=y
++CONFIG_NFS_V4_1=y
++CONFIG_NFS_V4_2=y
++CONFIG_NFS_USE_LEGACY_DNS=y
++# CONFIG_NFS_DISABLE_UDP_SUPPORT is not set
++CONFIG_NLS_CODEPAGE_437=y
++CONFIG_NLS_ISO8859_1=y
++CONFIG_CRYPTO_DEV_VIRTIO=y
++CONFIG_CRC_ITU_T=y
++CONFIG_CRC7=y
++CONFIG_XZ_DEC=y
++CONFIG_PRINTK_TIME=y
++CONFIG_DEBUG_INFO_DWARF4=y
++CONFIG_GDB_SCRIPTS=y
++CONFIG_READABLE_ASM=y
++CONFIG_DEBUG_FS=y
++CONFIG_DEBUG_PAGEALLOC=y
++CONFIG_PTDUMP_DEBUGFS=y
++CONFIG_SCHED_STACK_END_CHECK=y
++CONFIG_DEBUG_VM=y
++CONFIG_DEBUG_VM_PGFLAGS=y
++CONFIG_DEBUG_MEMORY_INIT=y
++CONFIG_SOFTLOCKUP_DETECTOR=y
++CONFIG_WQ_WATCHDOG=y
++CONFIG_DEBUG_TIMEKEEPING=y
++# CONFIG_DEBUG_PREEMPT is not set
++CONFIG_DEBUG_RT_MUTEXES=y
++CONFIG_DEBUG_SPINLOCK=y
++CONFIG_DEBUG_MUTEXES=y
++CONFIG_DEBUG_RWSEMS=y
++CONFIG_DEBUG_LIST=y
++CONFIG_DEBUG_PLIST=y
++CONFIG_DEBUG_SG=y
++# CONFIG_RCU_TRACE is not set
++CONFIG_RCU_EQS_DEBUG=y
++# CONFIG_FTRACE is not set
++# CONFIG_RUNTIME_TESTING_MENU is not set
++CONFIG_MEMTEST=y
+diff --git a/arch/riscv/configs/smp.config b/arch/riscv/configs/smp.config
+new file mode 100644
+index 000000000000..5d724af52886
+--- /dev/null
++++ b/arch/riscv/configs/smp.config
+@@ -0,0 +1,2 @@
++CONFIG_SMP=y
++CONFIG_HOTPLUG_CPU=y
+-- 
+2.34.1
+

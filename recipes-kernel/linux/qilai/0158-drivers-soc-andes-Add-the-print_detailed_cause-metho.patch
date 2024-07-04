@@ -1,0 +1,240 @@
+From 1e7e611875fde6e78958a70a5e6170b33d24e02e Mon Sep 17 00:00:00 2001
+From: Ben Zong-You Xie <ben717@andestech.com>
+Date: Wed, 1 Nov 2023 13:34:46 +0800
+Subject: [PATCH 158/191] drivers: soc: andes: Add the "print_detailed_cause"
+ method
+
+When multiple events cause a trap to be taken with the same scause value,
+we need to know the sdcause value that records the detailed cause.
+The "print_detailed_cause" method is utilised to print out the detailed
+cause when the trap occurs.
+
+Signed-off-by: Ben Zong-You Xie <ben717@andestech.com>
+---
+ arch/riscv/kernel/process.c |   5 ++
+ drivers/soc/andes/Makefile  |   1 +
+ drivers/soc/andes/dcause.c  |  66 +++++++++++++++++++++++
+ include/soc/andes/dcause.h  | 103 ++++++++++++++++++++++++++++++++++++
+ 4 files changed, 175 insertions(+)
+ create mode 100644 drivers/soc/andes/dcause.c
+ create mode 100644 include/soc/andes/dcause.h
+
+diff --git a/arch/riscv/kernel/process.c b/arch/riscv/kernel/process.c
+index e7bceecba16c..014cfd3bb8db 100644
+--- a/arch/riscv/kernel/process.c
++++ b/arch/riscv/kernel/process.c
+@@ -26,6 +26,10 @@
+ #include <asm/cpuidle.h>
+ #include <asm/vector.h>
+ 
++#ifdef CONFIG_PLAT_AE350
++#include <soc/andes/dcause.h>
++#endif
++
+ register unsigned long gp_in_global __asm__("gp");
+ 
+ #if defined(CONFIG_STACKPROTECTOR) && !defined(CONFIG_STACKPROTECTOR_PER_TASK)
+@@ -78,6 +82,7 @@ void __show_regs(struct pt_regs *regs)
+ #ifdef CONFIG_PLAT_AE350
+ 	pr_cont("status: " REG_FMT " badaddr: " REG_FMT " cause: " REG_FMT " sdcause: " REG_FMT "\n",
+ 		regs->status, regs->badaddr, regs->cause, regs->sdcause);
++	print_detailed_cause(regs->cause, regs->sdcause);
+ #endif
+ }
+ void show_regs(struct pt_regs *regs)
+diff --git a/drivers/soc/andes/Makefile b/drivers/soc/andes/Makefile
+index 2e96ec5de773..0acc7edf8816 100644
+--- a/drivers/soc/andes/Makefile
++++ b/drivers/soc/andes/Makefile
+@@ -3,6 +3,7 @@
+ 
+ obj-y	+= andes_sbi.o pm.o
+ obj-y	+= inject_init.o
++obj-y	+= dcause.o
+ obj-$(CONFIG_ATCDMAC300)	+= atcdmac300.o dmad_intc.o
+ obj-$(CONFIG_ANDES_CACHE)	+= cache.o
+ obj-$(CONFIG_ANDES_DMA_NONCOHERENT)	+= dma-noncoherent.o
+diff --git a/drivers/soc/andes/dcause.c b/drivers/soc/andes/dcause.c
+new file mode 100644
+index 000000000000..45b0e97d63e7
+--- /dev/null
++++ b/drivers/soc/andes/dcause.c
+@@ -0,0 +1,66 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++
++#include <linux/printk.h>
++#include <asm/csr.h>
++#include <soc/andes/dcause.h>
++
++void print_detailed_cause(long scause, unsigned long sdcause)
++{
++	if (scause >= 0) {
++		switch (scause) {
++		case EXC_INST_ACCESS:
++			pr_info("The detailed trap cause: %s\n",
++				sdcause_fetch_access[sdcause]);
++			break;
++		case EXC_INST_ILLEGAL:
++			pr_info("The detailed trap cause: %s\n",
++				sdcause_illegal_instruction[sdcause]);
++			break;
++		case EXC_LOAD_ACCESS:
++			pr_info("The detailed trap cause: %s\n",
++				sdcause_load_access[sdcause]);
++			break;
++		case EXC_STORE_ACCESS:
++			pr_info("The detailed trap cause: %s\n",
++				sdcause_store_access[sdcause]);
++			break;
++		case EXC_INST_PAGE_FAULT:
++			pr_info("The detailed trap cause: %s\n",
++				sdcause_fetch_page_fault[sdcause]);
++			break;
++		case EXC_LOAD_PAGE_FAULT:
++			pr_info("The detailed trap cause: %s\n",
++				sdcause_load_page_fault[sdcause]);
++			break;
++		case EXC_STORE_PAGE_FAULT:
++			pr_info("The detailed trap cause: %s\n",
++				sdcause_store_page_fault[sdcause]);
++			break;
++		default:
++			pr_info("The detailed trap cause: %s\n",
++				"sdcause does not support this exception");
++		}
++	} else {
++		scause &= ~CAUSE_IRQ_FLAG;
++		switch (scause) {
++		case IRQ_IMPRECISE_ECC:
++			pr_info("The detailed trap cause: %s\n",
++				sdcause_imprecise_ECC[sdcause]);
++			break;
++		case IRQ_BUS_RW_TRANS:
++			pr_info("The detailed trap cause: %s\n",
++				sdcause_bus_rw_transaction[sdcause]);
++			break;
++		case IRQ_PMOVI:
++			pr_info("The detailed trap cause: %s\n",
++				"Performance monitor overflow interrupt");
++			break;
++		default:
++			pr_info("The detailed trap cause: %s\n",
++				"sdcause does not support this interrupt");
++		}
++	}
++}
+diff --git a/include/soc/andes/dcause.h b/include/soc/andes/dcause.h
+new file mode 100644
+index 000000000000..96017434230d
+--- /dev/null
++++ b/include/soc/andes/dcause.h
+@@ -0,0 +1,103 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++
++#ifndef _ASM_RISCV_DCAUSE_H
++#define _ASM_RISCV_DCAUSE_H
++
++#define IRQ_IMPRECISE_ECC	0x110
++#define IRQ_BUS_RW_TRANS	0x111
++#define IRQ_PMOVI		0x112
++
++static const char *const sdcause_fetch_access[] = {
++	"Reserved",
++	"ECC/Parity error",
++	"PMP/Smepmp instruction access violation",
++	"Bus error",
++	"PMA empty hole access",
++	"PMA attribute inconsistency",
++	"PTW access device region",
++	"Instruction cache multiple-hit",
++};
++
++static const char *const sdcause_illegal_instruction[] = {
++	"Please parse stval CSR",
++	"FP diabled exception",
++	"ACE diabled exception",
++	"RVV disabled exception",
++	"CCTL filllock/unlock not supported",
++	"Reserved CCTL command",
++	"CCTL TLB command not supported",
++	"Reserverd for CCTL",
++	"CCTL BTB command not supported",
++	"CCTL L1D_VA_WB* and L1*_VA_INVAL not supported",
++	"CCTL ALL type (L1D_*_ALL) not supported",
++	"CCTL L1D_IX_WB* and L1*_IX_INVAL not supported",
++	"Reserved XCSR",
++};
++
++static const char *const sdcause_load_access[] = {
++	"Reserved",
++	"ECC/Parity error",
++	"PMP/Smepmp load access violation",
++	"Bus error",
++	"Misaligned address",
++	"PMA empty hole access",
++	"PMA attribute inconsistency",
++	"PMA NAMO exception",
++	"PTW access device region",
++	"Data cache multiple-hit",
++};
++
++static const char *const sdcause_store_access[] = {
++	"Reserved",
++	"ECC/Parity error",
++	"PMP/Smepmp store access violation",
++	"Bus error",
++	"Misaligned address",
++	"PMA empty hole access",
++	"PMA attribute inconsistency",
++	"PMA NAMO exception",
++	"PTW access device region",
++	"Data cache multiple-hit",
++	"CBO.Zero hits device region",
++};
++
++static const char *const sdcause_fetch_page_fault[] = {
++	"Reserved",
++	"ITLB multiple-hit",
++};
++
++static const char *const sdcause_load_page_fault[] = {
++	"Reserved",
++	"DTLB multiple-hit",
++};
++
++static const char *const sdcause_store_page_fault[] = {
++	"Reserved",
++	"Smepmp violation",
++	"DTLB multiple-hit",
++	"ITLB multiple-hit",
++};
++
++static const char *const sdcause_imprecise_ECC[] = {
++	"Reserved",
++	"LM slave port ECC/Parity error",
++	"Imprecise store ECC/Parity error",
++	"Imprecise load ECC/Parity error",
++};
++
++static const char *const sdcause_bus_rw_transaction[] = {
++	"Reserved",
++	"Bus read error",
++	"Bus write error",
++	"Read PMP/Smepmp check error",
++	"Write PMP/Smepmp check error",
++	"Read PMA check error",
++	"Write PMA check error",
++};
++
++void print_detailed_cause(long scause, unsigned long sdcause);
++
++#endif /* _ASM_RISCV_DCAUSE_H */
+-- 
+2.34.1
+

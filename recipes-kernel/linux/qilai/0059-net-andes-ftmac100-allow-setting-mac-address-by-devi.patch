@@ -1,0 +1,85 @@
+From 6ac703dcf68cf99cb786125a12be1908eff64fcb Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Tue, 27 Dec 2022 15:46:49 +0800
+Subject: [PATCH 059/191] net: andes: ftmac100: allow setting mac address by
+ device tree
+
+This patch allows setting mac address by specifying "mac-address"
+property:
+
+  mac0: mac@e0100000 {
+    compatible = "andestech,atmac100";
+    reg = <0x00000000 0xe0100000 0x00000000 0x00001000>;
+    interrupts = <19 4>;
+    interrupt-parent = <&plic0>;
+    dma-coherent;
+    mac-address = [de ed be ef 12 34];
+  };
+
+  [    4.861903] ftmac100 e0100000.mac eth0: irq 3, mapped at (____ptrval____)
+  [    4.883422] ftmac100 e0100000.mac eth0: using MAC address given by device tree de:ad:be:ef:12:34
+
+If such property is not provided, it will generate a random mac address:
+
+  [    4.863576] ftmac100 e0100000.mac eth0: irq 3, mapped at (____ptrval____)
+  [    4.885599] ftmac100 e0100000.mac eth0: generated random MAC address 56:e7:b3:97:e5:bb
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ drivers/net/ethernet/faraday/ftmac100.c | 23 ++++++++++++++++++++---
+ 1 file changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/ethernet/faraday/ftmac100.c b/drivers/net/ethernet/faraday/ftmac100.c
+index 22a249205293..c7126267c979 100644
+--- a/drivers/net/ethernet/faraday/ftmac100.c
++++ b/drivers/net/ethernet/faraday/ftmac100.c
+@@ -32,6 +32,7 @@
+ #include <linux/mod_devicetable.h>
+ #include <linux/netdevice.h>
+ #include <linux/platform_device.h>
++#include <linux/of_net.h>
+ 
+ #include "ftmac100.h"
+ #include <linux/uaccess.h>
+@@ -1109,9 +1110,15 @@ static int ftmac100_probe(struct platform_device *pdev)
+ 	struct resource *res;
+ 	int irq;
+ 	struct net_device *netdev;
++	struct device *dev;
++	struct device_node *mac_node;
++	u8 mac_addr[ETH_ALEN];
+ 	struct ftmac100 *priv;
+ 	int err, ret;
+ 
++	dev = &pdev->dev;
++	mac_node = dev->of_node;
++
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!res)
+ 		return -ENXIO;
+@@ -1194,9 +1201,19 @@ static int ftmac100_probe(struct platform_device *pdev)
+ 	netdev_info(netdev, "irq %d, mapped at %p\n", priv->irq, priv->base);
+ 
+ 	if (!is_valid_ether_addr(netdev->dev_addr)) {
+-		eth_hw_addr_random(netdev);
+-		netdev_info(netdev, "generated random MAC address %pM\n",
+-			    netdev->dev_addr);
++		ret = of_get_mac_address(mac_node, mac_addr);
++		if (ret) {
++			/* generate random MAC address if it is not provided by
++			 * device tree
++			 */
++			eth_hw_addr_random(netdev);
++			netdev_info(netdev, "generated random MAC address %pM\n",
++				    netdev->dev_addr);
++		} else {
++			netdev_info(netdev, "using MAC address given by device tree %pM\n",
++			    mac_addr);
++			dev_addr_set(netdev, mac_addr);
++		}
+ 	}
+ 
+ 	return 0;
+-- 
+2.34.1
+

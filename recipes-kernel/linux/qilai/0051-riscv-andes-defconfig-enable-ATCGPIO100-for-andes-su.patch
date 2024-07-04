@@ -1,0 +1,46 @@
+From a9a2609622b7c4ae2d70c30dc35fc388c18fe65b Mon Sep 17 00:00:00 2001
+From: Rick Chen <rick@andestech.com>
+Date: Tue, 23 May 2023 16:51:04 +0800
+Subject: [PATCH 051/191] riscv: andes: defconfig: enable ATCGPIO100 for
+ andes-support.config
+
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ arch/riscv/configs/andes-support.config | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+index 9e4eec02f272..98ff68802cca 100644
+--- a/arch/riscv/configs/andes-support.config
++++ b/arch/riscv/configs/andes-support.config
+@@ -4,6 +4,8 @@ CONFIG_PLAT_AE350=y
+ CONFIG_ANDES_CACHE=y
+ CONFIG_ANDES_DMA_NONCOHERENT=y
+ CONFIG_ANDES_PPMA=y
++CONFIG_RISCV_ISA_ZICBOM=y
++# CONFIG_RISCV_PMU is not set
+ 
+ CONFIG_FTMAC100=y
+ CONFIG_MMC_FTSDCG=y
+@@ -12,9 +14,6 @@ CONFIG_ATCDMAC300G=y
+ CONFIG_ATCDMAC300=y
+ CONFIG_PLATFORM_AHBDMA=y
+ 
+-CONFIG_RISCV_ISA_ZICBOM=y
+-# CONFIG_RISCV_PMU is not set
+-
+ CONFIG_PWM=y
+ CONFIG_PWM_ATCPIT100=y
+ 
+@@ -24,6 +23,8 @@ CONFIG_I2C_CHARDEV=y
+ CONFIG_I2C_ATCIIC100=y
+ CONFIG_ATCIIC_IRQ=y
+ 
++CONFIG_GPIO_ATCGPIO100=y
++
+ CONFIG_FB_FTLCDC100=y
+ CONFIG_PANEL_LW500AC9601=y
+ CONFIG_FFB_MODE_RGB=y
+-- 
+2.34.1
+

@@ -1,0 +1,547 @@
+From af040492f8a5df86d31bd0b24f9c4aded606d9a3 Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Wed, 9 Aug 2023 10:17:54 +0800
+Subject: [PATCH 091/191] clocksource: andes: atcpit: Refine ATCPIT driver
+
+1. Create new common APIs to operate timer registers for different channels.
+2. Separate the driver into clock source driver and clock event driver in order to reduce the maintenance effort.
+3. Configurable via new add parameters from DTS.
+			clock_src_ch = <0>; /* Specify a clock source driver channel (this parameter can be omitted) */
+			clock_evt_ch = <1>; /* Specify a clock event driver channel (this parameter can be omitted) */
+			pit_clk_src = <1>; /* 0:external clock 1:P clock  */
+4. In DTS, a source clock must be specified for the driver, as shown below.
+	pclk: clock-pclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <60000000>;
+		clock-output-names = "pclk";
+	};
+
+	timer0: timer@f0400000 {
+		...
+		clocks = <&pclk>;
+		clock-names = "pit_clk";
+	}
+
+PS, The clock event driver does not support one-shot feature.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/clocksource/timer-atcpit.c | 404 +++++++++++++++++------------
+ 1 file changed, 238 insertions(+), 166 deletions(-)
+
+diff --git a/drivers/clocksource/timer-atcpit.c b/drivers/clocksource/timer-atcpit.c
+index d9b8e6e1b95f..c3b60304c515 100755
+--- a/drivers/clocksource/timer-atcpit.c
++++ b/drivers/clocksource/timer-atcpit.c
+@@ -1,9 +1,6 @@
+ // SPDX-License-Identifier: GPL-2.0
+-// Copyright (C) 2005-2017 Andes Technology Corporation
+ /*
+- *  Andestech ATCPIT100 Timer Device Driver Implementation
+- * Rick Chen, Andes Technology Corporation <rick@andestech.com>
+- *
++ * Copyright (C) 2023 Andes Corporation
+  */
+ 
+ #include <linux/clk.h>
+@@ -11,259 +8,334 @@
+ #include <linux/clocksource.h>
+ #include <linux/clockchips.h>
+ #include <linux/interrupt.h>
+-#include <linux/interrupt.h>
+ #include <linux/ioport.h>
+-#include <linux/cpufreq.h>
+-#include <linux/sched.h>
+-#include <linux/sched_clock.h>
+ #include <linux/of.h>
+ #include <linux/of_address.h>
+ #include <linux/of_irq.h>
+ #include <linux/of_platform.h>
+ #include "timer-of.h"
+-#ifdef CONFIG_NDS32
+-#include <asm/vdso_timer_info.h>
+-#endif
+-
+-/*
+- * Definition of register offsets
+- */
+ 
+ /* ID and Revision Register */
+-#define ID_REV		0x0
++#define ID_REV           0x0
+ 
+ /* Configuration Register */
+-#define CFG		0x10
++#define CFG              0x10
++#define NUM_PIT_CH_MSK   0x7
+ 
+ /* Interrupt Enable Register */
+-#define INT_EN		0x14
+-#define CH_INT_EN(c, i)	((1<<i)<<(4*c))
+-#define CH0INT0EN	0x01
++#define INT_EN           0x14
++#define CH_INT_EN(c, t)  (t << (4 * c))
+ 
+ /* Interrupt Status Register */
+-#define INT_STA		0x18
+-#define CH0INT0		0x01
++#define INT_STA          0x18
++#define CH_INT_STA(c, t) (t << (4 * c))
+ 
+ /* Channel Enable Register */
+-#define CH_EN		0x1C
+-#define CH0TMR0EN	0x1
+-#define CH1TMR0EN	0x10
+-
+-/* Channel 0 , 1 Control Register */
+-#define CH0_CTL		(0x20)
+-#define CH1_CTL		(0x20 + 0x10)
++#define CH_EN_REG        0x1C
++#define CH_EN_TIME(c, t) (t << (c * 4))
++
++/* Channel Control Register */
++#define CH_CTRL(ch)      (0x20 + (ch * 0x10))
++#define CH_CTRL_CLK_SFT  3
++#define CH_CTRL_MODE_MSK 0x7
++#define CH_CTRL_CLK_MSK  0x8
++#define TIMER0           1
++#define TIMER1           2
++#define TIMER2           4
++#define TIMER3           8
+ 
+ /* Channel clock source , bit 3 , 0:External clock , 1:APB clock */
+-#define APB_CLK		BIT(3)
++#define PIT_CLK_SRC_PCLK 1
++#define PIT_CLK_SRC_EXT  0
+ 
+ /* Channel mode , bit 0~2 */
+-#define TMR_32		0x1
+-#define TMR_16		0x2
+-#define TMR_8		0x3
++#define TIMER_32         0x1
++#define TIMER_16         0x2
++#define TIMER_8          0x3
+ 
+ /* Channel 0 , 1 Reload Register */
+-#define CH0_REL		(0x24)
+-#define CH1_REL		(0x24 + 0x10)
++#define CH_REL(ch)       (0x24 + (ch * 0x10))
+ 
+ /* Channel 0 , 1 Counter Register */
+-#define CH0_CNT		(0x28)
+-#define CH1_CNT		(0x28 + 0x10)
++#define CH_CNT(ch)       (0x28 + (ch * 0x10))
++
++#define to_atcpit_data_clksrc(x) \
++	container_of(x, struct atcpit_data, clksrc)
++
++#define to_atcpit_data_clkevt(x) \
++	container_of(x, struct atcpit_data, clkevt)
++
++struct atcpit_data {
++	struct clock_event_device clkevt;
++	struct clocksource        clksrc;
++	void __iomem              *base;
++	struct clk                *src_clk;
++	u8                        pit_num_ch;
++	u8                        clock_src_ch;
++	u8                        clock_evt_ch;
++	u8                        pit_clk_src;
++	u8                        irq;
++};
+ 
+-#define TIMER_SYNC_TICKS	3
++#define atcpit_check_pit_id(base) \
++			((readl(base + ID_REV) & 0xFFFFF000) != 0x3031000)
++#define atcpit_get_num_ch(base) \
++			(readl(base + CFG) & NUM_PIT_CH_MSK)
+ 
+-static void atcpit100_ch1_tmr0_en(void __iomem *base)
++static inline void atcpit_ch_reload(void __iomem *base, u8 ch, u32 reload)
+ {
+-	writel(~0, base + CH1_REL);
+-	writel(APB_CLK|TMR_32, base + CH1_CTL);
++	writel(reload, base + CH_REL(ch));
+ }
+ 
+-static void atcpit100_ch0_tmr0_en(void __iomem *base)
++static void atcpit_ch_crtl(void __iomem *base, u8 ch, u8 ch_clksrc,
++								u8 ch_mode)
+ {
+-	writel(APB_CLK|TMR_32, base + CH0_CTL);
+-}
++	u32 ch_ctrl;
+ 
+-static void atcpit100_clkevt_time_setup(void __iomem *base, unsigned long delay)
+-{
+-	writel(delay, base + CH0_CNT);
+-	writel(delay, base + CH0_REL);
++	ch_ctrl = readl(base + CH_CTRL(ch));
++	ch_ctrl &= ~(CH_CTRL_MODE_MSK | CH_CTRL_CLK_MSK);
++	ch_ctrl |= (ch_clksrc << CH_CTRL_CLK_SFT) | ch_mode;
++	writel(ch_ctrl, base + CH_CTRL(ch));
+ }
+ 
+-static void atcpit100_timer_clear_interrupt(void __iomem *base)
++static void atcpit_ch_en(void __iomem *base, u8 ch, u8 timer_id, u8 en)
+ {
+-	u32 val;
++	u32 pit_en;
+ 
+-	val = readl(base + INT_STA);
+-	writel(val | CH0INT0, base + INT_STA);
++	pit_en = readl(base + CH_EN_REG);
++	if (en == 1)
++		pit_en |= CH_EN_TIME(ch, timer_id);
++	else
++		pit_en &= ~(CH_EN_TIME(ch, timer_id));
++
++	writel(pit_en, base + CH_EN_REG);
+ }
+ 
+-static void atcpit100_clocksource_start(void __iomem *base)
++static void atcpit_ch_int_en(void __iomem *base, u8 ch, u8 timer_id, u8 en)
+ {
+-	u32 val;
++	u32 pit_int_en;
+ 
+-	val = readl(base + CH_EN);
+-	writel(val | CH1TMR0EN, base + CH_EN);
+-}
++	pit_int_en = readl(base + INT_EN);
+ 
+-static void atcpit100_clkevt_time_start(void __iomem *base)
+-{
+-	u32 val;
++	if (en == 1)
++		pit_int_en |= CH_INT_EN(ch, timer_id);
++	else
++		pit_int_en &= ~(CH_INT_EN(ch, timer_id));
+ 
+-	val = readl(base + CH_EN);
+-	writel(val | CH0TMR0EN, base + CH_EN);
++	writel(pit_int_en, base + INT_EN);
+ }
+ 
+-static void atcpit100_clkevt_time_stop(void __iomem *base)
++static void atcpit_ch_clear_int(void __iomem *base, u8 ch, u8 timer_id)
+ {
+-	u32 val;
+-
+-	atcpit100_timer_clear_interrupt(base);
+-	val = readl(base + CH_EN);
+-	writel(val & ~CH0TMR0EN, base + CH_EN);
++	writel(CH_INT_STA(ch, timer_id), base + INT_STA);
+ }
+ 
+-static int atcpit100_clkevt_next_event(unsigned long evt,
+-	struct clock_event_device *clkevt)
++static inline void atcpit_clkevt_time_setup(struct atcpit_data *pit_data, unsigned long delay)
+ {
+-	u32 val;
+-	struct timer_of *to = to_timer_of(clkevt);
+-
+-	val = readl(timer_of_base(to) + CH_EN);
+-	writel(val & ~CH0TMR0EN, timer_of_base(to) + CH_EN);
+-	writel(evt, timer_of_base(to) + CH0_REL);
+-	writel(val | CH0TMR0EN, timer_of_base(to) + CH_EN);
+-
+-	return 0;
++	atcpit_ch_reload(pit_data->base, pit_data->clock_evt_ch, delay);
+ }
+ 
+-static int atcpit100_clkevt_set_periodic(struct clock_event_device *evt)
++static inline void atcpit_clkevt_time_start(struct atcpit_data *pit_data)
+ {
+-	struct timer_of *to = to_timer_of(evt);
+-
+-	atcpit100_clkevt_time_setup(timer_of_base(to), timer_of_period(to));
+-	atcpit100_clkevt_time_start(timer_of_base(to));
++	atcpit_ch_en(pit_data->base, pit_data->clock_evt_ch, TIMER0, 1);
++}
+ 
+-	return 0;
++static inline void atcpit_clkevt_time_stop(struct atcpit_data *pit_data)
++{
++	atcpit_ch_en(pit_data->base, pit_data->clock_evt_ch, TIMER0, 0);
++	atcpit_ch_clear_int(pit_data->base, pit_data->clock_evt_ch, TIMER0);
+ }
+-static int atcpit100_clkevt_shutdown(struct clock_event_device *evt)
++
++static int atcpit_clkevt_set_periodic(struct clock_event_device *evt)
+ {
++	struct atcpit_data *pit_data = NULL;
+ 	struct timer_of *to = to_timer_of(evt);
+ 
+-	atcpit100_clkevt_time_stop(timer_of_base(to));
++	pit_data = to_atcpit_data_clkevt(evt);
++
++	atcpit_clkevt_time_stop(pit_data);
++	atcpit_clkevt_time_setup(pit_data, timer_of_period(to));
++	atcpit_clkevt_time_start(pit_data);
+ 
+ 	return 0;
+ }
+-static int atcpit100_clkevt_set_oneshot(struct clock_event_device *evt)
++
++static int atcpit_clkevt_shutdown(struct clock_event_device *evt)
+ {
+-	struct timer_of *to = to_timer_of(evt);
+-	u32 val;
++	struct atcpit_data *pit_data = NULL;
+ 
+-	writel(~0x0, timer_of_base(to) + CH0_REL);
+-	val = readl(timer_of_base(to) + CH_EN);
+-	writel(val | CH0TMR0EN, timer_of_base(to) + CH_EN);
++	pit_data = to_atcpit_data_clkevt(evt);
++	atcpit_clkevt_time_stop(pit_data);
+ 
+ 	return 0;
+ }
+ 
+-static irqreturn_t atcpit100_timer_interrupt(int irq, void *dev_id)
++static irqreturn_t atcpit_timer_interrupt(int irq, void *dev_id)
+ {
+ 	struct clock_event_device *evt = (struct clock_event_device *)dev_id;
+-	struct timer_of *to = to_timer_of(evt);
++	struct atcpit_data *pit_data = to_atcpit_data_clkevt(evt);
+ 
+-	atcpit100_timer_clear_interrupt(timer_of_base(to));
++	atcpit_ch_clear_int(pit_data->base, pit_data->clock_evt_ch, TIMER0);
+ 
+-	evt->event_handler(evt);
++	if (evt->event_handler)
++		evt->event_handler(evt);
+ 
+ 	return IRQ_HANDLED;
+ }
+ 
+-static struct timer_of to = {
+-	.flags = TIMER_OF_IRQ | TIMER_OF_CLOCK | TIMER_OF_BASE,
+-
+-	.clkevt = {
+-		.name = "atcpit100_tick",
+-		.rating = 300,
+-		.features = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT,
+-		.set_state_shutdown = atcpit100_clkevt_shutdown,
+-		.set_state_periodic = atcpit100_clkevt_set_periodic,
+-		.set_state_oneshot = atcpit100_clkevt_set_oneshot,
+-		.tick_resume = atcpit100_clkevt_shutdown,
+-		.set_next_event = atcpit100_clkevt_next_event,
+-		.cpumask = cpu_possible_mask,
+-	},
+-
+-	.of_irq = {
+-		.handler = atcpit100_timer_interrupt,
+-		.flags = IRQF_TIMER | IRQF_IRQPOLL,
+-	},
+-
+-	/*
+-	 * FIXME: we currently only support clocking using PCLK
+-	 * and using EXTCLK is not supported in the driver.
+-	 */
+-	.of_clk = {
+-		.name = "PCLK",
+-	}
+-};
+-
+-static u64 notrace atcpit100_timer_sched_read(void)
++static u64 atcpit_clksrc_read(struct clocksource *clksrc)
+ {
+-	return ~readl(timer_of_base(&to) + CH1_CNT);
++	struct atcpit_data *atcpit = NULL;
++	u64 src_cnt;
++
++	atcpit = to_atcpit_data_clksrc(clksrc);
++	src_cnt = readl(atcpit->base + CH_CNT(atcpit->clock_src_ch));
++
++	return ~readl(atcpit->base + CH_CNT(atcpit->clock_src_ch));
+ }
+ 
+-#ifdef CONFIG_NDS32
+-static void fill_vdso_need_info(struct device_node *node)
++static int __init atcpit_clockevent_init(struct device_node *node, struct atcpit_data *pit_data)
+ {
+-	struct resource timer_res;
+-	of_address_to_resource(node, 0, &timer_res);
+-	timer_info.mapping_base = (unsigned long)timer_res.start;
+-	timer_info.cycle_count_down = true;
+-	timer_info.cycle_count_reg_offset = CH1_CNT;
++	unsigned long pit_clk_rate;
++	int           ret = 0;
++
++	pit_clk_rate = clk_get_rate(pit_data->src_clk);
++	if (!pit_clk_rate) {
++		pr_err("Invalid clock rate\n");
++		return -EINVAL;
++	}
++
++	pit_data->clkevt.name = "atcpit_timer";
++	pit_data->clkevt.features = CLOCK_EVT_FEAT_PERIODIC;
++	pit_data->clkevt.set_state_shutdown = atcpit_clkevt_shutdown;
++	pit_data->clkevt.set_state_periodic = atcpit_clkevt_set_periodic;
++	pit_data->clkevt.tick_resume = atcpit_clkevt_shutdown;
++	pit_data->clkevt.rating = 200;
++	pit_data->irq = pit_data->irq;
++	pit_data->clkevt.cpumask = cpu_possible_mask;
++
++	atcpit_ch_crtl(pit_data->base, pit_data->clock_evt_ch, pit_data->pit_clk_src, TIMER_32);
++	atcpit_ch_clear_int(pit_data->base, pit_data->clock_evt_ch, TIMER0);
++	atcpit_ch_int_en(pit_data->base, pit_data->clock_evt_ch, TIMER0, 1);
++	ret = request_irq(pit_data->irq, atcpit_timer_interrupt, IRQF_TIMER | IRQF_IRQPOLL,
++			  "atcpit_timer", &pit_data->clkevt);
++	if (ret) {
++		pr_err("Unable to register interrupt for atcpit_timer\n");
++		goto ERR_EXIT;
++	}
++
++	clockevents_config_and_register(&pit_data->clkevt, pit_clk_rate, 0xf, 0xfffffffe);
++
++ERR_EXIT:
++	return ret;
+ }
+-#endif
+ 
+-static int atcpit100_timer_init(struct device_node *node)
++
++static int __init atcpit_clocksource_init(struct device_node *node, struct atcpit_data *pit_data)
+ {
+-	int ret;
+-	u32 val;
+-	void __iomem *base;
++	unsigned long pit_clk_rate;
++	int           ret = 0;
+ 
+-	ret = timer_of_init(node, &to);
+-	if (ret)
+-		return ret;
++	pit_clk_rate = clk_get_rate(pit_data->src_clk);
++	if (!pit_clk_rate) {
++		pr_err("Invalid clock rate\n");
++		return -EINVAL;
++	}
+ 
+-	base = timer_of_base(&to);
++	pit_data->clksrc.mask = CLOCKSOURCE_MASK(32);
++	pit_data->clksrc.name = "atcpit_clocksource";
++	pit_data->clksrc.rating = 200;
++	pit_data->clksrc.read = atcpit_clksrc_read;
++	pit_data->clksrc.flags = CLOCK_SOURCE_IS_CONTINUOUS;
+ 
+-	sched_clock_register(atcpit100_timer_sched_read, 32,
+-		timer_of_rate(&to));
++	atcpit_ch_crtl(pit_data->base, pit_data->clock_src_ch, pit_data->pit_clk_src, TIMER_32);
++	atcpit_ch_reload(pit_data->base, pit_data->clock_src_ch, 0xFFFFFFFF);
++	atcpit_ch_en(pit_data->base, pit_data->clock_src_ch, TIMER0, 1);
+ 
+-	ret = clocksource_mmio_init(base + CH1_CNT,
+-		node->name, timer_of_rate(&to), 300, 32,
+-		clocksource_mmio_readl_down);
++	ret = clocksource_register_hz(&pit_data->clksrc, pit_clk_rate);
+ 
+-	if (ret) {
++	if (ret)
+ 		pr_err("Failed to register clocksource\n");
+-		return ret;
++
++	return ret;
++}
++
++static int __init atcpit_timer_init(struct device_node *node)
++{
++	struct atcpit_data *pit_data = NULL;
++	int                ret = 0;
++	u32                val;
++
++	pit_data = kzalloc(sizeof(*pit_data), GFP_KERNEL);
++	if (!pit_data)
++		return -ENOMEM;
++
++	pit_data->clock_evt_ch = 0xFF;
++	pit_data->clock_src_ch = 0xFF;
++
++	pit_data->base = of_iomap(node, 0);
++	if (!pit_data->base) {
++		pr_err("Invalid io addr\n");
++		ret = -ENXIO;
++		goto ERR_EXIT;
++	}
++
++	if (atcpit_check_pit_id(pit_data->base)) {
++		pr_err("Invalid pit id\n");
++		goto ERR_EXIT;
+ 	}
++	pit_data->pit_num_ch = atcpit_get_num_ch(pit_data->base);
+ 
+-	/* clear channel 0 timer0 interrupt */
+-	atcpit100_timer_clear_interrupt(base);
++	pit_data->src_clk = of_clk_get(node, 0);
++	if (IS_ERR(pit_data->src_clk)) {
++		pr_err("Invalid src_clk\n");
++		ret = PTR_ERR(pit_data->src_clk);
++		goto ERR_EXIT;
++	}
+ 
+-	clockevents_config_and_register(&to.clkevt, timer_of_rate(&to),
+-					TIMER_SYNC_TICKS, 0xffffffff);
+-	atcpit100_ch0_tmr0_en(base);
+-	atcpit100_ch1_tmr0_en(base);
+-	atcpit100_clocksource_start(base);
+-	atcpit100_clkevt_time_start(base);
++	pit_data->irq = irq_of_parse_and_map(node, 0);
++	if (!pit_data->irq) {
++		pr_err("Invalid irq\n");
++		ret = -EINVAL;
++		goto ERR_EXIT;
++	}
+ 
+-	/* Enable channel 0 timer0 interrupt */
+-	val = readl(base + INT_EN);
+-	writel(val | CH0INT0EN, base + INT_EN);
++	ret = of_property_read_u32(node, "pit_clk_src", &val);
++	if (ret || val > PIT_CLK_SRC_PCLK) {
++		pr_err("Invalid pit clock source\n");
++		goto ERR_EXIT;
++	}
++	pit_data->pit_clk_src = val;
++
++	ret = of_property_read_u32(node, "clock_src_ch", &val);
++	if (!ret) {
++		if (val < pit_data->pit_num_ch) {
++			pit_data->clock_src_ch = val;
++			ret = atcpit_clocksource_init(node, pit_data);
++			if (ret)
++				goto ERR_EXIT;
++		} else {
++			pr_err("Invalid clock_src_ch:%d\n", val);
++		}
++	}
+ 
+-#ifdef CONFIG_NDS32
+-	fill_vdso_need_info(node);
+-#endif
++	ret = of_property_read_u32(node, "clock_evt_ch", &val);
++	if (!ret) {
++		if (val < pit_data->pit_num_ch) {
++			pit_data->clock_evt_ch = val;
++			ret = atcpit_clockevent_init(node, pit_data);
++			if (ret)
++				goto ERR_EXIT;
++		} else {
++			pr_err("Invalid clock_evt_ch:%d\n", val);
++		}
++	}
++
++	return ret;
+ 
++ERR_EXIT:
++	kfree(pit_data);
+ 	return ret;
+ }
+ 
+-TIMER_OF_DECLARE(atcpit100, "andestech,atcpit100", atcpit100_timer_init);
++TIMER_OF_DECLARE(andes_atcpit, "andestech,atcpit100", atcpit_timer_init);
+-- 
+2.34.1
+

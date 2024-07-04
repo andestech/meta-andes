@@ -1,0 +1,425 @@
+From c8bc94975d28516c3f6ed6dadc6e7f45ec41bbcc Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Thu, 18 May 2023 16:00:31 +0800
+Subject: [PATCH 049/191] watchdog: andes: atcwdt200: Andes support for
+ ATCWDT200
+
+Reformed from the following patches on RISCV-Linux-5.4:
+- (ff422942995b) riscv: Porting Watch dog driver
+- Remove vendor SBI call sbi_andes_set_reset_vector(), directly
+  program SMU reset vector, thus it needs CONFIG_ATCSMU as dependency
+- Add readl_fixup to work around dts probe when hardware is not
+  present
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ arch/riscv/configs/andes-support.config |   3 +
+ drivers/watchdog/Kconfig                |  13 +
+ drivers/watchdog/Makefile               |   1 +
+ drivers/watchdog/atcwdt200_wdt.c        | 318 ++++++++++++++++++++++++
+ include/soc/andes/smu.h                 |  11 +
+ 5 files changed, 346 insertions(+)
+ create mode 100644 drivers/watchdog/atcwdt200_wdt.c
+
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+index 1297b84825f3..9e4eec02f272 100644
+--- a/arch/riscv/configs/andes-support.config
++++ b/arch/riscv/configs/andes-support.config
+@@ -36,3 +36,6 @@ CONFIG_RTC_CLASS=y
+ CONFIG_RTC_DRV_ATCRTC100=y
+ 
+ CONFIG_ANDES_ATCSMU=y
++CONFIG_WATCHDOG=y
++CONFIG_WATCHDOG_CORE=y
++CONFIG_ATCWDT200_WATCHDOG=y
+diff --git a/drivers/watchdog/Kconfig b/drivers/watchdog/Kconfig
+index b64bc49c7f30..31c8f616cfd9 100644
+--- a/drivers/watchdog/Kconfig
++++ b/drivers/watchdog/Kconfig
+@@ -47,6 +47,12 @@ config WATCHDOG_NOWAYOUT
+ 	  get killed. If you say Y here, the watchdog cannot be stopped once
+ 	  it has been started.
+ 
++config WATCHDOG_DEBUG
++	bool "Hang in watch dog interrupt handler"
++	help
++	  When system failed, it will hang in watch dog interrupt handler for
++	  debugging.
++
+ config WATCHDOG_HANDLE_BOOT_ENABLED
+ 	bool "Update boot-enabled watchdog until userspace takes over"
+ 	default y
+@@ -473,6 +479,13 @@ config FTWDT010_WATCHDOG
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called ftwdt010_wdt.
+ 
++config ATCWDT200_WATCHDOG
++	tristate "ATCWDT200_WATCHDOG"
++	depends on RISCV && PLAT_AE350 && ANDES_ATCSMU
++	help
++	  Support for Andes atcwdt200 watchdog. The driver needs SMU to
++	  program reset vector before triggering software reset.
++
+ config IXP4XX_WATCHDOG
+ 	tristate "IXP4xx Watchdog"
+ 	depends on ARCH_IXP4XX
+diff --git a/drivers/watchdog/Makefile b/drivers/watchdog/Makefile
+index d41e5f830ae7..cee6c8e961b4 100644
+--- a/drivers/watchdog/Makefile
++++ b/drivers/watchdog/Makefile
+@@ -49,6 +49,7 @@ obj-$(CONFIG_TWL4030_WATCHDOG) += twl4030_wdt.o
+ obj-$(CONFIG_21285_WATCHDOG) += wdt285.o
+ obj-$(CONFIG_977_WATCHDOG) += wdt977.o
+ obj-$(CONFIG_FTWDT010_WATCHDOG) += ftwdt010_wdt.o
++obj-$(CONFIG_ATCWDT200_WATCHDOG) += atcwdt200_wdt.o
+ obj-$(CONFIG_IXP4XX_WATCHDOG) += ixp4xx_wdt.o
+ obj-$(CONFIG_S3C2410_WATCHDOG) += s3c2410_wdt.o
+ obj-$(CONFIG_SA1100_WATCHDOG) += sa1100_wdt.o
+diff --git a/drivers/watchdog/atcwdt200_wdt.c b/drivers/watchdog/atcwdt200_wdt.c
+new file mode 100644
+index 000000000000..fac85d6af54f
+--- /dev/null
++++ b/drivers/watchdog/atcwdt200_wdt.c
+@@ -0,0 +1,318 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++#include <linux/module.h>
++#include <linux/fs.h>
++#include <linux/miscdevice.h>
++#include <linux/watchdog.h>
++#include <linux/delay.h>
++#include <linux/uaccess.h>
++#include <linux/reboot.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/interrupt.h>
++#include <linux/io.h>
++#include <linux/reboot.h>
++#include <linux/uaccess.h>
++#include <linux/cpumask.h>
++#include <linux/processor.h>
++#include <soc/andes/smu.h>
++
++#define DRIVER_NAME	"atcwdt200"
++
++#define DEBUG(str, ...)				\
++do {						\
++	if (debug)				\
++		pr_info(str, ##__VA_ARGS__);	\
++} while (0)
++
++/* ID and Revision Register */
++#define IDREV		(*(volatile unsigned int *)(wdt_base + 0x00))
++#define ID_OFF		12
++#define ID_MSK		(0xfffff << ID_OFF)
++#define ID		(0x03002 << ID_OFF)
++
++/* Control Register */
++#define CTRL		(*(volatile unsigned int *)(wdt_base + 0x10))
++#define RST_TIME_OFF	8
++#define RST_TIME_MSK	(0x3 << RST_TIME_OFF)
++#define RST_CLK_128	(0 << RST_TIME_OFF)
++#define RST_CLK_256	(1 << RST_TIME_OFF)
++#define RST_CLK_512	(2 << RST_TIME_OFF)
++#define RST_CLK_1024	(3 << RST_TIME_OFF)
++#define INT_TIME_OFF	4
++#define INT_TIME_MSK	(0xf << INT_TIME_OFF)
++#define INT_CLK_64	(0 << INT_TIME_OFF)
++#define INT_CLK_256	(1 << INT_TIME_OFF)
++#define INT_CLK_1024	(2 << INT_TIME_OFF)
++#define INT_CLK_2048	(3 << INT_TIME_OFF)
++#define INT_CLK_4096	(4 << INT_TIME_OFF)
++#define INT_CLK_8192	(5 << INT_TIME_OFF)
++#define INT_CLK_16384	(6 << INT_TIME_OFF)
++#define INT_CLK_32768	(7 << INT_TIME_OFF)
++#define RST_EN		(1 << 3)
++#define INT_EN		(1 << 2)
++#define CLK_PCLK	(1 << 1)
++#define WDT_EN		(1 << 0)
++
++/* Restart Register */
++#define RESTART		(*(volatile unsigned int *)(wdt_base + 0x14))
++#define RESTART_MAGIC	0xcafe
++
++/* Write Enable Register */
++#define WREN		(*(volatile unsigned int *)(wdt_base + 0x18))
++#define WP_MAGIC	0x5aa5
++
++/* Status Register */
++#define STATUS		(*(volatile unsigned int *)(wdt_base + 0x1c))
++#define INT_EXPIRED	(1 << 0)
++
++#define TIMER_MARGIN	60	/* (secs) Default is 1 minute */
++
++static int expect_close;
++static int debug;
++static int timeout = TIMER_MARGIN;  /* in seconds */
++static bool nowayout = WATCHDOG_NOWAYOUT;
++module_param(nowayout, bool, 0);
++MODULE_PARM_DESC(nowayout,
++		"Watchdog cannot be stopped once started (default="
++		__MODULE_STRING(WATCHDOG_NOWAYOUT) ")");
++static int wdt_panic;
++module_param(wdt_panic, int, 0);
++MODULE_PARM_DESC(wdt_panic,
++	"Watchdog action, set to 1 to panic, 0 to reboot (default=0)");
++
++module_param(debug, int, 0);
++module_param(timeout, int, 0);
++static u32 wdt_freq;
++static void __iomem *wdt_base;
++extern struct atcsmu atcsmu;
++
++/* enable the WDT */
++void wdt_start(void)
++{
++#ifdef CONFIG_WATCHDOG_DEBUG
++	WREN = WP_MAGIC;
++	CTRL = (INT_CLK_32768 | INT_EN | WDT_EN);
++#else
++	WREN = WP_MAGIC;
++	CTRL = (INT_CLK_32768 | INT_EN | RST_CLK_128 | RST_EN | WDT_EN);
++#endif
++}
++
++int wdt_get_timeout(void)
++{
++	int time = (CTRL & INT_TIME_MSK) >> INT_TIME_OFF;
++
++	if (time > 7)
++		return (time - 7) * 2;
++	else
++		return 1;
++}
++
++/* set reset vector and enable WDT */
++static int wdtdog_open(struct inode *inode, struct file *file)
++{
++	int cpu_nums = num_online_cpus();
++	struct atcsmu *smu = &atcsmu;
++
++	for (int i = 0; i < cpu_nums; i++) {
++		writel((u32)FLASH_BASE, smu->base + SMU_HART_RESET_VEC_LO(i));
++		writel((u64)FLASH_BASE >> 32,
++		       smu->base + SMU_HART_RESET_VEC_HI(i));
++	}
++
++	for (int i = 0; i < cpu_nums; i++) {
++		u32 lo = readl(smu->base + SMU_HART_RESET_VEC_LO(i));
++		u32 hi = readl(smu->base + SMU_HART_RESET_VEC_HI(i));
++
++		pr_info("hart%d reset vector (lo32) set to 0x%08x\n", i, lo);
++		pr_info("hart%d reset vector (hi32) set to 0x%08x\n", i, hi);
++	}
++
++	wdt_start();
++	DEBUG("Activating WDT..\n");
++	return 0;
++}
++
++/*
++ * disable WDT, NOWAY_OUT MEANS NEED MAGIC NUMBER
++ * OR just disable it if NOWAY_OUT not set
++ */
++static int wdtdog_release(struct inode *inode, struct file *file)
++{
++#ifndef CONFIG_WATCHDOG_NOWAYOUT
++	/*
++	 * Shut off the timer.
++	 * Lock it in if it's a module and we defined ...NOWAYOUT
++	 */
++	if (expect_close) {
++		WREN = WP_MAGIC;
++		CTRL = 0;
++		DEBUG("Deactivating WDT..\n");
++	}
++#endif
++	expect_close = 0;
++	return 0;
++}
++
++/* clean the WDT */
++static ssize_t wdtdog_write(struct file *file, const char *data, size_t len, loff_t *ppos)
++{
++	if (!len)
++		return 0;
++
++	if (!nowayout) {
++		size_t i;
++
++		for (i = 0; i < len; i++) {
++			char c;
++
++			if (get_user(c, data + i))
++				return -EFAULT;
++			if (c == 'V') {
++				expect_close = 42;
++				break;
++			}
++		}
++	}
++	WREN = WP_MAGIC;
++	RESTART = RESTART_MAGIC;
++	STATUS |= INT_EXPIRED;
++	return len;
++}
++
++static long wdtdog_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
++{
++	static struct watchdog_info ident = {
++		.identity = "FTWDT010 watchdog",
++	};
++
++	void __user *argp = (void __user *)arg;
++	int __user *p = argp;
++	int new_options, retval = -EINVAL;
++
++	switch (cmd) {
++	case WDIOC_GETSUPPORT:
++		return copy_to_user(argp, &ident, sizeof(ident));
++
++	case WDIOC_GETSTATUS:
++	case WDIOC_GETBOOTSTATUS:
++		return put_user(0, p);
++
++	case WDIOC_SETOPTIONS:
++		if (get_user(new_options, p))
++			return -EFAULT;
++
++		if (new_options & WDIOS_DISABLECARD) {
++			WREN = WP_MAGIC;
++			CTRL &= ~WDT_EN;
++			retval = 0;
++		}
++
++		if (new_options & WDIOS_ENABLECARD) {
++			wdt_start();
++			retval = 0;
++		}
++		return retval;
++
++	case WDIOC_GETTIMEOUT:
++		timeout = wdt_get_timeout();
++		return put_user(timeout, p);
++
++	case WDIOC_KEEPALIVE:
++		WREN = WP_MAGIC;
++		RESTART = RESTART_MAGIC;
++		STATUS |= INT_EXPIRED;
++		return 0;
++
++	default:
++		return -ENOIOCTLCMD;
++	}
++}
++
++static const struct file_operations wdtdog_fops = {
++	.owner		= THIS_MODULE,
++	.llseek		= no_llseek,
++	.write		= wdtdog_write,
++	.unlocked_ioctl	= wdtdog_ioctl,
++	.open		= wdtdog_open,
++	.release	= wdtdog_release,
++};
++
++static struct miscdevice atcwdt200_dog_miscdev = {
++	WATCHDOG_MINOR,
++	"watchdog",
++	&wdtdog_fops
++};
++
++#ifdef CONFIG_OF
++static const struct of_device_id atcwdt200_dog_match[] = {
++	{ .compatible = "andestech,atcwdt200" },
++	{},
++};
++MODULE_DEVICE_TABLE(of, atcwdt200_dog_match);
++#endif
++
++static int atcwdt200_dog_probe(struct platform_device *pdev)
++{
++	int (*read_fixup)(void __iomem *addr, unsigned int val,
++		unsigned int shift_bits);
++	int ret;
++	struct resource *res;
++	struct device_node *node;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	wdt_base = devm_ioremap_resource(&pdev->dev, res);
++	if (IS_ERR(wdt_base))
++		return PTR_ERR(wdt_base);
++
++	/* check ID and Revision register */
++	read_fixup = symbol_get(readl_fixup);
++	ret = read_fixup(wdt_base, 0x03002, 12);
++	symbol_put(readl_fixup);
++	if (!ret) {
++		dev_err(&pdev->dev,
++			"fail to read ID and Revision reg,\
++			bitmap not support atcwdt200.\n");
++		return -ENOENT;
++	}
++
++	if ((IDREV & ID_MSK) != ID)
++		return -ENOENT;
++
++	node = of_find_matching_node(NULL, atcwdt200_dog_match);
++	if (of_property_read_u32(node, "clock-frequency", &wdt_freq))
++		panic("Can't read clock-frequency");
++
++	ret = misc_register(&atcwdt200_dog_miscdev);
++	if (ret)
++		return ret;
++
++	dev_info(&pdev->dev, "ATCWDT200 watchdog timer driver.\n");
++
++	DEBUG("ATCWDT200 watchdog timer: timer timeout %d sec\n", timeout);
++	return 0;
++}
++
++static int atcwdt200_dog_remove(struct platform_device *pdev)
++{
++	misc_deregister(&atcwdt200_dog_miscdev);
++	return 0;
++}
++
++static struct platform_driver atcwdt200_dog_driver = {
++	.probe		= atcwdt200_dog_probe,
++	.remove		= atcwdt200_dog_remove,
++	.driver		= {
++		.name	= DRIVER_NAME,
++		.owner	= THIS_MODULE,
++		.of_match_table = of_match_ptr(atcwdt200_dog_match),
++	},
++};
++
++module_platform_driver(atcwdt200_dog_driver);
++MODULE_DESCRIPTION("Andestech watchdog driver");
++MODULE_AUTHOR("Andestech");
++MODULE_LICENSE("GPL");
+diff --git a/include/soc/andes/smu.h b/include/soc/andes/smu.h
+index e63b6f518c6f..a7e4f6e3e238 100644
+--- a/include/soc/andes/smu.h
++++ b/include/soc/andes/smu.h
+@@ -48,4 +48,15 @@ void atcsmu_set_suspend_mode(void);
+ #define DEEP_SLEEP_MODE             2
+ #define CPUHOTPLUG_DEEP_SLEEP_MODE  3
+ 
++/* for watchdog */
++#define FLASH_BASE                  0x80000000
++#define SMUCR_OFF                   0x14
++#define SMUCR_RESET                 0x3c
++#define SMU_RESET_VEC_LO_OFF        0x50
++#define SMU_RESET_VEC_HI_OFF        0x60
++#define SMU_HART_RESET_VEC_LO(n)    (SMU_RESET_VEC_LO_OFF + (n * 0x4))
++#define SMU_HART_RESET_VEC_HI(n)    (SMU_RESET_VEC_HI_OFF + (n * 0x4))
++#define PCS_RESET                   0x1
++#define RESET_CMD                   0x1
++
+ #endif
+-- 
+2.34.1
+

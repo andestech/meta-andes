@@ -1,0 +1,362 @@
+From f51c0c1ca1ca788cdacf16e8d41437cec8b2c3e6 Mon Sep 17 00:00:00 2001
+From: Alexandre Ghiti <alexghiti@rivosinc.com>
+Date: Mon, 24 Apr 2023 11:23:13 +0200
+Subject: [PATCH 023/191] riscv: Allow to downgrade paging mode from the
+ command line
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add 2 early command line parameters that allow to downgrade satp mode
+(using the same naming as x86):
+- "no5lvl": use a 4-level page table (down from sv57 to sv48)
+- "no4lvl": use a 3-level page table (down from sv57/sv48 to sv39)
+
+Note that going through the device tree to get the kernel command line
+works with ACPI too since the efi stub creates a device tree anyway with
+the command line.
+
+In KASAN kernels, we can't use the libfdt that early in the boot process
+since we are not ready to execute instrumented functions. So instead of
+using the "generic" libfdt, we compile our own versions of those functions
+that are not instrumented and that are prefixed so that they do not
+conflict with the generic ones. We also need the non-instrumented versions
+of the string functions and the prefixed versions of memcpy/memmove.
+
+This is largely inspired by commit aacd149b6238 ("arm64: head: avoid
+relocating the kernel twice for KASLR") from which I removed compilation
+flags that were not relevant to RISC-V at the moment (LTO, SCS). Also
+note that we have to link with -z norelro to avoid ld.lld to throw a
+warning with the new .got sections, like in commit 311bea3cb9ee ("arm64:
+link with -z norelro for LLD or aarch64-elf").
+
+Signed-off-by: Alexandre Ghiti <alexghiti@rivosinc.com>
+Tested-by: Björn Töpel <bjorn@rivosinc.com>
+Reviewed-by: Björn Töpel <bjorn@rivosinc.com>
+Link: https://lore.kernel.org/r/20230424092313.178699-2-alexghiti@rivosinc.com
+Signed-off-by: Palmer Dabbelt <palmer@rivosinc.com>
+---
+ .../admin-guide/kernel-parameters.txt         |  5 +-
+ arch/riscv/Makefile                           |  6 +-
+ arch/riscv/kernel/Makefile                    |  2 +
+ arch/riscv/kernel/pi/Makefile                 | 39 ++++++++++++
+ arch/riscv/kernel/pi/cmdline_early.c          | 62 +++++++++++++++++++
+ arch/riscv/kernel/vmlinux.lds.S               | 29 +++++++++
+ arch/riscv/lib/memcpy.S                       |  2 +
+ arch/riscv/lib/memmove.S                      |  2 +
+ arch/riscv/mm/init.c                          | 36 +++++++++--
+ 9 files changed, 175 insertions(+), 8 deletions(-)
+ create mode 100644 arch/riscv/kernel/pi/Makefile
+ create mode 100644 arch/riscv/kernel/pi/cmdline_early.c
+
+diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
+index 882b6198dd0d..fa4510abd7ef 100644
+--- a/Documentation/admin-guide/kernel-parameters.txt
++++ b/Documentation/admin-guide/kernel-parameters.txt
+@@ -3587,7 +3587,10 @@
+ 			emulation library even if a 387 maths coprocessor
+ 			is present.
+ 
+-	no5lvl		[X86-64] Disable 5-level paging mode. Forces
++	no4lvl		[RISCV] Disable 4-level and 5-level paging modes. Forces
++			kernel to use 3-level paging instead.
++
++	no5lvl		[X86-64,RISCV] Disable 5-level paging mode. Forces
+ 			kernel to use 4-level paging instead.
+ 
+ 	nofsgsbase	[X86] Disables FSGSBASE instructions.
+diff --git a/arch/riscv/Makefile b/arch/riscv/Makefile
+index 655085e64fe7..0e2704e10334 100644
+--- a/arch/riscv/Makefile
++++ b/arch/riscv/Makefile
+@@ -7,7 +7,11 @@
+ #
+ 
+ OBJCOPYFLAGS    := -O binary
+-LDFLAGS_vmlinux :=
++LDFLAGS_vmlinux := -z norelro
++ifeq ($(CONFIG_RELOCATABLE),y)
++	LDFLAGS_vmlinux += -shared -Bsymbolic -z notext --emit-relocs
++	KBUILD_CFLAGS += -fPIE
++endif
+ ifeq ($(CONFIG_DYNAMIC_FTRACE),y)
+ 	LDFLAGS_vmlinux := --no-relax
+ 	KBUILD_CPPFLAGS += -DCC_USING_PATCHABLE_FUNCTION_ENTRY
+diff --git a/arch/riscv/kernel/Makefile b/arch/riscv/kernel/Makefile
+index ab333cb792fd..bbc65d9c466f 100644
+--- a/arch/riscv/kernel/Makefile
++++ b/arch/riscv/kernel/Makefile
+@@ -89,3 +89,5 @@ obj-$(CONFIG_EFI)		+= efi.o
+ obj-$(CONFIG_COMPAT)		+= compat_syscall_table.o
+ obj-$(CONFIG_COMPAT)		+= compat_signal.o
+ obj-$(CONFIG_COMPAT)		+= compat_vdso/
++
++obj-$(CONFIG_64BIT)		+= pi/
+diff --git a/arch/riscv/kernel/pi/Makefile b/arch/riscv/kernel/pi/Makefile
+new file mode 100644
+index 000000000000..5d7cb991f2b8
+--- /dev/null
++++ b/arch/riscv/kernel/pi/Makefile
+@@ -0,0 +1,39 @@
++# SPDX-License-Identifier: GPL-2.0
++# This file was copied from arm64/kernel/pi/Makefile.
++
++KBUILD_CFLAGS	:= $(subst $(CC_FLAGS_FTRACE),,$(KBUILD_CFLAGS)) -fpie \
++		   -Os -DDISABLE_BRANCH_PROFILING $(DISABLE_STACKLEAK_PLUGIN) \
++		   $(call cc-option,-mbranch-protection=none) \
++		   -I$(srctree)/scripts/dtc/libfdt -fno-stack-protector \
++		   -D__DISABLE_EXPORTS -ffreestanding \
++		   -fno-asynchronous-unwind-tables -fno-unwind-tables \
++		   $(call cc-option,-fno-addrsig)
++
++KBUILD_CFLAGS	+= -mcmodel=medany
++
++CFLAGS_cmdline_early.o += -D__NO_FORTIFY
++CFLAGS_lib-fdt_ro.o += -D__NO_FORTIFY
++
++GCOV_PROFILE	:= n
++KASAN_SANITIZE	:= n
++KCSAN_SANITIZE	:= n
++UBSAN_SANITIZE	:= n
++KCOV_INSTRUMENT	:= n
++
++$(obj)/%.pi.o: OBJCOPYFLAGS := --prefix-symbols=__pi_ \
++			       --remove-section=.note.gnu.property \
++			       --prefix-alloc-sections=.init
++$(obj)/%.pi.o: $(obj)/%.o FORCE
++	$(call if_changed,objcopy)
++
++$(obj)/lib-%.o: $(srctree)/lib/%.c FORCE
++	$(call if_changed_rule,cc_o_c)
++
++$(obj)/string.o: $(srctree)/lib/string.c FORCE
++	$(call if_changed_rule,cc_o_c)
++
++$(obj)/ctype.o: $(srctree)/lib/ctype.c FORCE
++	$(call if_changed_rule,cc_o_c)
++
++obj-y		:= cmdline_early.pi.o string.pi.o ctype.pi.o lib-fdt.pi.o lib-fdt_ro.pi.o
++extra-y		:= $(patsubst %.pi.o,%.o,$(obj-y))
+diff --git a/arch/riscv/kernel/pi/cmdline_early.c b/arch/riscv/kernel/pi/cmdline_early.c
+new file mode 100644
+index 000000000000..05652d13c746
+--- /dev/null
++++ b/arch/riscv/kernel/pi/cmdline_early.c
+@@ -0,0 +1,62 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/types.h>
++#include <linux/init.h>
++#include <linux/libfdt.h>
++#include <linux/string.h>
++#include <asm/pgtable.h>
++#include <asm/setup.h>
++
++static char early_cmdline[COMMAND_LINE_SIZE];
++
++/*
++ * Declare the functions that are exported (but prefixed) here so that LLVM
++ * does not complain it lacks the 'static' keyword (which, if added, makes
++ * LLVM complain because the function is actually unused in this file).
++ */
++u64 set_satp_mode_from_cmdline(uintptr_t dtb_pa);
++
++static char *get_early_cmdline(uintptr_t dtb_pa)
++{
++	const char *fdt_cmdline = NULL;
++	unsigned int fdt_cmdline_size = 0;
++	int chosen_node;
++
++	if (!IS_ENABLED(CONFIG_CMDLINE_FORCE)) {
++		chosen_node = fdt_path_offset((void *)dtb_pa, "/chosen");
++		if (chosen_node >= 0) {
++			fdt_cmdline = fdt_getprop((void *)dtb_pa, chosen_node,
++						  "bootargs", NULL);
++			if (fdt_cmdline) {
++				fdt_cmdline_size = strlen(fdt_cmdline);
++				strscpy(early_cmdline, fdt_cmdline,
++					COMMAND_LINE_SIZE);
++			}
++		}
++	}
++
++	if (IS_ENABLED(CONFIG_CMDLINE_EXTEND) ||
++	    IS_ENABLED(CONFIG_CMDLINE_FORCE) ||
++	    fdt_cmdline_size == 0 /* CONFIG_CMDLINE_FALLBACK */) {
++		strncat(early_cmdline, CONFIG_CMDLINE,
++			COMMAND_LINE_SIZE - fdt_cmdline_size);
++	}
++
++	return early_cmdline;
++}
++
++static u64 match_noXlvl(char *cmdline)
++{
++	if (strstr(cmdline, "no4lvl"))
++		return SATP_MODE_48;
++	else if (strstr(cmdline, "no5lvl"))
++		return SATP_MODE_57;
++
++	return 0;
++}
++
++u64 set_satp_mode_from_cmdline(uintptr_t dtb_pa)
++{
++	char *cmdline = get_early_cmdline(dtb_pa);
++
++	return match_noXlvl(cmdline);
++}
+diff --git a/arch/riscv/kernel/vmlinux.lds.S b/arch/riscv/kernel/vmlinux.lds.S
+index 4e6c88aa4d87..1e8301c535d2 100644
+--- a/arch/riscv/kernel/vmlinux.lds.S
++++ b/arch/riscv/kernel/vmlinux.lds.S
+@@ -86,6 +86,17 @@ SECTIONS
+ 	/* Start of init data section */
+ 	__init_data_begin = .;
+ 	INIT_DATA_SECTION(16)
++
++	/* Those sections result from the compilation of kernel/pi/string.c */
++	.init.pidata : {
++		*(.init.srodata.cst8*)
++		*(.init__bug_table*)
++		*(.init.sdata*)
++	}
++
++	.init.bss : {
++		*(.init.bss)	/* from the EFI stub */
++	}
+ 	.exit.data :
+ 	{
+ 		EXIT_DATA
+@@ -122,6 +133,24 @@ SECTIONS
+ 		*(.sdata*)
+ 	}
+ 
++	.rela.dyn : ALIGN(8) {
++		__rela_dyn_start = .;
++		*(.rela .rela*)
++		__rela_dyn_end = .;
++	}
++
++	.got : { *(.got*) }
++
++#ifdef CONFIG_RELOCATABLE
++	.data.rel : { *(.data.rel*) }
++	.plt : { *(.plt) }
++	.dynamic : { *(.dynamic) }
++	.dynsym : { *(.dynsym) }
++	.dynstr : { *(.dynstr) }
++	.hash : { *(.hash) }
++	.gnu.hash : { *(.gnu.hash) }
++#endif
++
+ #ifdef CONFIG_EFI
+ 	.pecoff_edata_padding : { BYTE(0); . = ALIGN(PECOFF_FILE_ALIGNMENT); }
+ 	__pecoff_data_raw_size = ABSOLUTE(. - __pecoff_text_end);
+diff --git a/arch/riscv/lib/memcpy.S b/arch/riscv/lib/memcpy.S
+index 51ab716253fa..1a40d01a9543 100644
+--- a/arch/riscv/lib/memcpy.S
++++ b/arch/riscv/lib/memcpy.S
+@@ -106,3 +106,5 @@ WEAK(memcpy)
+ 6:
+ 	ret
+ END(__memcpy)
++SYM_FUNC_ALIAS(__pi_memcpy, __memcpy)
++SYM_FUNC_ALIAS(__pi___memcpy, __memcpy)
+diff --git a/arch/riscv/lib/memmove.S b/arch/riscv/lib/memmove.S
+index e0609e1f0864..838ff2022fe3 100644
+--- a/arch/riscv/lib/memmove.S
++++ b/arch/riscv/lib/memmove.S
+@@ -314,3 +314,5 @@ return_from_memmove:
+ 
+ SYM_FUNC_END(memmove)
+ SYM_FUNC_END(__memmove)
++SYM_FUNC_ALIAS(__pi_memmove, __memmove)
++SYM_FUNC_ALIAS(__pi___memmove, __memmove)
+diff --git a/arch/riscv/mm/init.c b/arch/riscv/mm/init.c
+index 7c4852af9e3f..2708580c5901 100644
+--- a/arch/riscv/mm/init.c
++++ b/arch/riscv/mm/init.c
+@@ -713,6 +713,8 @@ static __init pgprot_t pgprot_from_va(uintptr_t va)
+ #endif /* CONFIG_STRICT_KERNEL_RWX */
+ 
+ #if defined(CONFIG_64BIT) && !defined(CONFIG_XIP_KERNEL)
++u64 __pi_set_satp_mode_from_cmdline(uintptr_t dtb_pa);
++
+ static void __init disable_pgtable_l5(void)
+ {
+ 	pgtable_l5_enabled = false;
+@@ -727,17 +729,39 @@ static void __init disable_pgtable_l4(void)
+ 	satp_mode = SATP_MODE_39;
+ }
+ 
++static int __init print_no4lvl(char *p)
++{
++	pr_info("Disabled 4-level and 5-level paging");
++	return 0;
++}
++early_param("no4lvl", print_no4lvl);
++
++static int __init print_no5lvl(char *p)
++{
++	pr_info("Disabled 5-level paging");
++	return 0;
++}
++early_param("no5lvl", print_no5lvl);
++
+ /*
+  * There is a simple way to determine if 4-level is supported by the
+  * underlying hardware: establish 1:1 mapping in 4-level page table mode
+  * then read SATP to see if the configuration was taken into account
+  * meaning sv48 is supported.
+  */
+-static __init void set_satp_mode(void)
++static __init void set_satp_mode(uintptr_t dtb_pa)
+ {
+ 	u64 identity_satp, hw_satp;
+ 	uintptr_t set_satp_mode_pmd = ((unsigned long)set_satp_mode) & PMD_MASK;
+-	bool check_l4 = false;
++	u64 satp_mode_cmdline = __pi_set_satp_mode_from_cmdline(dtb_pa);
++
++	if (satp_mode_cmdline == SATP_MODE_57) {
++		disable_pgtable_l5();
++	} else if (satp_mode_cmdline == SATP_MODE_48) {
++		disable_pgtable_l5();
++		disable_pgtable_l4();
++		return;
++	}
+ 
+ 	create_p4d_mapping(early_p4d,
+ 			set_satp_mode_pmd, (uintptr_t)early_pud,
+@@ -756,7 +780,8 @@ static __init void set_satp_mode(void)
+ retry:
+ 	create_pgd_mapping(early_pg_dir,
+ 			   set_satp_mode_pmd,
+-			   check_l4 ? (uintptr_t)early_pud : (uintptr_t)early_p4d,
++			   pgtable_l5_enabled ?
++				(uintptr_t)early_p4d : (uintptr_t)early_pud,
+ 			   PGDIR_SIZE, PAGE_TABLE);
+ 
+ 	identity_satp = PFN_DOWN((uintptr_t)&early_pg_dir) | satp_mode;
+@@ -767,9 +792,8 @@ static __init void set_satp_mode(void)
+ 	local_flush_tlb_all();
+ 
+ 	if (hw_satp != identity_satp) {
+-		if (!check_l4) {
++		if (pgtable_l5_enabled) {
+ 			disable_pgtable_l5();
+-			check_l4 = true;
+ 			memset(early_pg_dir, 0, PAGE_SIZE);
+ 			goto retry;
+ 		}
+@@ -955,7 +979,7 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
+ #endif
+ 
+ #if defined(CONFIG_64BIT) && !defined(CONFIG_XIP_KERNEL)
+-	set_satp_mode();
++	set_satp_mode(dtb_pa);
+ #endif
+ 
+ 	kernel_map.va_pa_offset = PAGE_OFFSET - kernel_map.phys_addr;
+-- 
+2.34.1
+

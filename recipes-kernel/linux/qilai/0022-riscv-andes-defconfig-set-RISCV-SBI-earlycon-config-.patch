@@ -1,0 +1,37 @@
+From ac0edbe95d9de74e62215c4e5e4325d661ff634a Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Thu, 13 Apr 2023 16:00:24 +0800
+Subject: [PATCH 022/191] riscv: andes: defconfig: set RISCV SBI earlycon
+ config to enable in andes_defconfig
+
+For more details, see:
+https://gitea.andestech.com/RD-SW/linux/issues/3
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/configs/andes_defconfig | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/riscv/configs/andes_defconfig b/arch/riscv/configs/andes_defconfig
+index 7a53b743ecc1..6dba44942ad3 100644
+--- a/arch/riscv/configs/andes_defconfig
++++ b/arch/riscv/configs/andes_defconfig
+@@ -27,6 +27,7 @@ CONFIG_EMBEDDED=y
+ CONFIG_PROFILING=y
+ CONFIG_SOC_VIRT=y
+ # CONFIG_RISCV_ISA_ZICBOM is not set
++CONFIG_RISCV_SBI_V01=y
+ CONFIG_PM=y
+ CONFIG_CPU_IDLE=y
+ CONFIG_JUMP_LABEL=y
+@@ -94,6 +95,7 @@ CONFIG_INPUT_MOUSEDEV=y
+ CONFIG_SERIAL_8250=y
+ CONFIG_SERIAL_8250_CONSOLE=y
+ CONFIG_SERIAL_OF_PLATFORM=y
++CONFIG_SERIAL_EARLYCON_RISCV_SBI=y
+ CONFIG_VIRTIO_CONSOLE=y
+ CONFIG_HW_RANDOM=y
+ CONFIG_HW_RANDOM_VIRTIO=y
+-- 
+2.34.1
+

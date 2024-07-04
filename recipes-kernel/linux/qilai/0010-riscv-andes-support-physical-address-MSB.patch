@@ -1,0 +1,203 @@
+From 256ad79857d00b0b965df4a7011fe3fc5af15f1b Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Fri, 3 Mar 2023 13:38:52 +0800
+Subject: [PATCH 010/191] riscv: andes: support physical address MSB
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Kconfig.erratas           | 12 +++++++++++
+ arch/riscv/Kconfig.socs              |  7 +++++++
+ arch/riscv/errata/andes/errata.c     | 30 ++++++++++++++++++++++++++--
+ arch/riscv/include/asm/errata_list.h |  3 ++-
+ arch/riscv/include/asm/pgtable.h     | 20 ++++++++++++++++++-
+ include/soc/andes/andes.h            |  1 +
+ 6 files changed, 69 insertions(+), 4 deletions(-)
+
+diff --git a/arch/riscv/Kconfig.erratas b/arch/riscv/Kconfig.erratas
+index d52ed6a5fc1f..e6b7d22ca6a0 100644
+--- a/arch/riscv/Kconfig.erratas
++++ b/arch/riscv/Kconfig.erratas
+@@ -23,6 +23,18 @@ config ERRATA_ANDES_LEGACY_MMU
+ 
+ 	  If you don't know what to do here, say "Y".
+ 
++config ERRATA_ANDES_PA_MSB
++	bool "Apply Andes errata physical address MSB"
++	depends on ERRATA_ANDES
++	select RISCV_ALTERNATIVE_EARLY
++	default y
++	help
++	  This will apply the Andes physical address MSB errata.
++	  Use the MSB of physical address to distinguish cacheable
++	  memory for Andes 25 series CPUs.
++
++	  If you don't know what to do here, say "Y".
++
+ config ERRATA_SIFIVE
+ 	bool "SiFive errata"
+ 	depends on !XIP_KERNEL
+diff --git a/arch/riscv/Kconfig.socs b/arch/riscv/Kconfig.socs
+index e6bb7ce35ebc..959dc31c2963 100644
+--- a/arch/riscv/Kconfig.socs
++++ b/arch/riscv/Kconfig.socs
+@@ -7,6 +7,13 @@ config PLAT_AE350
+ 	help
+ 	  This enables support for Andes AE350 platform hardware.
+ 
++config ANDES_QEMU_SUPPORT
++	bool "Andes QEMU SUPPORT"
++	depends on SOC_SIFIVE
++	default n
++	help
++	  Andes QEMU Support.
++
+ config SOC_MICROCHIP_POLARFIRE
+ 	bool "Microchip PolarFire SoCs"
+ 	select MCHP_CLK_MPFS
+diff --git a/arch/riscv/errata/andes/errata.c b/arch/riscv/errata/andes/errata.c
+index d4ab8f51790d..7dfa60f886f5 100644
+--- a/arch/riscv/errata/andes/errata.c
++++ b/arch/riscv/errata/andes/errata.c
+@@ -16,6 +16,9 @@
+ bool andes_legacy_mmu;
+ EXPORT_SYMBOL(andes_legacy_mmu);
+ 
++phys_addr_t andes_pa_msb;
++EXPORT_SYMBOL(andes_pa_msb);
++
+ struct errata_info_t {
+ 	char name[ERRATA_STRING_LENGTH_MAX];
+ 	bool (*check_func)(unsigned long arch_id,
+@@ -23,11 +26,28 @@ struct errata_info_t {
+ 			   unsigned int stage);
+ };
+ 
++static bool errata_msb_check_func(unsigned long arch_id,
++				  unsigned long impid,
++				  unsigned int stage)
++{
++	if (stage != RISCV_ALTERNATIVES_EARLY_BOOT)
++		return false;
++
++	andes_pa_msb = 0;
++
++	if (riscv_isa_extension_available(NULL, SVPBMT))
++		return false;
++
++	csr_write(satp, SATP_PPN);
++	andes_pa_msb = (csr_read(satp) + 1) >> 1;
++	return true;
++}
++
+ static bool errata_legacy_mmu_check_func(unsigned long arch_id,
+ 					 unsigned long impid,
+ 					 unsigned int stage)
+ {
+-	/* legacy MMU only exists in 2X-series CPU.*/
++	/* legacy MMU only exists in 2x-series CPU. */
+ 	andes_legacy_mmu = (((arch_id & 0xF0) >> 4) == 0x2) ? true : false;
+ 	return andes_legacy_mmu;
+ }
+@@ -37,6 +57,10 @@ static struct errata_info_t errata_list[ERRATA_ANDES_NUMBER] = {
+ 		.name = "legacy_mmu",
+ 		.check_func = errata_legacy_mmu_check_func
+ 	},
++	{
++		.name = "pa_msb",
++		.check_func = errata_msb_check_func
++	},
+ };
+ 
+ static u32 __init_or_module andes_errata_probe(unsigned long archid,
+@@ -63,8 +87,10 @@ void __init_or_module andes_errata_patch_func(struct alt_entry *begin,
+ 	u32 cpu_req_errata;
+ 	u32 tmp = 0;
+ 
+-	if (stage == RISCV_ALTERNATIVES_EARLY_BOOT)
++	if (stage == RISCV_ALTERNATIVES_EARLY_BOOT) {
++		cpu_req_errata = errata_msb_check_func(archid, impid, stage);
+ 		return;
++	}
+ 
+ 	cpu_req_errata = andes_errata_probe(archid, impid, stage);
+ 
+diff --git a/arch/riscv/include/asm/errata_list.h b/arch/riscv/include/asm/errata_list.h
+index 3f4358987379..19daa5272763 100644
+--- a/arch/riscv/include/asm/errata_list.h
++++ b/arch/riscv/include/asm/errata_list.h
+@@ -10,7 +10,8 @@
+ 
+ #ifdef CONFIG_ERRATA_ANDES
+ #define ERRATA_ANDES_LEGACY_MMU 0
+-#define ERRATA_ANDES_NUMBER 1
++#define ERRATA_ANDES_PA_MSB 1
++#define ERRATA_ANDES_NUMBER 2
+ #endif
+ 
+ #ifdef CONFIG_ERRATA_SIFIVE
+diff --git a/arch/riscv/include/asm/pgtable.h b/arch/riscv/include/asm/pgtable.h
+index 20f18a165596..404cd17bb197 100644
+--- a/arch/riscv/include/asm/pgtable.h
++++ b/arch/riscv/include/asm/pgtable.h
+@@ -150,6 +150,14 @@ struct pt_alloc_ops {
+ extern struct pt_alloc_ops pt_ops __initdata;
+ 
+ #ifdef CONFIG_MMU
++/* Noncacheable page prot for Andes MSB */
++extern phys_addr_t andes_pa_msb;
++#ifdef CONFIG_ANDES_QEMU_SUPPORT
++#define _PAGE_NONCACHEABLE      0
++#else
++#define _PAGE_NONCACHEABLE      ((!!andes_pa_msb) << 31)
++#endif
++
+ /* Number of PGD entries that a user-mode program can use */
+ #define USER_PTRS_PER_PGD   (TASK_SIZE / PGDIR_SIZE)
+ 
+@@ -283,7 +291,15 @@ static inline pte_t pfn_pte(unsigned long pfn, pgprot_t prot)
+ 
+ 	ALT_THEAD_PMA(prot_val);
+ 
+-	return __pte((pfn << _PAGE_PFN_SHIFT) | prot_val);
++	/*
++	 * When PPMA is on and activated: pa_msb == 0;
++	 *                     Otherwise: pa_msb != 0;
++	 */
++	if (andes_pa_msb && (prot_val & _PAGE_NONCACHEABLE))
++		return __pte(((pfn | andes_pa_msb) << _PAGE_PFN_SHIFT)
++				| (prot_val  & ~_PAGE_NONCACHEABLE));
++	else
++		return __pte((pfn << _PAGE_PFN_SHIFT) | prot_val);
+ }
+ 
+ #define mk_pte(page, prot)       pfn_pte(page_to_pfn(page), prot)
+@@ -542,6 +558,7 @@ static inline pgprot_t pgprot_noncached(pgprot_t _prot)
+ 
+ 	prot &= ~_PAGE_MTMASK;
+ 	prot |= _PAGE_IO;
++	prot |= _PAGE_NONCACHEABLE;
+ 
+ 	return __pgprot(prot);
+ }
+@@ -553,6 +570,7 @@ static inline pgprot_t pgprot_writecombine(pgprot_t _prot)
+ 
+ 	prot &= ~_PAGE_MTMASK;
+ 	prot |= _PAGE_NOCACHE;
++	prot |= _PAGE_NONCACHEABLE;
+ 
+ 	return __pgprot(prot);
+ }
+diff --git a/include/soc/andes/andes.h b/include/soc/andes/andes.h
+index f089fbd3ba47..25adf893d706 100644
+--- a/include/soc/andes/andes.h
++++ b/include/soc/andes/andes.h
+@@ -7,5 +7,6 @@
+ #define __SOC_ANDES_ANDES_H
+ 
+ extern bool andes_legacy_mmu;
++extern phys_addr_t andes_pa_msb;
+ 
+ #endif /* !__SOC_ANDES_ANDES_H */
+-- 
+2.34.1
+

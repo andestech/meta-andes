@@ -1,0 +1,781 @@
+From 95e2d18c8110da390636b5759887ee2d8a456ade Mon Sep 17 00:00:00 2001
+From: Andrew Jones <ajones@ventanamicro.com>
+Date: Thu, 1 Dec 2022 12:37:50 +0100
+Subject: [PATCH 078/191] riscv: Support RISC-V Svnapot extension
+
+Dependency patches:
+    e923f4625ed3 riscv: Apply a static assert to riscv_isa_ext_id
+    99e2266f2460 RISC-V: clarify ISA string ordering rules in cpu.c
+    80c200b34ee8 RISC-V: resort all extensions in consistent orders
+    d8a3d8a75206 riscv: hwcap: make ISA extension ids can be used in asm
+
+Svnapot patches:
+    23ad288aaf15 riscv: mm: modify pte format for Svnapot
+    82a1a1f3bfb6 riscv: mm: support Svnapot in hugetlb page
+    ce173474cf19 riscv: mm: support Svnapot in huge vmap
+
+Signed-off-by: Dylan Jhong <dylan@andestech.com>
+---
+ arch/riscv/Kconfig                  |  21 +-
+ arch/riscv/include/asm/hugetlb.h    |  34 +++-
+ arch/riscv/include/asm/hwcap.h      |   6 +
+ arch/riscv/include/asm/page.h       |   5 -
+ arch/riscv/include/asm/pgtable-64.h |  34 ++++
+ arch/riscv/include/asm/pgtable.h    |  39 +++-
+ arch/riscv/include/asm/vmalloc.h    |  77 +++++++
+ arch/riscv/kernel/cpu.c             |  54 +++--
+ arch/riscv/kernel/cpufeature.c      |   7 +-
+ arch/riscv/mm/hugetlbpage.c         | 301 ++++++++++++++++++++++++++++
+ 10 files changed, 553 insertions(+), 25 deletions(-)
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index cefa6103f6f0..901d0f7b619b 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -44,7 +44,7 @@ config RISCV
+ 	select ARCH_USE_QUEUED_RWLOCKS
+ 	select ARCH_WANT_DEFAULT_TOPDOWN_MMAP_LAYOUT if MMU
+ 	select ARCH_WANT_FRAME_POINTERS
+-	select ARCH_WANT_GENERAL_HUGETLB
++	select ARCH_WANT_GENERAL_HUGETLB if !RISCV_ISA_SVNAPOT
+ 	select ARCH_WANT_HUGE_PMD_SHARE if 64BIT
+ 	select ARCH_WANTS_THP_SWAP if HAVE_ARCH_TRANSPARENT_HUGEPAGE
+ 	select BINFMT_FLAT_NO_DATA_START_OFFSET if !MMU
+@@ -392,6 +392,25 @@ config RISCV_ISA_C
+ 
+ 	  If you don't know what to do here, say Y.
+ 
++config RISCV_ISA_SVNAPOT
++	bool "SVNAPOT extension support"
++	depends on 64BIT && MMU
++	default y
++	select RISCV_ALTERNATIVE
++	help
++	  Allow kernel to detect the SVNAPOT ISA-extension dynamically at boot
++	  time and enable its usage.
++
++	  The SVNAPOT extension is used to mark contiguous PTEs as a range
++	  of contiguous virtual-to-physical translations for a naturally
++	  aligned power-of-2 (NAPOT) granularity larger than the base 4KB page
++	  size. When HUGETLBFS is also selected this option unconditionally
++	  allocates some memory for each NAPOT page size supported by the kernel.
++	  When optimizing for low memory consumption and for platforms without
++	  the SVNAPOT extension, it may be better to say N here.
++
++	  If you don't know what to do here, say Y.
++
+ config RISCV_ISA_SVPBMT
+ 	bool "SVPBMT extension support"
+ 	depends on 64BIT && MMU
+diff --git a/arch/riscv/include/asm/hugetlb.h b/arch/riscv/include/asm/hugetlb.h
+index ec19d6afc896..fe6f23006641 100644
+--- a/arch/riscv/include/asm/hugetlb.h
++++ b/arch/riscv/include/asm/hugetlb.h
+@@ -2,7 +2,6 @@
+ #ifndef _ASM_RISCV_HUGETLB_H
+ #define _ASM_RISCV_HUGETLB_H
+ 
+-#include <asm-generic/hugetlb.h>
+ #include <asm/page.h>
+ 
+ static inline void arch_clear_hugepage_flags(struct page *page)
+@@ -11,4 +10,37 @@ static inline void arch_clear_hugepage_flags(struct page *page)
+ }
+ #define arch_clear_hugepage_flags arch_clear_hugepage_flags
+ 
++#ifdef CONFIG_RISCV_ISA_SVNAPOT
++#define __HAVE_ARCH_HUGE_PTE_CLEAR
++void huge_pte_clear(struct mm_struct *mm, unsigned long addr,
++		    pte_t *ptep, unsigned long sz);
++
++#define __HAVE_ARCH_HUGE_SET_HUGE_PTE_AT
++void set_huge_pte_at(struct mm_struct *mm,
++		     unsigned long addr, pte_t *ptep, pte_t pte);
++
++#define __HAVE_ARCH_HUGE_PTEP_GET_AND_CLEAR
++pte_t huge_ptep_get_and_clear(struct mm_struct *mm,
++			      unsigned long addr, pte_t *ptep);
++
++#define __HAVE_ARCH_HUGE_PTEP_CLEAR_FLUSH
++pte_t huge_ptep_clear_flush(struct vm_area_struct *vma,
++			    unsigned long addr, pte_t *ptep);
++
++#define __HAVE_ARCH_HUGE_PTEP_SET_WRPROTECT
++void huge_ptep_set_wrprotect(struct mm_struct *mm,
++			     unsigned long addr, pte_t *ptep);
++
++#define __HAVE_ARCH_HUGE_PTEP_SET_ACCESS_FLAGS
++int huge_ptep_set_access_flags(struct vm_area_struct *vma,
++			       unsigned long addr, pte_t *ptep,
++			       pte_t pte, int dirty);
++
++pte_t arch_make_huge_pte(pte_t entry, unsigned int shift, vm_flags_t flags);
++#define arch_make_huge_pte arch_make_huge_pte
++
++#endif /*CONFIG_RISCV_ISA_SVNAPOT*/
++
++#include <asm-generic/hugetlb.h>
++
+ #endif /* _ASM_RISCV_HUGETLB_H */
+diff --git a/arch/riscv/include/asm/hwcap.h b/arch/riscv/include/asm/hwcap.h
+index f78062dfe3f2..ef9c47f06721 100644
+--- a/arch/riscv/include/asm/hwcap.h
++++ b/arch/riscv/include/asm/hwcap.h
+@@ -55,7 +55,9 @@ extern unsigned long elf_hwcap;
+ #define RISCV_ISA_EXT_ZBB		30
+ #define RISCV_ISA_EXT_ZICBOM		31
+ #define RISCV_ISA_EXT_ZIHINTPAUSE	32
++#define RISCV_ISA_EXT_SVNAPOT		33
+ #define ANDES_ISA_EXT_DSP		63
++
+ #define RISCV_ISA_EXT_MAX		64
+ #define RISCV_ISA_EXT_NAME_LEN_MAX	32
+ 
+@@ -63,11 +65,13 @@ extern unsigned long elf_hwcap;
+  * This enum represents the logical ID for each RISC-V ISA extension static
+  * keys. We can use static key to optimize code path if some ISA extensions
+  * are available.
++ * Entries are sorted alphabetically.
+  */
+ enum riscv_isa_ext_key {
+ 	RISCV_ISA_EXT_KEY_FPU,		/* For 'F' and 'D' */
+ 	RISCV_ISA_EXT_KEY_ZIHINTPAUSE,
+ 	RISCV_ISA_EXT_KEY_SVINVAL,
++	RISCV_ISA_EXT_KEY_SVNAPOT,
+ 	ANDES_ISA_EXT_KEY_DSP,
+ 	RISCV_ISA_EXT_KEY_MAX,
+ };
+@@ -92,6 +96,8 @@ static __always_inline int riscv_isa_ext2key(int num)
+ 		return RISCV_ISA_EXT_KEY_ZIHINTPAUSE;
+ 	case RISCV_ISA_EXT_SVINVAL:
+ 		return RISCV_ISA_EXT_KEY_SVINVAL;
++	case RISCV_ISA_EXT_SVNAPOT:
++		return RISCV_ISA_EXT_KEY_SVNAPOT;
+ 	case ANDES_ISA_EXT_DSP:
+ 		return ANDES_ISA_EXT_KEY_DSP;
+ 	default:
+diff --git a/arch/riscv/include/asm/page.h b/arch/riscv/include/asm/page.h
+index ac70b0fd9a9a..349fad5e35de 100644
+--- a/arch/riscv/include/asm/page.h
++++ b/arch/riscv/include/asm/page.h
+@@ -16,11 +16,6 @@
+ #define PAGE_SIZE	(_AC(1, UL) << PAGE_SHIFT)
+ #define PAGE_MASK	(~(PAGE_SIZE - 1))
+ 
+-#ifdef CONFIG_64BIT
+-#define HUGE_MAX_HSTATE		2
+-#else
+-#define HUGE_MAX_HSTATE		1
+-#endif
+ #define HPAGE_SHIFT		PMD_SHIFT
+ #define HPAGE_SIZE		(_AC(1, UL) << HPAGE_SHIFT)
+ #define HPAGE_MASK              (~(HPAGE_SIZE - 1))
+diff --git a/arch/riscv/include/asm/pgtable-64.h b/arch/riscv/include/asm/pgtable-64.h
+index 496f1fdb86d7..b794725b71c9 100644
+--- a/arch/riscv/include/asm/pgtable-64.h
++++ b/arch/riscv/include/asm/pgtable-64.h
+@@ -78,6 +78,40 @@ typedef struct {
+  */
+ #define _PAGE_PFN_MASK  GENMASK(53, 10)
+ 
++/*
++ * [63] Svnapot definitions:
++ * 0 Svnapot disabled
++ * 1 Svnapot enabled
++ */
++#define _PAGE_NAPOT_SHIFT	63
++#define _PAGE_NAPOT		BIT(_PAGE_NAPOT_SHIFT)
++/*
++ * Only 64KB (order 4) napot ptes supported.
++ */
++#define NAPOT_CONT_ORDER_BASE 4
++enum napot_cont_order {
++	NAPOT_CONT64KB_ORDER = NAPOT_CONT_ORDER_BASE,
++	NAPOT_ORDER_MAX,
++};
++
++#define for_each_napot_order(order)						\
++	for (order = NAPOT_CONT_ORDER_BASE; order < NAPOT_ORDER_MAX; order++)
++#define for_each_napot_order_rev(order)						\
++	for (order = NAPOT_ORDER_MAX - 1;					\
++	     order >= NAPOT_CONT_ORDER_BASE; order--)
++#define napot_cont_order(val)	(__builtin_ctzl((val.pte >> _PAGE_PFN_SHIFT) << 1))
++
++#define napot_cont_shift(order)	((order) + PAGE_SHIFT)
++#define napot_cont_size(order)	BIT(napot_cont_shift(order))
++#define napot_cont_mask(order)	(~(napot_cont_size(order) - 1UL))
++#define napot_pte_num(order)	BIT(order)
++
++#ifdef CONFIG_RISCV_ISA_SVNAPOT
++#define HUGE_MAX_HSTATE		(2 + (NAPOT_ORDER_MAX - NAPOT_CONT_ORDER_BASE))
++#else
++#define HUGE_MAX_HSTATE		2
++#endif
++
+ /*
+  * [62:61] Svpbmt Memory Type definitions:
+  *
+diff --git a/arch/riscv/include/asm/pgtable.h b/arch/riscv/include/asm/pgtable.h
+index 404cd17bb197..3afd20781e85 100644
+--- a/arch/riscv/include/asm/pgtable.h
++++ b/arch/riscv/include/asm/pgtable.h
+@@ -276,10 +276,47 @@ static inline pte_t pud_pte(pud_t pud)
+ 	return __pte(pud_val(pud));
+ }
+ 
++#ifdef CONFIG_RISCV_ISA_SVNAPOT
++
++static __always_inline bool has_svnapot(void)
++{
++	return static_branch_likely(&riscv_isa_ext_keys[RISCV_ISA_EXT_KEY_SVNAPOT]);
++}
++
++static inline unsigned long pte_napot(pte_t pte)
++{
++	return pte_val(pte) & _PAGE_NAPOT;
++}
++
++static inline pte_t pte_mknapot(pte_t pte, unsigned int order)
++{
++	int pos = order - 1 + _PAGE_PFN_SHIFT;
++	unsigned long napot_bit = BIT(pos);
++	unsigned long napot_mask = ~GENMASK(pos, _PAGE_PFN_SHIFT);
++
++	return __pte((pte_val(pte) & napot_mask) | napot_bit | _PAGE_NAPOT);
++}
++
++#else
++
++static __always_inline bool has_svnapot(void) { return false; }
++
++static inline unsigned long pte_napot(pte_t pte)
++{
++	return 0;
++}
++
++#endif /* CONFIG_RISCV_ISA_SVNAPOT */
++
+ /* Yields the page frame number (PFN) of a page table entry */
+ static inline unsigned long pte_pfn(pte_t pte)
+ {
+-	return __page_val_to_pfn(pte_val(pte));
++	unsigned long res  = __page_val_to_pfn(pte_val(pte));
++
++	if (has_svnapot() && pte_napot(pte))
++		res = res & (res - 1UL);
++
++	return res;
+ }
+ 
+ #define pte_page(x)     pfn_to_page(pte_pfn(x))
+diff --git a/arch/riscv/include/asm/vmalloc.h b/arch/riscv/include/asm/vmalloc.h
+index ff9abc00d139..58d3e447f191 100644
+--- a/arch/riscv/include/asm/vmalloc.h
++++ b/arch/riscv/include/asm/vmalloc.h
+@@ -1,4 +1,81 @@
+ #ifndef _ASM_RISCV_VMALLOC_H
+ #define _ASM_RISCV_VMALLOC_H
+ 
++#ifdef CONFIG_HAVE_ARCH_HUGE_VMAP
++
++#define IOREMAP_MAX_ORDER (PUD_SHIFT)
++
++#define arch_vmap_pud_supported arch_vmap_pud_supported
++static inline bool arch_vmap_pud_supported(pgprot_t prot)
++{
++	return true;
++}
++
++#define arch_vmap_pmd_supported arch_vmap_pmd_supported
++static inline bool arch_vmap_pmd_supported(pgprot_t prot)
++{
++	return true;
++}
++
++#ifdef CONFIG_RISCV_ISA_SVNAPOT
++#include <linux/pgtable.h>
++
++#define arch_vmap_pte_range_map_size arch_vmap_pte_range_map_size
++static inline unsigned long arch_vmap_pte_range_map_size(unsigned long addr, unsigned long end,
++							 u64 pfn, unsigned int max_page_shift)
++{
++	unsigned long map_size = PAGE_SIZE;
++	unsigned long size, order;
++
++	if (!has_svnapot())
++		return map_size;
++
++	for_each_napot_order_rev(order) {
++		if (napot_cont_shift(order) > max_page_shift)
++			continue;
++
++		size = napot_cont_size(order);
++		if (end - addr < size)
++			continue;
++
++		if (!IS_ALIGNED(addr, size))
++			continue;
++
++		if (!IS_ALIGNED(PFN_PHYS(pfn), size))
++			continue;
++
++		map_size = size;
++		break;
++	}
++
++	return map_size;
++}
++
++#define arch_vmap_pte_supported_shift arch_vmap_pte_supported_shift
++static inline int arch_vmap_pte_supported_shift(unsigned long size)
++{
++	int shift = PAGE_SHIFT;
++	unsigned long order;
++
++	if (!has_svnapot())
++		return shift;
++
++	WARN_ON_ONCE(size >= PMD_SIZE);
++
++	for_each_napot_order_rev(order) {
++		if (napot_cont_size(order) > size)
++			continue;
++
++		if (!IS_ALIGNED(size, napot_cont_size(order)))
++			continue;
++
++		shift = napot_cont_shift(order);
++		break;
++	}
++
++	return shift;
++}
++
++#endif /* CONFIG_RISCV_ISA_SVNAPOT */
++#endif /* CONFIG_HAVE_ARCH_HUGE_VMAP */
+ #endif /* _ASM_RISCV_VMALLOC_H */
+diff --git a/arch/riscv/kernel/cpu.c b/arch/riscv/kernel/cpu.c
+index 1b9a5a66e55a..5767974674f3 100644
+--- a/arch/riscv/kernel/cpu.c
++++ b/arch/riscv/kernel/cpu.c
+@@ -144,30 +144,54 @@ arch_initcall(riscv_cpuinfo_init);
+ 		.uprop = #UPROP,				\
+ 		.isa_ext_id = EXTID,				\
+ 	}
++
+ /*
+- * Here are the ordering rules of extension naming defined by RISC-V
+- * specification :
+- * 1. All extensions should be separated from other multi-letter extensions
+- *    by an underscore.
+- * 2. The first letter following the 'Z' conventionally indicates the most
++ * The canonical order of ISA extension names in the ISA string is defined in
++ * chapter 27 of the unprivileged specification.
++ *
++ * Ordinarily, for in-kernel data structures, this order is unimportant but
++ * isa_ext_arr defines the order of the ISA string in /proc/cpuinfo.
++ *
++ * The specification uses vague wording, such as should, when it comes to
++ * ordering, so for our purposes the following rules apply:
++ *
++ * 1. All multi-letter extensions must be separated from other extensions by an
++ *    underscore.
++ *
++ * 2. Additional standard extensions (starting with 'Z') must be sorted after
++ *    single-letter extensions and before any higher-privileged extensions.
++
++ * 3. The first letter following the 'Z' conventionally indicates the most
+  *    closely related alphabetical extension category, IMAFDQLCBKJTPVH.
+- *    If multiple 'Z' extensions are named, they should be ordered first
+- *    by category, then alphabetically within a category.
+- * 3. Standard supervisor-level extensions (starts with 'S') should be
+- *    listed after standard unprivileged extensions.  If multiple
+- *    supervisor-level extensions are listed, they should be ordered
++ *    If multiple 'Z' extensions are named, they must be ordered first by
++ *    category, then alphabetically within a category.
++ *
++ * 3. Standard supervisor-level extensions (starting with 'S') must be listed
++ *    after standard unprivileged extensions.  If multiple supervisor-level
++ *    extensions are listed, they must be ordered alphabetically.
++ *
++ * 4. Standard machine-level extensions (starting with 'Zxm') must be listed
++ *    after any lower-privileged, standard extensions.  If multiple
++ *    machine-level extensions are listed, they must be ordered
+  *    alphabetically.
+- * 4. Non-standard extensions (starts with 'X') must be listed after all
+- *    standard extensions. They must be separated from other multi-letter
+- *    extensions by an underscore.
++ *
++ * 5. Non-standard extensions (starting with 'X') must be listed after all
++ *    standard extensions. If multiple non-standard extensions are listed, they
++ *    must be ordered alphabetically.
++ *
++ * An example string following the order is:
++ *    rv64imadc_zifoo_zigoo_zafoo_sbar_scar_zxmbaz_xqux_xrux
++ *
++ * New entries to this struct should follow the ordering rules described above.
+  */
+ static struct riscv_isa_ext_data isa_ext_arr[] = {
++	__RISCV_ISA_EXT_DATA(zicbom, RISCV_ISA_EXT_ZICBOM),
++	__RISCV_ISA_EXT_DATA(zihintpause, RISCV_ISA_EXT_ZIHINTPAUSE),
+ 	__RISCV_ISA_EXT_DATA(sscofpmf, RISCV_ISA_EXT_SSCOFPMF),
+ 	__RISCV_ISA_EXT_DATA(sstc, RISCV_ISA_EXT_SSTC),
+ 	__RISCV_ISA_EXT_DATA(svinval, RISCV_ISA_EXT_SVINVAL),
++	__RISCV_ISA_EXT_DATA(svnapot, RISCV_ISA_EXT_SVNAPOT),
+ 	__RISCV_ISA_EXT_DATA(svpbmt, RISCV_ISA_EXT_SVPBMT),
+-	__RISCV_ISA_EXT_DATA(zicbom, RISCV_ISA_EXT_ZICBOM),
+-	__RISCV_ISA_EXT_DATA(zihintpause, RISCV_ISA_EXT_ZIHINTPAUSE),
+ 	__RISCV_ISA_EXT_DATA("", RISCV_ISA_EXT_MAX),
+ };
+ 
+diff --git a/arch/riscv/kernel/cpufeature.c b/arch/riscv/kernel/cpufeature.c
+index 740d4761a794..58bf81a5ef66 100644
+--- a/arch/riscv/kernel/cpufeature.c
++++ b/arch/riscv/kernel/cpufeature.c
+@@ -200,12 +200,14 @@ void __init riscv_fill_hwcap(void)
+ 				this_hwcap |= isa2hwcap[(unsigned char)(*ext)];
+ 				set_bit(*ext - 'a', this_isa);
+ 			} else {
++				/* sorted alphabetically */
+ 				SET_ISA_EXT_MAP("sscofpmf", RISCV_ISA_EXT_SSCOFPMF);
++				SET_ISA_EXT_MAP("sstc", RISCV_ISA_EXT_SSTC);
++				SET_ISA_EXT_MAP("svinval", RISCV_ISA_EXT_SVINVAL);
++				SET_ISA_EXT_MAP("svnapot", RISCV_ISA_EXT_SVNAPOT);
+ 				SET_ISA_EXT_MAP("svpbmt", RISCV_ISA_EXT_SVPBMT);
+ 				SET_ISA_EXT_MAP("zicbom", RISCV_ISA_EXT_ZICBOM);
+ 				SET_ISA_EXT_MAP("zihintpause", RISCV_ISA_EXT_ZIHINTPAUSE);
+-				SET_ISA_EXT_MAP("sstc", RISCV_ISA_EXT_SSTC);
+-				SET_ISA_EXT_MAP("svinval", RISCV_ISA_EXT_SVINVAL);
+ 
+ 				/* Andes vendor extensions: DSP */
+ 				SET_ISA_EXT_MAP("xdsp", ANDES_ISA_EXT_DSP);
+@@ -288,6 +290,7 @@ static bool __init_or_module cpufeature_probe_zicbom(unsigned int stage)
+  * This code may also be executed before kernel relocation, so we cannot use
+  * addresses generated by the address-of operator as they won't be valid in
+  * this context.
++ * Tests, unless otherwise required, are to be added in alphabetical order.
+  */
+ static u32 __init_or_module cpufeature_probe(unsigned int stage)
+ {
+diff --git a/arch/riscv/mm/hugetlbpage.c b/arch/riscv/mm/hugetlbpage.c
+index 932dadfdca54..a163a3e0f0d4 100644
+--- a/arch/riscv/mm/hugetlbpage.c
++++ b/arch/riscv/mm/hugetlbpage.c
+@@ -2,6 +2,305 @@
+ #include <linux/hugetlb.h>
+ #include <linux/err.h>
+ 
++#ifdef CONFIG_RISCV_ISA_SVNAPOT
++pte_t *huge_pte_alloc(struct mm_struct *mm,
++		      struct vm_area_struct *vma,
++		      unsigned long addr,
++		      unsigned long sz)
++{
++	unsigned long order;
++	pte_t *pte = NULL;
++	pgd_t *pgd;
++	p4d_t *p4d;
++	pud_t *pud;
++	pmd_t *pmd;
++
++	pgd = pgd_offset(mm, addr);
++	p4d = p4d_alloc(mm, pgd, addr);
++	if (!p4d)
++		return NULL;
++
++	pud = pud_alloc(mm, p4d, addr);
++	if (!pud)
++		return NULL;
++
++	if (sz == PUD_SIZE) {
++		pte = (pte_t *)pud;
++		goto out;
++	}
++
++	if (sz == PMD_SIZE) {
++		if (want_pmd_share(vma, addr) && pud_none(*pud))
++			pte = huge_pmd_share(mm, vma, addr, pud);
++		else
++			pte = (pte_t *)pmd_alloc(mm, pud, addr);
++		goto out;
++	}
++
++	pmd = pmd_alloc(mm, pud, addr);
++	if (!pmd)
++		return NULL;
++
++	for_each_napot_order(order) {
++		if (napot_cont_size(order) == sz) {
++			pte = pte_alloc_map(mm, pmd, addr & napot_cont_mask(order));
++			break;
++		}
++	}
++
++out:
++	WARN_ON_ONCE(pte && pte_present(*pte) && !pte_huge(*pte));
++	return pte;
++}
++
++pte_t *huge_pte_offset(struct mm_struct *mm,
++		       unsigned long addr,
++		       unsigned long sz)
++{
++	unsigned long order;
++	pte_t *pte = NULL;
++	pgd_t *pgd;
++	p4d_t *p4d;
++	pud_t *pud;
++	pmd_t *pmd;
++
++	pgd = pgd_offset(mm, addr);
++	if (!pgd_present(*pgd))
++		return NULL;
++
++	p4d = p4d_offset(pgd, addr);
++	if (!p4d_present(*p4d))
++		return NULL;
++
++	pud = pud_offset(p4d, addr);
++	if (sz == PUD_SIZE)
++		/* must be pud huge, non-present or none */
++		return (pte_t *)pud;
++
++	if (!pud_present(*pud))
++		return NULL;
++
++	pmd = pmd_offset(pud, addr);
++	if (sz == PMD_SIZE)
++		/* must be pmd huge, non-present or none */
++		return (pte_t *)pmd;
++
++	if (!pmd_present(*pmd))
++		return NULL;
++
++	for_each_napot_order(order) {
++		if (napot_cont_size(order) == sz) {
++			pte = pte_offset_kernel(pmd, addr & napot_cont_mask(order));
++			break;
++		}
++	}
++	return pte;
++}
++
++static pte_t get_clear_contig(struct mm_struct *mm,
++			      unsigned long addr,
++			      pte_t *ptep,
++			      unsigned long pte_num)
++{
++	pte_t orig_pte = ptep_get(ptep);
++	unsigned long i;
++
++	for (i = 0; i < pte_num; i++, addr += PAGE_SIZE, ptep++) {
++		pte_t pte = ptep_get_and_clear(mm, addr, ptep);
++
++		if (pte_dirty(pte))
++			orig_pte = pte_mkdirty(orig_pte);
++
++		if (pte_young(pte))
++			orig_pte = pte_mkyoung(orig_pte);
++	}
++
++	return orig_pte;
++}
++
++static pte_t get_clear_contig_flush(struct mm_struct *mm,
++				    unsigned long addr,
++				    pte_t *ptep,
++				    unsigned long pte_num)
++{
++	pte_t orig_pte = get_clear_contig(mm, addr, ptep, pte_num);
++	struct vm_area_struct vma = TLB_FLUSH_VMA(mm, 0);
++	bool valid = !pte_none(orig_pte);
++
++	if (valid)
++		flush_tlb_range(&vma, addr, addr + (PAGE_SIZE * pte_num));
++
++	return orig_pte;
++}
++
++pte_t arch_make_huge_pte(pte_t entry, unsigned int shift, vm_flags_t flags)
++{
++	unsigned long order;
++
++	for_each_napot_order(order) {
++		if (shift == napot_cont_shift(order)) {
++			entry = pte_mknapot(entry, order);
++			break;
++		}
++	}
++	if (order == NAPOT_ORDER_MAX)
++		entry = pte_mkhuge(entry);
++
++	return entry;
++}
++
++void set_huge_pte_at(struct mm_struct *mm,
++		     unsigned long addr,
++		     pte_t *ptep,
++		     pte_t pte)
++{
++	int i, pte_num;
++
++	if (!pte_napot(pte)) {
++		set_pte_at(mm, addr, ptep, pte);
++		return;
++	}
++
++	pte_num = napot_pte_num(napot_cont_order(pte));
++	for (i = 0; i < pte_num; i++, ptep++, addr += PAGE_SIZE)
++		set_pte_at(mm, addr, ptep, pte);
++}
++
++int huge_ptep_set_access_flags(struct vm_area_struct *vma,
++			       unsigned long addr,
++			       pte_t *ptep,
++			       pte_t pte,
++			       int dirty)
++{
++	struct mm_struct *mm = vma->vm_mm;
++	unsigned long order;
++	pte_t orig_pte;
++	int i, pte_num;
++
++	if (!pte_napot(pte))
++		return ptep_set_access_flags(vma, addr, ptep, pte, dirty);
++
++	order = napot_cont_order(pte);
++	pte_num = napot_pte_num(order);
++	ptep = huge_pte_offset(mm, addr, napot_cont_size(order));
++	orig_pte = get_clear_contig_flush(mm, addr, ptep, pte_num);
++
++	if (pte_dirty(orig_pte))
++		pte = pte_mkdirty(pte);
++
++	if (pte_young(orig_pte))
++		pte = pte_mkyoung(pte);
++
++	for (i = 0; i < pte_num; i++, addr += PAGE_SIZE, ptep++)
++		set_pte_at(mm, addr, ptep, pte);
++
++	return true;
++}
++
++pte_t huge_ptep_get_and_clear(struct mm_struct *mm,
++			      unsigned long addr,
++			      pte_t *ptep)
++{
++	pte_t orig_pte = ptep_get(ptep);
++	int pte_num;
++
++	if (!pte_napot(orig_pte))
++		return ptep_get_and_clear(mm, addr, ptep);
++
++	pte_num = napot_pte_num(napot_cont_order(orig_pte));
++
++	return get_clear_contig(mm, addr, ptep, pte_num);
++}
++
++void huge_ptep_set_wrprotect(struct mm_struct *mm,
++			     unsigned long addr,
++			     pte_t *ptep)
++{
++	pte_t pte = ptep_get(ptep);
++	unsigned long order;
++	int i, pte_num;
++
++	if (!pte_napot(pte)) {
++		ptep_set_wrprotect(mm, addr, ptep);
++		return;
++	}
++
++	order = napot_cont_order(pte);
++	pte_num = napot_pte_num(order);
++	ptep = huge_pte_offset(mm, addr, napot_cont_size(order));
++
++	for (i = 0; i < pte_num; i++, addr += PAGE_SIZE, ptep++)
++		ptep_set_wrprotect(mm, addr, ptep);
++}
++
++pte_t huge_ptep_clear_flush(struct vm_area_struct *vma,
++			    unsigned long addr,
++			    pte_t *ptep)
++{
++	pte_t pte = ptep_get(ptep);
++	int pte_num;
++
++	if (!pte_napot(pte))
++		return ptep_clear_flush(vma, addr, ptep);
++
++	pte_num = napot_pte_num(napot_cont_order(pte));
++
++	return get_clear_contig_flush(vma->vm_mm, addr, ptep, pte_num);
++}
++
++void huge_pte_clear(struct mm_struct *mm,
++		    unsigned long addr,
++		    pte_t *ptep,
++		    unsigned long sz)
++{
++	pte_t pte = READ_ONCE(*ptep);
++	int i, pte_num;
++
++	if (!pte_napot(pte)) {
++		pte_clear(mm, addr, ptep);
++		return;
++	}
++
++	pte_num = napot_pte_num(napot_cont_order(pte));
++	for (i = 0; i < pte_num; i++, addr += PAGE_SIZE, ptep++)
++		pte_clear(mm, addr, ptep);
++}
++
++static __init bool is_napot_size(unsigned long size)
++{
++	unsigned long order;
++
++	if (!has_svnapot())
++		return false;
++
++	for_each_napot_order(order) {
++		if (size == napot_cont_size(order))
++			return true;
++	}
++	return false;
++}
++
++static __init int napot_hugetlbpages_init(void)
++{
++	if (has_svnapot()) {
++		unsigned long order;
++
++		for_each_napot_order(order)
++			hugetlb_add_hstate(order);
++	}
++	return 0;
++}
++arch_initcall(napot_hugetlbpages_init);
++
++#else
++
++static __init bool is_napot_size(unsigned long size)
++{
++	return false;
++}
++
++#endif /*CONFIG_RISCV_ISA_SVNAPOT*/
++
+ int pud_huge(pud_t pud)
+ {
+ 	return pud_leaf(pud);
+@@ -18,6 +317,8 @@ bool __init arch_hugetlb_valid_size(unsigned long size)
+ 		return true;
+ 	else if (IS_ENABLED(CONFIG_64BIT) && size == PUD_SIZE)
+ 		return true;
++	else if (is_napot_size(size))
++		return true;
+ 	else
+ 		return false;
+ }
+-- 
+2.34.1
+

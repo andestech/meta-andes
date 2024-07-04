@@ -1,0 +1,30 @@
+From acf32447f1ade8bd950256bf14e1e401fed10df3 Mon Sep 17 00:00:00 2001
+From: Cynthia Huang <cynthia@andestech.com>
+Date: Wed, 3 Nov 2021 14:59:38 +0800
+Subject: [PATCH 046/191] scripts: andes: headers_install.sh : Add CONFIG_DSP
+ in the leak ignore list.
+
+https://gitea.andestech.com/RD-SW/linux/issues/27
+
+Reviewed-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+Reviewed-by: Alan Kao <alankao@andestech.com>
+---
+ scripts/headers_install.sh | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/scripts/headers_install.sh b/scripts/headers_install.sh
+index 4041881746ad..19ace17fe172 100755
+--- a/scripts/headers_install.sh
++++ b/scripts/headers_install.sh
+@@ -83,6 +83,8 @@ arch/nios2/include/uapi/asm/swab.h:CONFIG_NIOS2_CI_SWAB_SUPPORT
+ arch/x86/include/uapi/asm/auxvec.h:CONFIG_IA32_EMULATION
+ arch/x86/include/uapi/asm/auxvec.h:CONFIG_X86_64
+ arch/x86/include/uapi/asm/mman.h:CONFIG_X86_INTEL_MEMORY_PROTECTION_KEYS
++arch/riscv/include/uapi/asm/ptrace.h:CONFIG_DSP
++include/uapi/asm/sigcontext.h:CONFIG_DSP
+ include/uapi/linux/atmdev.h:CONFIG_COMPAT
+ include/uapi/linux/eventpoll.h:CONFIG_PM_SLEEP
+ include/uapi/linux/hw_breakpoint.h:CONFIG_HAVE_MIXED_BREAKPOINTS_REGS
+-- 
+2.34.1
+

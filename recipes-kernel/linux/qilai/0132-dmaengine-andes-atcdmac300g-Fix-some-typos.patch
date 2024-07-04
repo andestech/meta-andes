@@ -1,0 +1,47 @@
+From 744d8ebe15356fe4d8a80b6905133f7d13ea54c2 Mon Sep 17 00:00:00 2001
+From: CL Wang <cl634@andestech.com>
+Date: Thu, 31 Aug 2023 14:06:07 +0800
+Subject: [PATCH 132/191] dmaengine: andes: atcdmac300g: Fix some typos
+
+1. "Andestech" to "Andes"
+2. "Andes Corporation" to "Andes Technology Corporation"
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/dma/atcdmac300g.c | 4 ++--
+ drivers/dma/atcdmac300g.h | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/dma/atcdmac300g.c b/drivers/dma/atcdmac300g.c
+index 20970fb1b75d..5c92d75bf4d8 100644
+--- a/drivers/dma/atcdmac300g.c
++++ b/drivers/dma/atcdmac300g.c
+@@ -1,8 +1,8 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+- * Driver for the Andestech ATCDMAC300
++ * Driver for the Andes ATCDMAC300
+  *
+- * Copyright (C) 2021 Andestech Corporation
++ * Copyright (C) 2021 Andes Technology Corporation
+  *
+  */
+ #include <linux/dmaengine.h>
+diff --git a/drivers/dma/atcdmac300g.h b/drivers/dma/atcdmac300g.h
+index a5d876f7c57d..fdb70903cd2f 100644
+--- a/drivers/dma/atcdmac300g.h
++++ b/drivers/dma/atcdmac300g.h
+@@ -1,8 +1,8 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ /*
+- * Header file for the Andestech DMA Controller driver
++ * Header file for the Andes DMA Controller driver
+  *
+- * Copyright (C) 2021 Andestech Corporation
++ * Copyright (C) 2021 Andes Technology Corporation
+  */
+ #ifndef ATCDMAC300G_H
+ #define	ATCDMAC300G_H
+-- 
+2.34.1
+

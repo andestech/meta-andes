@@ -1,0 +1,1747 @@
+From d50c5cd15a1513ad55b72ea3eb261a433b67fd73 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Mon, 19 Jun 2023 15:28:58 +0800
+Subject: [PATCH 083/191] riscv: amp: andes: add andes_remoteproc module
+
+andes_remoteproc module utilizes remote processor framework
+and interacts with the OpenAMP application to support
+ax25mp(dual core) + ax25(UP) AMP architecture.
+
+Reformed from the following patches on RISCV-Linux-5.4:
+- (7ee425cb1a) OpenAMP demo: close dir to prevent reopen failure (#34)
+- (5d26bcc3c7) dts: andes: openamp: Fix pause in use of reserved memory
+- (9312b3b664) riscv: amp: append CFLAGS
+- (13dfc42e1d) riscv: amp: fix typo
+- (e13e38939b) riscv: amp: fix warnings when compiling amp demos
+- (d0b633c0e8) riscv: app: add andes_remoteproc AMP module user applications
+- (0f3f718fa0) riscv: amp: add slave port support for AMP (ax25mp + ax25)
+- (5dd08ffa84) riscv: amp: add andes_remoteproc module and ax25mp AMP DTS and defconfig
+- (7e67617db4) riscv: amp: fix rpmsg driver override kfree static memory
+- (145a47e178) riscv: amp: back porting linux-5.13 rpmsg to support rpmsg_char control device
+- (b576157381) riscv: amp: back porting linux-5.8 remoteproc elf helpers to support remoteproc ELF64 loader
+
+Signed-off-by: Randolph <randolph@andestech.com>
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Makefile                           |   2 +-
+ arch/riscv/configs/amp.config                 |   2 +
+ drivers/remoteproc/Kconfig                    |  11 +
+ drivers/remoteproc/Makefile                   |   1 +
+ drivers/remoteproc/andes_remoteproc.c         | 463 ++++++++++++++++++
+ drivers/remoteproc/remoteproc_internal.h      |   1 +
+ samples/andes_remoteproc/App/Makefile         |  29 ++
+ samples/andes_remoteproc/App/build_all.sh     |  15 +
+ samples/andes_remoteproc/App/echo_test.c      | 189 +++++++
+ samples/andes_remoteproc/App/mat_mul_demo.c   | 172 +++++++
+ samples/andes_remoteproc/App/proxy_app.c      | 388 +++++++++++++++
+ samples/andes_remoteproc/App/proxy_app.h      |  33 ++
+ .../andes_remoteproc/App/rpmsg_demo_ctrl.c    | 133 +++++
+ .../andes_remoteproc/App/rpmsg_demo_ctrl.h    |  33 ++
+ .../andes_remoteproc/Script/load_fw_echo.sh   |  32 ++
+ .../Script/load_fw_mat_mul.sh                 |  32 ++
+ .../Script/load_fw_proxy_app.sh               |  31 ++
+ 17 files changed, 1566 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/remoteproc/andes_remoteproc.c
+ create mode 100644 samples/andes_remoteproc/App/Makefile
+ create mode 100755 samples/andes_remoteproc/App/build_all.sh
+ create mode 100644 samples/andes_remoteproc/App/echo_test.c
+ create mode 100644 samples/andes_remoteproc/App/mat_mul_demo.c
+ create mode 100644 samples/andes_remoteproc/App/proxy_app.c
+ create mode 100644 samples/andes_remoteproc/App/proxy_app.h
+ create mode 100644 samples/andes_remoteproc/App/rpmsg_demo_ctrl.c
+ create mode 100644 samples/andes_remoteproc/App/rpmsg_demo_ctrl.h
+ create mode 100755 samples/andes_remoteproc/Script/load_fw_echo.sh
+ create mode 100755 samples/andes_remoteproc/Script/load_fw_mat_mul.sh
+ create mode 100755 samples/andes_remoteproc/Script/load_fw_proxy_app.sh
+
+diff --git a/arch/riscv/Makefile b/arch/riscv/Makefile
+index 8d647d89741e..b9e17ba9976f 100644
+--- a/arch/riscv/Makefile
++++ b/arch/riscv/Makefile
+@@ -217,4 +217,4 @@ ae350_rv64_smp_sv48_defconfig:
+ 
+ PHONY += ae350_rv64_ax25_amp_defconfig
+ ae350_rv64_ax25_amp_defconfig:
+-	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config amp.config sv39.config
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config smp.config amp.config sv39.config
+diff --git a/arch/riscv/configs/amp.config b/arch/riscv/configs/amp.config
+index 513e8d24074b..41ff91faefc6 100644
+--- a/arch/riscv/configs/amp.config
++++ b/arch/riscv/configs/amp.config
+@@ -5,6 +5,8 @@ CONFIG_UIO=y
+ CONFIG_UIO_PDRV_GENIRQ=y
+ 
+ CONFIG_REMOTEPROC=y
++CONFIG_REMOTEPROC_CDEV=y
+ CONFIG_ANDES_REMOTEPROC=m
+ CONFIG_RPMSG_CHAR=m
++CONFIG_RPMSG_CTRL=m
+ CONFIG_RPMSG_VIRTIO=m
+diff --git a/drivers/remoteproc/Kconfig b/drivers/remoteproc/Kconfig
+index 166019786653..6a0b1d7bb158 100644
+--- a/drivers/remoteproc/Kconfig
++++ b/drivers/remoteproc/Kconfig
+@@ -352,6 +352,17 @@ config TI_K3_R5_REMOTEPROC
+ 	  It's safe to say N here if you're not interested in utilizing
+ 	  a slave processor.
+ 
++config ANDES_REMOTEPROC
++	tristate "Andes remoteproc support"
++	depends on REMOTEPROC
++	help
++	  Say M here to support Andes remote processor subsystems
++	  on various AE350 family of SoCs through the remote processor
++	  framework.
++
++	  It's safe to say N here if you're not interested in utilizing
++	  a slave processor.
++
+ endif # REMOTEPROC
+ 
+ endmenu
+diff --git a/drivers/remoteproc/Makefile b/drivers/remoteproc/Makefile
+index 5478c7cb9e07..c5c39487d6c9 100644
+--- a/drivers/remoteproc/Makefile
++++ b/drivers/remoteproc/Makefile
+@@ -38,3 +38,4 @@ obj-$(CONFIG_ST_SLIM_REMOTEPROC)	+= st_slim_rproc.o
+ obj-$(CONFIG_STM32_RPROC)		+= stm32_rproc.o
+ obj-$(CONFIG_TI_K3_DSP_REMOTEPROC)	+= ti_k3_dsp_remoteproc.o
+ obj-$(CONFIG_TI_K3_R5_REMOTEPROC)	+= ti_k3_r5_remoteproc.o
++obj-$(CONFIG_ANDES_REMOTEPROC)		+= andes_remoteproc.o
+diff --git a/drivers/remoteproc/andes_remoteproc.c b/drivers/remoteproc/andes_remoteproc.c
+new file mode 100644
+index 000000000000..c4d07fed8536
+--- /dev/null
++++ b/drivers/remoteproc/andes_remoteproc.c
+@@ -0,0 +1,463 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_fdt.h>
++#include <linux/of_address.h>
++#include <linux/of_reserved_mem.h>
++#include <linux/err.h>
++#include <linux/platform_device.h>
++#include <linux/dma-mapping.h>
++#include <linux/interrupt.h>
++#include <linux/remoteproc.h>
++
++#include <soc/andes/smu.h>
++#include "remoteproc_internal.h"
++#include "remoteproc_elf_helpers.h"
++
++extern struct atcsmu atcsmu;
++
++#define DRV_NAME       "andes_rproc_mbox"
++#define MAX_NUM_VRINGS 2
++#define MBOX_SRC_OFF   0x80
++#define MBOX_SET       (MBOX_SRC_OFF + 0x0)
++#define MBOX_CLR       (MBOX_SRC_OFF + 0x4)
++#define MBOX_MASK      0x0000000f
++#define MBOX_TX_BIT    0x1
++#define MBOX_RX_BIT    0x4
++
++#define MBOX_MSG       0x3fffa000
++#define MBOX_MSG_SIZE  0x4
++#define MBOX_SET_MSG   -1
++#define MBOX_SP_RUN    0
++
++#define SP_RESET_VEC_OFF 0x58
++#define RESET_N_OFF      0x44
++#define SP_CORE_BIT      0x4
++
++struct andes_rproc_pdata {
++	struct device *dev;
++	struct rproc *rproc;
++	int num_slave_ports;
++	u64 mp_slave_port[2];
++	u64 sp_local_mem[2];
++	int irq;
++	void __iomem *mbox_msg;
++};
++
++static void andes_rproc_kick(struct rproc *rproc, int vqid)
++{
++	struct device *dev = rproc->dev.parent;
++	unsigned long mask = 0;
++
++	dev_dbg(dev, "KICK Firmware to start send messages vqid %d\n", vqid);
++	mask = MBOX_TX_BIT & MBOX_MASK;
++	writel(mask, atcsmu.base + MBOX_SET);
++}
++
++static irqreturn_t andes_remoteproc_interrupt(int irq, void *dev_id)
++{
++	struct rproc *rproc = dev_id;
++	unsigned int mask = 0;
++
++	dev_dbg(rproc->dev.parent, "KICK Linux because of pending message\n");
++	mask = MBOX_RX_BIT & MBOX_MASK;
++	writel(mask, atcsmu.base + MBOX_CLR);
++	return IRQ_WAKE_THREAD;
++}
++
++static irqreturn_t handle_event(int irq, void *dev_id)
++{
++	struct rproc *rproc = dev_id;
++
++	return rproc_vq_interrupt(rproc, 0);
++}
++
++static int andes_rproc_start(struct rproc *rproc)
++{
++	struct andes_rproc_pdata *local = rproc->priv;
++	unsigned int reset;
++
++	/*
++	 * MP set ELF entry point to the SP reset vector.
++	 */
++	writel(rproc->bootaddr, atcsmu.base + SP_RESET_VEC_OFF);
++	writel(MBOX_SET_MSG, local->mbox_msg);
++
++	/*
++	 * SP state must poweroff, before it poweron.
++	 * SP set reset_n to 0, sp poweroff.
++	 */
++	reset = 0;
++	reset = readl(atcsmu.base + RESET_N_OFF);
++	if (reset & SP_CORE_BIT) {
++		reset = reset ^ SP_CORE_BIT;
++		writel(reset, atcsmu.base + RESET_N_OFF);
++	}
++
++	/*
++	 * SP set reset_n to 1, sp poweron
++	 */
++	reset = reset | SP_CORE_BIT;
++	writel(reset, atcsmu.base + RESET_N_OFF);
++
++	return 0;
++}
++
++static int andes_rproc_stop(struct rproc *rproc)
++{
++	struct andes_rproc_pdata *local = rproc->priv;
++	unsigned int msg;
++
++	msg = readl(local->mbox_msg);
++	if (msg == MBOX_SP_RUN) {
++		writel(MBOX_SET_MSG, local->mbox_msg);
++		andes_rproc_kick(rproc, 1);
++	}
++	return 0;
++}
++
++static int andes_reserved_mem_release(struct rproc *rproc,
++				      struct rproc_mem_entry *mem)
++{
++	memunmap(mem->va);
++	return 0;
++}
++
++static int andes_reserved_mem_alloc(struct rproc *rproc,
++				    struct rproc_mem_entry *mem)
++{
++	void *va;
++
++	va = memremap(mem->dma, mem->len, MEMREMAP_WC);
++	if (IS_ERR_OR_NULL(va))
++		return -ENOMEM;
++	mem->va = va;
++	memset(mem->va, 0, mem->len);
++	return 0;
++}
++
++static int andes_parse_reserved_mems(struct rproc *rproc)
++{
++	int i, num_mems;
++	struct device *dev = rproc->dev.parent;
++	struct device_node *mem_nodes = dev->of_node;
++	struct rproc_mem_entry *mem;
++
++	num_mems = of_count_phandle_with_args(mem_nodes, "memory-region", NULL);
++	if (num_mems <= 0) {
++		dev_err(dev, "need reserved-memory to shared memory\n");
++		return -EINVAL;
++	}
++
++	for (i = 0; i < num_mems; i++) {
++		struct device_node *dt_node;
++		struct reserved_mem *rmem;
++
++		dt_node = of_parse_phandle(mem_nodes, "memory-region", i);
++
++		rmem = of_reserved_mem_lookup(dt_node);
++		if (!rmem) {
++			dev_err(dev, "unable to acquire memory-region\n");
++			return -EINVAL;
++		}
++
++		mem = rproc_mem_entry_init(dev, NULL,
++					   (dma_addr_t)rmem->base,
++					   rmem->size, rmem->base,
++					   andes_reserved_mem_alloc,
++					   andes_reserved_mem_release,
++					   dt_node->name);
++		if (!mem) {
++			dev_err(dev, "unable to initialize memory-region %s\n", dt_node->name);
++			return -ENOMEM;
++		}
++		rproc_add_carveout(rproc, mem);
++	}
++	return 0;
++}
++
++static int andes_slave_port_release(struct rproc *rproc,
++					struct rproc_mem_entry *mem)
++{
++	memunmap(mem->va);
++	return 0;
++}
++
++static int andes_slave_port_alloc(struct rproc *rproc,
++					struct rproc_mem_entry *mem)
++{
++	void *va;
++
++	va = memremap(mem->da, mem->len, MEMREMAP_WC);
++	if (IS_ERR_OR_NULL(va))
++		return -ENOMEM;
++
++	/* Update memory entry va */
++	mem->va = va;
++	memset(mem->va, 0, mem->len);
++	return 0;
++}
++
++static int andes_parse_slave_ports(struct rproc *rproc)
++{
++	struct device *dev = rproc->dev.parent;
++	struct andes_rproc_pdata *local = rproc->priv;
++	struct device_node *slave_port_nodes = dev->of_node;
++	int i, num_slave_ports;
++
++	num_slave_ports = of_count_phandle_with_args(slave_port_nodes,
++						"slave_ports", NULL);
++	if (num_slave_ports <= 0) {
++		dev_err(dev, "need slave port to touch sp ILM/DLM\n");
++		return -EINVAL;
++	}
++
++	local->num_slave_ports = num_slave_ports;
++
++	for (i = 0; i < num_slave_ports; i++) {
++		struct resource rsc;
++		resource_size_t size;
++		struct device_node *dt_node;
++		struct rproc_mem_entry *mem;
++		int ret;
++
++		dt_node = of_parse_phandle(slave_port_nodes, "slave_ports", i);
++
++		if (!dt_node)
++			return -EINVAL;
++		if (of_device_is_available(dt_node)) {
++			ret = of_address_to_resource(dt_node, 0, &rsc);
++			if (ret < 0)
++				return ret;
++			size = resource_size(&rsc);
++			mem = rproc_mem_entry_init(dev, NULL, rsc.start,
++						   (int)size, rsc.start,
++						   andes_slave_port_alloc,
++						   andes_slave_port_release,
++						   rsc.name);
++			if (!mem)
++				return -ENOMEM;
++
++			local->mp_slave_port[i] = rsc.start;
++			local->sp_local_mem[i] = size & rsc.start;
++			rproc_add_carveout(rproc, mem);
++		}
++	}
++	return 0;
++}
++
++static int andes_parse_fw(struct rproc *rproc, const struct firmware *fw)
++{
++	int ret;
++
++	ret = andes_parse_slave_ports(rproc);
++	if (ret)
++		return ret;
++
++	ret = andes_parse_reserved_mems(rproc);
++	if (ret)
++		return ret;
++
++	ret = rproc_elf_load_rsc_table(rproc, fw);
++	if (ret == -EINVAL) {
++		dev_info(&rproc->dev, "no resource table found.\n");
++		ret = 0;
++	}
++	return ret;
++}
++
++int andes_rproc_elf_load_segments(struct rproc *rproc, const struct firmware *fw)
++{
++	struct device *dev = &rproc->dev;
++	struct andes_rproc_pdata *local = rproc->priv;
++	const void *ehdr, *phdr;
++	int i, j, ret = 0;
++	u16 phnum;
++	const u8 *elf_data = fw->data;
++	u8 class = fw_elf_get_class(fw);
++	u32 elf_phdr_get_size = elf_size_of_phdr(class);
++
++	ehdr = elf_data;
++	phnum = elf_hdr_get_e_phnum(class, ehdr);
++	phdr = elf_data + elf_hdr_get_e_phoff(class, ehdr);
++
++	/* go through the available ELF segments */
++	for (i = 0; i < phnum; i++, phdr += elf_phdr_get_size) {
++		/*
++		 * u64 da = elf_phdr_get_p_paddr(class, phdr);
++		 * sp don't need pa, it just use va.
++		 */
++
++		u64 da = elf_phdr_get_p_vaddr(class, phdr);
++		u64 memsz = elf_phdr_get_p_memsz(class, phdr);
++		u64 filesz = elf_phdr_get_p_filesz(class, phdr);
++		u64 offset = elf_phdr_get_p_offset(class, phdr);
++		u32 type = elf_phdr_get_p_type(class, phdr);
++		void *ptr;
++
++		if (type != PT_LOAD)
++			continue;
++
++		dev_dbg(dev, "phdr: type %d da 0x%llx memsz 0x%llx filesz 0x%llx\n",
++			type, da, memsz, filesz);
++
++		if (filesz > memsz) {
++			dev_err(dev, "bad phdr filesz 0x%llx memsz 0x%llx\n",
++				filesz, memsz);
++			ret = -EINVAL;
++			break;
++		}
++
++		if (offset + filesz > fw->size) {
++			dev_err(dev, "truncated fw: need 0x%llx avail 0x%zx\n",
++				offset + filesz, fw->size);
++			ret = -EINVAL;
++			break;
++		}
++
++		if (!rproc_u64_fit_in_size_t(memsz)) {
++			dev_err(dev, "size (%llx) does not fit in size_t type\n",
++				memsz);
++			ret = -EOVERFLOW;
++			break;
++		}
++
++		for (j = 0; j < local->num_slave_ports; j++) {
++			if (da == local->sp_local_mem[j])
++				da = local->mp_slave_port[j];
++		}
++
++		/* grab the kernel address for this device address */
++		ptr = rproc_da_to_va(rproc, da, memsz, NULL);
++		if (!ptr) {
++			dev_err(dev, "bad phdr da 0x%llx mem 0x%llx\n", da,
++				memsz);
++			ret = -EINVAL;
++			break;
++		}
++
++		/* put the segment where the remote processor expects it */
++		if (filesz)
++			memcpy(ptr, elf_data + offset, filesz);
++
++		/*
++		 * Zero out remaining memory for this segment.
++		 *
++		 * This isn't strictly required since dma_alloc_coherent already
++		 * did this for us. albeit harmless, we may consider removing
++		 * this.
++		 */
++		if (memsz > filesz)
++			memset(ptr + filesz, 0, memsz - filesz);
++	}
++
++	return ret;
++}
++
++static struct rproc_ops andes_rproc_ops = {
++	.start		       = andes_rproc_start,
++	.stop		       = andes_rproc_stop,
++	.kick		       = andes_rproc_kick,
++	.parse_fw	       = andes_parse_fw,
++	.find_loaded_rsc_table = rproc_elf_find_loaded_rsc_table,
++	.load                  = andes_rproc_elf_load_segments,
++	.sanity_check          = rproc_elf_sanity_check,
++	.get_boot_addr         = rproc_elf_get_boot_addr,
++};
++
++static int andes_remoteproc_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct device_node *dev_node = dev->of_node;
++	struct rproc *rproc;
++	struct andes_rproc_pdata *local;
++	int ret = 0;
++
++	rproc = rproc_alloc(dev, dev_node->name, &andes_rproc_ops,
++						NULL, sizeof(*local));
++	if (!rproc) {
++		dev_err(&pdev->dev, "rproc allocation failed\n");
++		return -ENOMEM;
++	}
++
++	if (!atcsmu.base) {
++		dev_err(&pdev->dev, "atcsmu.base is NULL or 0x0\n");
++		goto error;
++	}
++
++	rproc->auto_boot = false;
++	local = rproc->priv;
++	local->rproc = rproc;
++	local->dev = dev;
++
++	local->mbox_msg = ioremap_wc(MBOX_MSG, 4);
++	if (IS_ERR_OR_NULL(local->mbox_msg)) {
++		dev_err(&pdev->dev, "Failed to ioremap mbox_msg\n");
++		return -ENOMEM;
++	}
++
++	platform_set_drvdata(pdev, rproc);
++
++	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64));
++	if (ret) {
++		dev_err(&pdev->dev, "dma_set_coherent_mask: %d\n", ret);
++		goto error;
++	}
++
++	local->irq = platform_get_irq(pdev, 0);
++	if (local->irq <= 0)
++		return -EINVAL;
++	ret = devm_request_threaded_irq(dev, local->irq,
++					andes_remoteproc_interrupt,
++					handle_event,
++					0, DRV_NAME,
++					local->rproc);
++
++	ret = rproc_add(local->rproc);
++	if (ret) {
++		dev_err(&pdev->dev, "rproc registration failed\n");
++		goto error;
++	}
++	return 0;
++error:
++	rproc_free(rproc);
++	return ret;
++}
++
++static int andes_remoteproc_remove(struct platform_device *pdev)
++{
++	struct rproc *rproc = platform_get_drvdata(pdev);
++	struct andes_rproc_pdata *local = rproc->priv;
++
++	if (atomic_read(&rproc->power) > 0)
++		rproc_shutdown(rproc);
++
++	iounmap(local->mbox_msg);
++
++	rproc_del(rproc);
++	of_reserved_mem_device_release(&pdev->dev);
++	rproc_free(rproc);
++
++	return 0;
++}
++
++/* Match table for OF platform binding */
++static const struct of_device_id andes_remoteproc_match[] = {
++	{ .compatible = "andestech,andes_remoteproc", },
++	{ /* end of list */ },
++};
++MODULE_DEVICE_TABLE(of, andes_remoteproc_match);
++
++static struct platform_driver andes_remoteproc_driver = {
++	.probe = andes_remoteproc_probe,
++	.remove = andes_remoteproc_remove,
++	.driver = {
++		.name = "andes_remoteproc",
++		.of_match_table = andes_remoteproc_match,
++	},
++};
++module_platform_driver(andes_remoteproc_driver);
++
++MODULE_DESCRIPTION("Andes remote processor control driver");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/remoteproc/remoteproc_internal.h b/drivers/remoteproc/remoteproc_internal.h
+index d4dbb8d1d80c..cd62cfc11994 100644
+--- a/drivers/remoteproc/remoteproc_internal.h
++++ b/drivers/remoteproc/remoteproc_internal.h
+@@ -112,6 +112,7 @@ void rproc_free_vring(struct rproc_vring *rvring);
+ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i);
+ int rproc_parse_vring(struct rproc_vdev *rvdev, struct fw_rsc_vdev *rsc, int i);
+ 
++void *rproc_da_to_va(struct rproc *rproc, u64 da, size_t len, bool *is_iomem);
+ phys_addr_t rproc_va_to_pa(void *cpu_addr);
+ int rproc_trigger_recovery(struct rproc *rproc);
+ 
+diff --git a/samples/andes_remoteproc/App/Makefile b/samples/andes_remoteproc/App/Makefile
+new file mode 100644
+index 000000000000..e96bcacc58ee
+--- /dev/null
++++ b/samples/andes_remoteproc/App/Makefile
+@@ -0,0 +1,29 @@
++CC=riscv64-linux-gcc
++
++ECHO = echo_test
++ECHO_OBJS = echo_test.o rpmsg_demo_ctrl.o
++
++MAT_MUL = mat_mul_demo
++MAT_MUL_OBJS = mat_mul_demo.o rpmsg_demo_ctrl.o
++
++PROXY = proxy_app
++PROXY_OBJS = proxy_app.o rpmsg_demo_ctrl.o
++
++CFLAGS += -Wall -Werror
++
++all: $(ECHO) $(MAT_MUL) $(PROXY)
++
++$(ECHO): $(ECHO_OBJS)
++	$(CC) $(CFLAGS) $(LDFLAGS) -static -o $@ $(ECHO_OBJS) $(LDLIBS)
++
++$(MAT_MUL): $(MAT_MUL_OBJS)
++	$(CC) $(CFLAGS) $(LDFLAGS) -static -o $@ $(MAT_MUL_OBJS) $(LDLIBS) -lpthread
++
++$(PROXY): $(PROXY_OBJS)
++	$(CC) $(CFLAGS) $(LDFLAGS) -static -o $@ $(PROXY_OBJS) $(LDLIBS)
++
++clean:
++	rm -rf $(ECHO) $(MAT_MUL) $(PROXY) *.o
++
++%.o: %.c
++	$(CC) -c $(CFLAGS) -o $@ $<
+diff --git a/samples/andes_remoteproc/App/build_all.sh b/samples/andes_remoteproc/App/build_all.sh
+new file mode 100755
+index 000000000000..0321e15e8284
+--- /dev/null
++++ b/samples/andes_remoteproc/App/build_all.sh
+@@ -0,0 +1,15 @@
++#!/bin/bash
++# SPDX-License-Identifier: GPL-2.0
++#####################################
++#             Build                 #
++#####################################
++
++echo $PATH
++export | grep riscv
++echo $LDFLAGS
++
++make clean
++make
++
++rm ../Script/echo_test ../Script/mat_mul_demo ../Script/proxy_app
++cp echo_test mat_mul_demo proxy_app ../Script
+diff --git a/samples/andes_remoteproc/App/echo_test.c b/samples/andes_remoteproc/App/echo_test.c
+new file mode 100644
+index 000000000000..e56281b4fcc3
+--- /dev/null
++++ b/samples/andes_remoteproc/App/echo_test.c
+@@ -0,0 +1,189 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Test application that data integraty of inter processor
++ * communication from linux userspace to a remote software
++ * context. The application sends chunks of data to the
++ * remote processor. The remote side echoes the data back
++ * to application which then validates the data returned.
++ */
++
++#include "rpmsg_demo_ctrl.h"
++
++#define RPMSG_GET_KFIFO_SIZE 1
++#define RPMSG_GET_AVAIL_DATA_SIZE 2
++#define RPMSG_GET_FREE_SPACE 3
++#define RPMSG_HEADER_LEN 16
++#define MAX_RPMSG_BUFF_SIZE (512 - RPMSG_HEADER_LEN)
++
++#define PAYLOAD_MIN_SIZE 1
++#define PAYLOAD_MAX_SIZE (MAX_RPMSG_BUFF_SIZE - 24)
++#define NUM_PAYLOADS	 (PAYLOAD_MAX_SIZE/PAYLOAD_MIN_SIZE)
++
++static int charfd = -1, fd = -1, err_cnt;
++
++struct _payload {
++	unsigned long num;
++	unsigned long size;
++	char data[];
++};
++
++struct _payload *i_payload;
++struct _payload *r_payload;
++
++void send_shutdown(int fd)
++{
++	union {
++		unsigned int n[8];
++		struct _payload sdown;
++	} umsg = {
++		.n = {
++			SHUTDOWN_MSG, SHUTDOWN_MSG, SHUTDOWN_MSG, SHUTDOWN_MSG,
++			SHUTDOWN_MSG, SHUTDOWN_MSG, SHUTDOWN_MSG, SHUTDOWN_MSG,
++		}
++	};
++
++	umsg.sdown.size = sizeof(umsg);
++	if (write(fd, &umsg, sizeof(umsg)) < 0)
++		perror("write SHUTDOWN_MSG\n");
++}
++
++int main(int argc, char *argv[])
++{
++	int ret, i, j;
++	int size, bytes_rcvd, bytes_sent;
++	int opt;
++	char *rpmsg_dev = RPMSG_DEV;
++	int ntimes = 1;
++	char fpath[256];
++	char rpmsg_char_name[16];
++	struct rpmsg_endpoint_info eptinfo;
++	char ept_dev_name[16];
++	char ept_dev_path[32];
++
++	while ((opt = getopt(argc, argv, "d:n:")) != -1) {
++		switch (opt) {
++		case 'd':
++			rpmsg_dev = optarg;
++			break;
++		case 'n':
++			ntimes = atoi(optarg);
++			break;
++		default:
++			printf("getopt return unsupported option: -%c\n", opt);
++			break;
++		}
++	}
++
++	printf("\r\nEcho test start \r\n");
++	printf("\r\nOpen rpmsg dev %s! \r\n", rpmsg_dev);
++	sprintf(fpath, "%s/devices/%s", RPMSG_BUS_SYS, rpmsg_dev);
++	if (access(fpath, F_OK)) {
++		fprintf(stderr, "Not able to access rpmsg device %s, %s\n",
++			fpath, strerror(errno));
++		return -EINVAL;
++	}
++
++	charfd = get_rpmsg_chrdev_fd(rpmsg_dev, rpmsg_char_name);
++	if (charfd < 0)
++		return charfd;
++
++	strcpy(eptinfo.name, "rpmsg-openamp-demo-channel");
++	eptinfo.src = 0;
++	eptinfo.dst = 0x400;
++	ret = rpmsg_create_ept(charfd, &eptinfo);
++	if (ret) {
++		printf("failed to create RPMsg endpoint.\n");
++		return -EINVAL;
++	}
++	if (!get_rpmsg_ept_dev_name(rpmsg_char_name, eptinfo.name,
++				    ept_dev_name))
++		return -EINVAL;
++	sprintf(ept_dev_path, "/dev/%s", ept_dev_name);
++	fd = open(ept_dev_path, O_RDWR | O_NONBLOCK);
++	if (fd < 0) {
++		perror("Failed to open rpmsg device.");
++		close(charfd);
++		return -1;
++	}
++
++	i_payload = (struct _payload *)malloc(2 * sizeof(unsigned long) + PAYLOAD_MAX_SIZE);
++	r_payload = (struct _payload *)malloc(2 * sizeof(unsigned long) + PAYLOAD_MAX_SIZE);
++
++	if (i_payload == 0 || r_payload == 0) {
++		printf("ERROR: Failed to allocate memory for payload.\n");
++		return -1;
++	}
++
++	for (j = 0; j < ntimes; j++) {
++		printf("\r\n **********************************");
++		printf("****\r\n");
++		printf("\r\n  Echo Test Round %d \r\n", j);
++		printf("\r\n **********************************");
++		printf("****\r\n");
++		for (i = 0, size = PAYLOAD_MIN_SIZE; i < NUM_PAYLOADS;
++		i++, size++) {
++			int k;
++
++			i_payload->num = i;
++			i_payload->size = size;
++
++			/* Mark the data buffer. */
++			memset(&(i_payload->data[0]), 0xA5, size);
++
++			printf("\r\n sending payload number");
++			printf(" %ld of size %ld\r\n", i_payload->num,
++			(2 * sizeof(unsigned long)) + size);
++
++			bytes_sent = write(fd, i_payload,
++			(2 * sizeof(unsigned long)) + size);
++
++			if (bytes_sent <= 0) {
++				printf("\r\n Error sending data");
++				printf(" .. \r\n");
++				break;
++			}
++			printf("echo test: sent : %d\n", bytes_sent);
++
++			r_payload->num = 0;
++			bytes_rcvd = read(fd, r_payload,
++					(2 * sizeof(unsigned long)) + PAYLOAD_MAX_SIZE);
++			while (bytes_rcvd <= 0) {
++				usleep(10000);
++				bytes_rcvd = read(fd, r_payload,
++					(2 * sizeof(unsigned long)) + PAYLOAD_MAX_SIZE);
++			}
++			printf(" received payload number ");
++			printf("%ld of size %d\r\n", r_payload->num, bytes_rcvd);
++
++			/* Validate data buffer integrity. */
++			for (k = 0; k < r_payload->size; k++) {
++
++				if (r_payload->data[k] != 0xA5) {
++					printf(" \r\n Data corruption");
++					printf(" at index %d \r\n", k);
++					err_cnt++;
++					break;
++				}
++			}
++			bytes_rcvd = read(fd, r_payload,
++			(2 * sizeof(unsigned long)) + PAYLOAD_MAX_SIZE);
++
++		}
++		printf("\r\n **********************************");
++		printf("****\r\n");
++		printf("\r\n Echo Test Round %d Test Results: Error count = %d\r\n",
++		j, err_cnt);
++		printf("\r\n **********************************");
++		printf("****\r\n");
++	}
++
++	/* send_shutdown(fd); */
++
++	free(i_payload);
++	free(r_payload);
++
++	close(fd);
++	if (charfd >= 0)
++		close(charfd);
++	return 0;
++}
+diff --git a/samples/andes_remoteproc/App/mat_mul_demo.c b/samples/andes_remoteproc/App/mat_mul_demo.c
+new file mode 100644
+index 000000000000..1a9e1048464c
+--- /dev/null
++++ b/samples/andes_remoteproc/App/mat_mul_demo.c
+@@ -0,0 +1,172 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Sample demo application that showcases inter processor
++ * communication from linux userspace to a remote software
++ * context. The application generates random matrices and
++ * transmits them to the remote context over rpmsg. The
++ * remote application performs multiplication of matrices
++ * and transmits the results back to this application.
++ */
++
++#include "rpmsg_demo_ctrl.h"
++
++#define MATRIX_SIZE 6
++
++struct _matrix {
++	unsigned int size;
++	unsigned int elements[MATRIX_SIZE][MATRIX_SIZE];
++};
++
++static int charfd = -1, fd = -1;
++static struct _matrix i_matrix[2];
++static struct _matrix r_matrix;
++
++static void matrix_print(struct _matrix *m)
++{
++	int i, j;
++
++	/* Generate two random matrices */
++	printf("\r\nMaster : Linux : Printing results \r\n");
++
++	for (i = 0; i < m->size; ++i) {
++		for (j = 0; j < m->size; ++j)
++			printf(" %3d ", (unsigned int)m->elements[i][j]);
++		printf("\r\n");
++	}
++}
++
++static void generate_matrices(int num_matrices,
++				unsigned int matrix_size, void *p_data)
++{
++	int	i, j, k;
++	struct _matrix *p_matrix = p_data;
++	time_t	t;
++	unsigned long value;
++
++	srand((unsigned int) time(&t));
++
++	for (i = 0; i < num_matrices; i++) {
++		/* Initialize workload */
++		p_matrix[i].size = matrix_size;
++
++		printf("\r\nMaster : Linux : Input matrix %d \r\n", i);
++		for (j = 0; j < matrix_size; j++) {
++			printf("\r\n");
++			for (k = 0; k < matrix_size; k++) {
++
++				value = (rand() & 0x7F);
++				value = value % 10;
++				p_matrix[i].elements[j][k] = value;
++				printf(" %3d ",
++				(unsigned int)p_matrix[i].elements[j][k]);
++			}
++		}
++		printf("\r\n");
++	}
++}
++
++/*
++ * Probably an overkill to memset(.., sizeof(struct _matrix)) as
++ * the firmware looks for SHUTDOWN_MSG in the first 32 bits.
++ */
++void send_shutdown(int fd)
++{
++	memset(i_matrix, SHUTDOWN_MSG, sizeof(struct _matrix));
++	if (write(fd, i_matrix, sizeof(i_matrix)) < 0)
++		perror("write SHUTDOWN_MSG\n");
++}
++
++void matrix_mult(int ntimes)
++{
++	int i;
++
++	for (i = 0; i < ntimes; i++) {
++		generate_matrices(2, 6, i_matrix);
++
++		printf("%d: write rpmsg: %lu bytes\n", i, sizeof(i_matrix));
++		ssize_t rc = write(fd, i_matrix, sizeof(i_matrix));
++
++		if (rc < 0)
++			fprintf(stderr, "write,errno = %ld, %d\n", rc, errno);
++
++		puts("read results");
++		do {
++			rc = read(fd, &r_matrix, sizeof(r_matrix));
++		} while (rc < (int)sizeof(r_matrix));
++		matrix_print(&r_matrix);
++		printf("End of Matrix multiplication demo Round %d\n", i);
++	}
++}
++
++int main(int argc, char *argv[])
++{
++	int ntimes = 1;
++	int opt, ret;
++	char *rpmsg_dev = RPMSG_DEV;
++	char rpmsg_char_name[16];
++	char fpath[256];
++	struct rpmsg_endpoint_info eptinfo;
++	char ept_dev_name[16];
++	char ept_dev_path[32];
++
++	while ((opt = getopt(argc, argv, "d:n:")) != -1) {
++		switch (opt) {
++		case 'd':
++			rpmsg_dev = optarg;
++			break;
++		case 'n':
++			ntimes = atoi(optarg);
++			break;
++		default:
++			printf("getopt return unsupported option: -%c\n", opt);
++			break;
++		}
++	}
++
++	printf("\r\nMatrix multiplication demo start\r\n");
++	printf("\r\nOpen rpmsg dev %s!\r\n", rpmsg_dev);
++	sprintf(fpath, "%s/devices/%s", RPMSG_BUS_SYS, rpmsg_dev);
++	if (access(fpath, F_OK)) {
++		fprintf(stderr, "Not able to access rpmsg device %s, %s\n",
++			fpath, strerror(errno));
++		return -EINVAL;
++	}
++
++	charfd = get_rpmsg_chrdev_fd(rpmsg_dev, rpmsg_char_name);
++	if (charfd < 0)
++		return charfd;
++	strcpy(eptinfo.name, "rpmsg-openamp-demo-channel");
++	eptinfo.src = 0;
++	eptinfo.dst = 0x400;
++	ret = rpmsg_create_ept(charfd, &eptinfo);
++	if (ret) {
++		fprintf(stderr, "rpmsg_create_ept %s\n", strerror(errno));
++		return -EINVAL;
++	}
++	if (!get_rpmsg_ept_dev_name(rpmsg_char_name, eptinfo.name,
++				    ept_dev_name))
++		return -EINVAL;
++	sprintf(ept_dev_path, "/dev/%s", ept_dev_name);
++
++	printf("open %s\n", ept_dev_path);
++	fd = open(ept_dev_path, O_RDWR | O_NONBLOCK);
++	if (fd < 0) {
++		perror(ept_dev_path);
++		close(charfd);
++		return -1;
++	}
++
++	printf("%s:%d matrix_mult(%d)\n", __func__, __LINE__, ntimes);
++	matrix_mult(ntimes);
++
++	/* send_shutdown(fd); */
++
++	close(fd);
++	if (charfd >= 0)
++		close(charfd);
++
++	printf("\r\nQuitting application .. \r\n");
++	printf("Matrix multiply application end \r\n");
++
++	return 0;
++}
+diff --git a/samples/andes_remoteproc/App/proxy_app.c b/samples/andes_remoteproc/App/proxy_app.c
+new file mode 100644
+index 000000000000..c10805273266
+--- /dev/null
++++ b/samples/andes_remoteproc/App/proxy_app.c
+@@ -0,0 +1,388 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "proxy_app.h"
++
++//#define LPRINTF(format, ...) printf(format, ##__VA_ARGS__)
++#define LPRINTF(format, ...)
++
++#define RPC_BUFF_SIZE 512
++#define PROXY_ENDPOINT 127
++
++/* Initialization message ID */
++#define RPMG_INIT_MSG	"init_msg"
++
++struct _proxy_data {
++	int active;
++	int rpmsg_proxy_fd;
++	struct _sys_rpc *rpc;
++	struct _sys_rpc *rpc_response;
++	char *firmware_path;
++};
++
++static struct _proxy_data *proxy;
++char sbuf[512];
++int remote_id;
++
++int handle_open(struct _sys_rpc *rpc)
++{
++	int fd;
++	ssize_t bytes_written;
++
++	/* Open remote fd */
++
++	fd = open(rpc->sys_call_args.data, rpc->sys_call_args.int_field1,
++			rpc->sys_call_args.int_field2);
++
++	/* Construct rpc response */
++	proxy->rpc_response->id = OPEN_SYSCALL_ID;
++	proxy->rpc_response->sys_call_args.int_field1 = fd;
++	proxy->rpc_response->sys_call_args.int_field2 = 0; /*not used*/
++	proxy->rpc_response->sys_call_args.data_len = 0; /*not used*/
++
++	/* Transmit rpc response */
++	bytes_written = write(proxy->rpmsg_proxy_fd, proxy->rpc_response,
++				sizeof(struct _sys_rpc));
++
++	return (bytes_written != sizeof(struct _sys_rpc)) ? -1 : 0;
++}
++
++int handle_close(struct _sys_rpc *rpc)
++{
++	int retval;
++	ssize_t bytes_written;
++
++	/* Close remote fd */
++	retval = close(rpc->sys_call_args.int_field1);
++
++	/* Construct rpc response */
++	proxy->rpc_response->id = CLOSE_SYSCALL_ID;
++	proxy->rpc_response->sys_call_args.int_field1 = retval;
++	proxy->rpc_response->sys_call_args.int_field2 = 0; /*not used*/
++	proxy->rpc_response->sys_call_args.data_len = 0; /*not used*/
++
++	/* Transmit rpc response */
++	bytes_written = write(proxy->rpmsg_proxy_fd, proxy->rpc_response,
++				sizeof(struct _sys_rpc));
++
++	return (bytes_written != sizeof(struct _sys_rpc)) ? -1 : 0;
++}
++
++int handle_read(struct _sys_rpc *rpc)
++{
++	ssize_t bytes_read, bytes_written;
++	size_t  payload_size;
++	char *buff = proxy->rpc_response->sys_call_args.data;
++
++	if (rpc->sys_call_args.int_field1 == 0)
++		/*
++		 * * Perform read from fd for large size since this is a
++		 * STD/I request
++		 */
++		bytes_read = read(rpc->sys_call_args.int_field1, buff, 512);
++	else
++		/* Perform read from fd */
++		bytes_read = read(rpc->sys_call_args.int_field1, buff,
++					rpc->sys_call_args.int_field2);
++
++	/* Construct rpc response */
++	proxy->rpc_response->id = READ_SYSCALL_ID;
++	proxy->rpc_response->sys_call_args.int_field1 = bytes_read;
++	proxy->rpc_response->sys_call_args.int_field2 = 0; /* not used */
++	proxy->rpc_response->sys_call_args.data_len = bytes_read;
++
++	payload_size = sizeof(struct _sys_rpc) +
++			((bytes_read > 0) ? bytes_read : 0);
++
++	/* Transmit rpc response */
++	LPRINTF("%s: %d, %d\n", __func__, proxy->rpc_response->id,
++			proxy->rpc_response->sys_call_args.int_field1);
++	bytes_written = write(proxy->rpmsg_proxy_fd, proxy->rpc_response,
++					payload_size);
++
++	return (bytes_written != payload_size) ? -1 : 0;
++}
++
++int handle_write(struct _sys_rpc *rpc)
++{
++	ssize_t bytes_written;
++
++	/* Write to remote fd */
++	bytes_written = write(rpc->sys_call_args.int_field1,
++				rpc->sys_call_args.data,
++				rpc->sys_call_args.int_field2);
++
++	/* Construct rpc response */
++	proxy->rpc_response->id = WRITE_SYSCALL_ID;
++	proxy->rpc_response->sys_call_args.int_field1 = bytes_written;
++	proxy->rpc_response->sys_call_args.int_field2 = 0; /*not used*/
++	proxy->rpc_response->sys_call_args.data_len = 0; /*not used*/
++
++	/* Transmit rpc response */
++	bytes_written = write(proxy->rpmsg_proxy_fd, proxy->rpc_response,
++				sizeof(struct _sys_rpc));
++
++	return (bytes_written != sizeof(struct _sys_rpc)) ? -1 : 0;
++}
++
++int handle_rpc(struct _sys_rpc *rpc)
++{
++	int retval;
++
++	/* Handle RPC */
++	switch ((int)(rpc->id)) {
++	case OPEN_SYSCALL_ID:
++	{
++		retval = handle_open(rpc);
++		break;
++	}
++	case CLOSE_SYSCALL_ID:
++	{
++		retval = handle_close(rpc);
++		break;
++	}
++	case READ_SYSCALL_ID:
++	{
++		retval = handle_read(rpc);
++		break;
++	}
++	case WRITE_SYSCALL_ID:
++	{
++		retval = handle_write(rpc);
++		break;
++	}
++	case TERM_SYSCALL_ID:
++	{
++		proxy->active = 0;
++		retval = 0;
++		break;
++	}
++	default:
++	{
++		printf("\r\nMaster>Err:Invalid RPC sys call ID: %d! \r\n", rpc->id);
++		retval = -1;
++		break;
++	}
++	}
++
++	return retval;
++}
++
++/* write a string to an existing and writtable file */
++int file_write(char *path, char *str)
++{
++	int fd;
++	ssize_t bytes_written;
++	size_t str_sz;
++
++	fd = open(path, O_WRONLY);
++	if (fd == -1) {
++		perror("Error");
++		return -1;
++	}
++	str_sz = strlen(str);
++	bytes_written = write(fd, str, str_sz);
++	if (bytes_written != str_sz) {
++		if (bytes_written == -1)
++			perror("Error");
++		close(fd);
++		return -1;
++	}
++
++	if (-1 == close(fd)) {
++		perror("Error");
++		return -1;
++	}
++	return 0;
++}
++
++/* Stop remote CPU and Unload drivers */
++void stop_remote(void)
++{
++	system("modprobe -r rpmsg_char");
++	sprintf(sbuf,
++		"/sys/class/remoteproc/remoteproc%u/state",
++		remote_id);
++	(void)file_write(sbuf, "stop");
++}
++
++void exit_action_handler(int signum)
++{
++	proxy->active = 0;
++}
++
++void kill_action_handler(int signum)
++{
++	printf("\r\nMaster>RPC service killed !!\r\n");
++
++	/* Close proxy rpmsg device */
++	close(proxy->rpmsg_proxy_fd);
++
++	/* Free up resources */
++	free(proxy->rpc);
++	free(proxy->rpc_response);
++	free(proxy);
++
++	/* Stop remote cpu and unload drivers */
++	stop_remote();
++}
++
++void display_help_msg(void)
++{
++	printf("\r\nLinux proxy application.\r\n");
++	printf("-v	 Displays proxy application version.\n");
++	printf("-c	 Whether to use RPMsg char driver.\n");
++	printf("-f	 Accepts path of firmware to load on remote core.\n");
++	printf("-r       Which remoteproc instance\n");
++	printf("-h	 Displays this help message.\n");
++}
++
++int main(int argc, char *argv[])
++{
++	struct sigaction exit_action;
++	struct sigaction kill_action;
++	int bytes_rcvd;
++	int opt = 0, ret = 0;
++	char *rpmsg_dev = RPMSG_DEV;
++	char rpmsg_char_name[16];
++	int rpmsg_char_fd = -1, ept_fd = -1;
++	struct rpmsg_endpoint_info eptinfo;
++	char ept_dev_name[16];
++	char ept_dev_path[32];
++
++	/* Initialize signalling infrastructure */
++	memset(&exit_action, 0, sizeof(struct sigaction));
++	memset(&kill_action, 0, sizeof(struct sigaction));
++	exit_action.sa_handler = exit_action_handler;
++	kill_action.sa_handler = kill_action_handler;
++	sigaction(SIGTERM, &exit_action, NULL);
++	sigaction(SIGINT, &exit_action, NULL);
++	sigaction(SIGKILL, &kill_action, NULL);
++	sigaction(SIGHUP, &kill_action, NULL);
++
++	while ((opt = getopt(argc, argv, "vh:r:")) != -1) {
++		switch (opt) {
++		case 'r':
++			remote_id = atoi(optarg);
++			if (remote_id != 0 && remote_id != 1) {
++				display_help_msg();
++				return -1;
++			}
++			break;
++		case 'v':
++			printf("\r\nLinux proxy application version 1.1\r\n");
++			return 0;
++		case 'h':
++			display_help_msg();
++			return 0;
++		default:
++			printf("getopt return unsupported option: -%c\n", opt);
++			break;
++		}
++	}
++
++	rpmsg_char_fd = get_rpmsg_chrdev_fd(rpmsg_dev, rpmsg_char_name);
++	if (rpmsg_char_fd < 0) {
++		ret = rpmsg_char_fd;
++		goto error0;
++	}
++
++	/* Create endpoint from rpmsg char driver */
++	strcpy(eptinfo.name, "rpmsg-openamp-demo-channel");
++	eptinfo.src = 0;
++	eptinfo.dst = 0x400;
++	ret = rpmsg_create_ept(rpmsg_char_fd, &eptinfo);
++	if (ret) {
++		printf("failed to create RPMsg endpoint.\n");
++		goto error0;
++	}
++	if (!get_rpmsg_ept_dev_name(rpmsg_char_name, eptinfo.name,
++				    ept_dev_name)) {
++		ret = -EINVAL;
++		goto error0;
++	}
++	sprintf(ept_dev_path, "/dev/%s", ept_dev_name);
++	ept_fd = open(ept_dev_path, O_RDWR | O_NONBLOCK);
++	if (ept_fd < 0) {
++		perror("Failed to open rpmsg device.");
++		ret = ept_fd;
++		goto error0;
++	}
++	/* Allocate memory for proxy data structure */
++	proxy = malloc(sizeof(struct _proxy_data));
++	if (proxy == NULL) {
++		fprintf(stderr, "\r\nMaster>Failed to allocate memory.\r\n");
++		ret = -ENOMEM;
++		goto error0;
++	}
++	proxy->rpmsg_proxy_fd = ept_fd;
++	proxy->active = 1;
++
++	/* Allocate memory for rpc payloads */
++	proxy->rpc = malloc(RPC_BUFF_SIZE);
++	proxy->rpc_response = malloc(RPC_BUFF_SIZE);
++	if (proxy->rpc == NULL || proxy->rpc_response == NULL) {
++		fprintf(stderr, "\r\nMaster>Failed to allocate memory.\r\n");
++		ret = -ENOMEM;
++		goto error0;
++	}
++
++	/* RPC service starts */
++	printf("\r\nMaster>RPC service started !!\r\n");
++	/* Send init message to remote.
++	 * This is required otherwise, remote doesn't know the host
++	 * RPMsg endpoint
++	 */
++	ret = write(proxy->rpmsg_proxy_fd, RPMG_INIT_MSG,
++		    sizeof(RPMG_INIT_MSG));
++	if (ret < 0) {
++		printf("\r\nMaster>Failed to send init message.\r\n");
++		goto error0;
++	}
++
++	/* Block on read for rpc requests from remote context */
++	do {
++		bytes_rcvd = read(proxy->rpmsg_proxy_fd, proxy->rpc,
++				  RPC_BUFF_SIZE);
++		if (bytes_rcvd < 0 && errno != EAGAIN) {
++			perror("Failed to read ept");
++			break;
++		}
++		/* Handle rpc */
++		if (bytes_rcvd > 0 && handle_rpc(proxy->rpc)) {
++			printf("\nMaster>Err:Handling remote procedure call!\n");
++			printf("\nrpc id %d\n", proxy->rpc->id);
++			printf("\nrpc int field1 %d\n",
++				proxy->rpc->sys_call_args.int_field1);
++			printf("\nrpc int field2 %d\n",
++				proxy->rpc->sys_call_args.int_field2);
++			break;
++		}
++	} while (proxy->active);
++
++	printf("\r\nMaster>RPC service exiting !!\r\n");
++	ret = 0;
++
++	/* Close proxy rpmsg device */
++	close(proxy->rpmsg_proxy_fd);
++
++	/* Wait for other end to cleanup
++	 * Otherwise, virtio_rpmsg_bus can post msg with no recipient
++	 * warning as it can receive NS destroy after the rpmsg char
++	 * module is removed.
++	 */
++	sleep(1);
++
++	/* Free up resources */
++	free(proxy->rpc);
++	free(proxy->rpc_response);
++
++error0:
++	if (ept_fd >= 0)
++		close(ept_fd);
++	if (rpmsg_char_fd >= 0)
++		close(rpmsg_char_fd);
++	free(proxy);
++
++	stop_remote();
++
++	return ret;
++}
+diff --git a/samples/andes_remoteproc/App/proxy_app.h b/samples/andes_remoteproc/App/proxy_app.h
+new file mode 100644
+index 000000000000..d4a6f7f0c29b
+--- /dev/null
++++ b/samples/andes_remoteproc/App/proxy_app.h
+@@ -0,0 +1,33 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#include "rpmsg_demo_ctrl.h"
++
++/* System call definitions */
++#define OPEN_SYSCALL_ID		1
++#define CLOSE_SYSCALL_ID	2
++#define WRITE_SYSCALL_ID	3
++#define READ_SYSCALL_ID		4
++#define ACK_STATUS_ID		5
++#define TERM_SYSCALL_ID		6
++
++#define FILE_NAME_LEN		50
++
++struct _rpc_data {
++	struct rpmsg_channel *rpmsg_chnl;
++	struct rpmsg_endpoint *rp_ept;
++	void *rpc_lock;
++	void *sync_lock;
++	void *data;
++};
++
++struct _sys_call_args {
++	int32_t int_field1;
++	int32_t int_field2;
++	uint32_t data_len;
++	char data[0];
++};
++
++/* System call rpc data structure */
++struct _sys_rpc {
++	uint32_t id;
++	struct _sys_call_args	sys_call_args;
++};
+diff --git a/samples/andes_remoteproc/App/rpmsg_demo_ctrl.c b/samples/andes_remoteproc/App/rpmsg_demo_ctrl.c
+new file mode 100644
+index 000000000000..0facb060b4f6
+--- /dev/null
++++ b/samples/andes_remoteproc/App/rpmsg_demo_ctrl.c
+@@ -0,0 +1,133 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include "rpmsg_demo_ctrl.h"
++
++int rpmsg_create_ept(int rpfd, struct rpmsg_endpoint_info *eptinfo)
++{
++	int ret;
++
++	ret = ioctl(rpfd, RPMSG_CREATE_EPT_IOCTL, eptinfo);
++	if (ret)
++		perror("Failed to create endpoint.\n");
++	return ret;
++}
++
++char *get_rpmsg_ept_dev_name(const char *rpmsg_char_name,
++			     const char *ept_name,
++			     char *ept_dev_name)
++{
++	char sys_rpmsg_ept_name_path[64], svc_name[64];
++	char dpath[256], fpath[256];
++	int i, ept_name_len;
++
++	FILE *fp;
++
++	for (i = 0; i < 128; i++) {
++		sprintf(sys_rpmsg_ept_name_path, "%s/%s/rpmsg%d/name",
++			RPMSG_CLASS_SYS, rpmsg_char_name, i);
++		printf("checking %s\n", sys_rpmsg_ept_name_path);
++		if (access(sys_rpmsg_ept_name_path, F_OK) < 0)
++			continue;
++		fp = fopen(sys_rpmsg_ept_name_path, "r");
++		if (!fp) {
++			printf("failed to open %s\n", sys_rpmsg_ept_name_path);
++			break;
++		}
++		fgets(svc_name, sizeof(svc_name), fp);
++		fclose(fp);
++		printf("svc_name: %s", svc_name);
++		ept_name_len = strlen(ept_name);
++		if (ept_name_len > sizeof(svc_name))
++			ept_name_len = sizeof(svc_name);
++		if (!strncmp(svc_name, ept_name, ept_name_len)) {
++			sprintf(ept_dev_name, "rpmsg%d", i);
++
++			/*
++			 * Make file node under the /dev
++			 */
++			sprintf(dpath, "%s/%s/dev",
++					RPMSG_CLASS_SYS, ept_dev_name);
++			sprintf(fpath, "/dev/%s", ept_dev_name);
++			set_dev_node(dpath, fpath);
++
++			return ept_dev_name;
++		}
++	}
++
++	printf("Not able to RPMsg endpoint file for %s:%s.\n",
++	       rpmsg_char_name, ept_name);
++	return NULL;
++}
++
++int get_rpmsg_chrdev_fd(const char *rpmsg_dev_name,
++			char *rpmsg_ctrl_name)
++{
++	char dpath[512], fpath[512];
++	char *rpmsg_ctrl_prefix = "rpmsg_ctrl";
++	DIR *dir;
++	struct dirent *ent;
++	int fd;
++
++	sprintf(dpath, "%s/devices/%s/rpmsg", RPMSG_BUS_SYS, rpmsg_dev_name);
++	dir = opendir(dpath);
++	if (dir == NULL) {
++		fprintf(stderr, "Failed to open dir %s\n", dpath);
++		return -EINVAL;
++	}
++	while ((ent = readdir(dir)) != NULL) {
++		if (!strncmp(ent->d_name, rpmsg_ctrl_prefix,
++			    strlen(rpmsg_ctrl_prefix))) {
++			printf("Opening file %s.\n", ent->d_name);
++			sprintf(fpath, "/dev/%s", ent->d_name);
++
++			/*
++			 * Make file node under the /dev
++			 */
++			sprintf(dpath, "%s/devices/%s/rpmsg/%s/dev",
++				RPMSG_BUS_SYS, rpmsg_dev_name, ent->d_name);
++			set_dev_node(dpath, fpath);
++
++			fd = open(fpath, O_RDWR | O_NONBLOCK);
++			if (fd < 0) {
++				fprintf(stderr,
++					"Failed to open rpmsg char dev %s,%s\n",
++					fpath, strerror(errno));
++				closedir(dir);
++				return fd;
++			}
++			sprintf(rpmsg_ctrl_name, "%s", ent->d_name);
++			closedir(dir);
++			return fd;
++		}
++	}
++
++	fprintf(stderr, "No rpmsg char dev file is found\n");
++	return -EINVAL;
++}
++
++void set_dev_node(char *path, char *dev_path)
++{
++	FILE *fp;
++	char dev[12];
++	char *major, *minor;
++	int major_num, minor_num, ret;
++
++	fp = fopen(path, "r");
++	if (!fp)
++		printf("Failed to open %s\n", path);
++
++	fgets(dev, sizeof(dev), fp);
++	fclose(fp);
++
++	major = strtok(dev, ":");
++	minor = strtok(NULL, ":");
++
++	major_num = atoi(major);
++	minor_num = atoi(minor);
++	printf("dev_path = %s, major = %d, minor = %d\n",
++		   dev_path, major_num, minor_num);
++
++	ret = mknod(dev_path, S_IFCHR, makedev(major_num, minor_num));
++
++	if (ret)
++		printf("mknod No.%d\n", ret);
++}
+diff --git a/samples/andes_remoteproc/App/rpmsg_demo_ctrl.h b/samples/andes_remoteproc/App/rpmsg_demo_ctrl.h
+new file mode 100644
+index 000000000000..11afedbfd1e3
+--- /dev/null
++++ b/samples/andes_remoteproc/App/rpmsg_demo_ctrl.h
+@@ -0,0 +1,33 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __TEMP_H__
++#define __TEMP_H__
++
++#include <dirent.h>
++#include <errno.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <stdint.h>
++#include <unistd.h>
++#include <sys/ioctl.h>
++#include <time.h>
++#include <fcntl.h>
++#include <signal.h>
++#include <linux/rpmsg.h>
++#include <sys/sysmacros.h>
++#include <sys/stat.h>
++
++#define RPMSG_BUS_SYS   "/sys/bus/rpmsg"
++#define RPMSG_CLASS_SYS "/sys/class/rpmsg"
++#define RPMSG_DEV       "virtio0.rpmsg_ctrl.0.0"
++#define SHUTDOWN_MSG    0xEF56A55A
++
++int rpmsg_create_ept(int rpfd, struct rpmsg_endpoint_info *eptinfo);
++char *get_rpmsg_ept_dev_name(const char *rpmsg_char_name,
++			     const char *ept_name,
++			     char *ept_dev_name);
++int get_rpmsg_chrdev_fd(const char *rpmsg_dev_name,
++			char *rpmsg_ctrl_name);
++void set_dev_node(char *path, char *dev_path);
++
++#endif /* __TEMP_H__ */
+diff --git a/samples/andes_remoteproc/Script/load_fw_echo.sh b/samples/andes_remoteproc/Script/load_fw_echo.sh
+new file mode 100755
+index 000000000000..84b365ba81cc
+--- /dev/null
++++ b/samples/andes_remoteproc/Script/load_fw_echo.sh
+@@ -0,0 +1,32 @@
++#!/bin/sh
++# SPDX-License-Identifier: GPL-2.0
++FW_PATH=$(pwd)
++FW_NAME=rpmsg-echo.out
++
++APP_PATH=$(pwd)
++APP_NAME=echo_test
++
++REMOTEPROC=remoteproc0
++RPMSG_CHRDEV=virtio0.rpmsg_ctrl.0.0
++
++Load_and_Start_fw()
++{
++	echo "==== 1. Load_and_Start_fw start. ===="
++	echo -n $FW_PATH > /sys/module/firmware_class/parameters/path
++	echo -n $FW_NAME > /sys/class/remoteproc/$REMOTEPROC/firmware
++	echo -n start > /sys/class/remoteproc/$REMOTEPROC/state
++	echo "==== 1. Load_and_Start_fw done!! ===="
++}
++
++Start_App()
++{
++	echo "==== 2. Start_App start. ===="
++	$APP_PATH/$APP_NAME -d $RPMSG_CHRDEV -n 1
++	modprobe -r rpmsg_char
++	echo -n stop > /sys/class/remoteproc/$REMOTEPROC/state
++	modprobe rpmsg_char
++	echo "==== 2. Start_App done!! ===="
++}
++
++Load_and_Start_fw
++Start_App
+diff --git a/samples/andes_remoteproc/Script/load_fw_mat_mul.sh b/samples/andes_remoteproc/Script/load_fw_mat_mul.sh
+new file mode 100755
+index 000000000000..ad981c1e6938
+--- /dev/null
++++ b/samples/andes_remoteproc/Script/load_fw_mat_mul.sh
+@@ -0,0 +1,32 @@
++#!/bin/sh
++# SPDX-License-Identifier: GPL-2.0
++FW_PATH=$(pwd)
++FW_NAME=matrix_multiplyd.out
++
++APP_PATH=$(pwd)
++APP_NAME=mat_mul_demo
++
++REMOTEPROC=remoteproc0
++RPMSG_CHRDEV=virtio0.rpmsg_ctrl.0.0
++
++Load_and_Start_fw()
++{
++	echo "==== 1. Load_and_Start_fw start. ===="
++	echo -n $FW_PATH > /sys/module/firmware_class/parameters/path
++	echo -n $FW_NAME > /sys/class/remoteproc/$REMOTEPROC/firmware
++	echo -n start > /sys/class/remoteproc/$REMOTEPROC/state
++	echo "==== 1. Load_and_Start_fw done!! ===="
++}
++
++Start_App()
++{
++	echo "==== 2. Start_App start. ===="
++	$APP_PATH/$APP_NAME -d $RPMSG_CHRDEV -n 1
++	modprobe -r rpmsg_char
++	echo -n stop > /sys/class/remoteproc/$REMOTEPROC/state
++	modprobe rpmsg_char
++	echo "==== 2. Start_App done!! ===="
++}
++
++Load_and_Start_fw
++Start_App
+diff --git a/samples/andes_remoteproc/Script/load_fw_proxy_app.sh b/samples/andes_remoteproc/Script/load_fw_proxy_app.sh
+new file mode 100755
+index 000000000000..2ea4d4eecacf
+--- /dev/null
++++ b/samples/andes_remoteproc/Script/load_fw_proxy_app.sh
+@@ -0,0 +1,31 @@
++#!/bin/sh
++# SPDX-License-Identifier: GPL-2.0
++FW_PATH=$(pwd)
++FW_NAME=rpc_demo.out
++
++APP_PATH=$(pwd)
++APP_NAME=proxy_app
++
++REMOTEPROC=remoteproc0
++RPMSG_CHRDEV=virtio0.rpmsg_ctrl.0.0
++
++Load_and_Start_fw()
++{
++	echo "==== 1. Load_and_Start_fw start. ===="
++	echo -n $FW_PATH > /sys/module/firmware_class/parameters/path
++	echo -n $FW_NAME > /sys/class/remoteproc/$REMOTEPROC/firmware
++	echo -n start    > /sys/class/remoteproc/$REMOTEPROC/state
++	echo "==== 1. Load_and_Start_fw done!! ===="
++}
++
++Start_App()
++{
++	echo "==== 2. Start_App start. ===="
++	$APP_PATH/$APP_NAME
++	modprobe rpmsg_char
++	rm remote.file
++	echo "==== 2. Start_App done!! ===="
++}
++
++Load_and_Start_fw
++Start_App
+-- 
+2.34.1
+

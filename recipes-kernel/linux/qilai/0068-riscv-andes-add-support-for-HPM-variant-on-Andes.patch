@@ -1,0 +1,274 @@
+From 9022eecf8939154a8703809b57397e39d9e20832 Mon Sep 17 00:00:00 2001
+From: Locus Wei-Han Chen <locus84@andestech.com>
+Date: Mon, 9 Jan 2023 18:48:58 +0800
+Subject: [PATCH 068/191] riscv: andes: add support for HPM variant on Andes
+
+With the Andes non-65 series cores being designed before or during the
+ratification to the SSCOFPMF extension, it implements functionality very similar but
+not equal to it.
+
+The main differences are a the overflow CSR and irq number.
+
+Signed-off-by: Locus Wei-Han Chen <locus84@andestech.com>
+---
+ arch/riscv/Kconfig.erratas           | 13 ++++++++++
+ arch/riscv/errata/andes/errata.c     | 18 +++++++++++++
+ arch/riscv/include/asm/errata_list.h | 14 +++++++---
+ drivers/irqchip/irq-riscv-intc.c     |  4 +++
+ drivers/perf/riscv_pmu_sbi.c         | 38 ++++++++++++++++++++++++----
+ include/soc/andes/csr.h              |  1 +
+ include/soc/andes/sbi.h              |  3 +++
+ 7 files changed, 83 insertions(+), 8 deletions(-)
+
+diff --git a/arch/riscv/Kconfig.erratas b/arch/riscv/Kconfig.erratas
+index fb2d33de3b3a..8ec1a9034cc6 100644
+--- a/arch/riscv/Kconfig.erratas
++++ b/arch/riscv/Kconfig.erratas
+@@ -35,6 +35,19 @@ config ERRATA_ANDES_PA_MSB
+ 
+ 	  If you don't know what to do here, say "Y".
+ 
++config ERRATA_ANDES_HPM
++	bool "Apply Andes HPM errata"
++	depends on ERRATA_ANDES && RISCV_PMU_SBI
++	default y
++	help
++	  The Andes cores implement a HPM overflow extension very
++	  similar to the core SSCOFPMF extension.
++
++	  This will apply the overflow errata to handle the non-standard
++	  behavious via the regular SBI PMU driver and interface.
++
++	  If you don't know what to do here, say "Y".
++
+ config ERRATA_SIFIVE
+ 	bool "SiFive errata"
+ 	depends on !XIP_KERNEL
+diff --git a/arch/riscv/errata/andes/errata.c b/arch/riscv/errata/andes/errata.c
+index edde22645302..0442ccaf46e1 100644
+--- a/arch/riscv/errata/andes/errata.c
++++ b/arch/riscv/errata/andes/errata.c
+@@ -11,6 +11,7 @@
+ #include <asm/alternative.h>
+ #include <asm/vendorid_list.h>
+ #include <asm/errata_list.h>
++#include <soc/andes/sbi.h>
+ #include <soc/andes/andes.h>
+ #include <soc/andes/ppma.h>
+ 
+@@ -56,6 +57,19 @@ static bool errata_legacy_mmu_check_func(unsigned long arch_id,
+ 	return andes_legacy_mmu;
+ }
+ 
++static bool errata_probe_hpm(unsigned long arch_id,
++			     unsigned long impid,
++			     unsigned int stage)
++{
++	struct sbiret result;
++
++	result = sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_HPM, 0,0,0,0,0,0);
++	if (result.value)
++		return true;
++	else
++		return false;
++}
++
+ static struct errata_info_t errata_list[ERRATA_ANDES_NUMBER] = {
+ 	{
+ 		.name = "legacy_mmu",
+@@ -65,6 +79,10 @@ static struct errata_info_t errata_list[ERRATA_ANDES_NUMBER] = {
+ 		.name = "pa_msb",
+ 		.check_func = errata_msb_check_func
+ 	},
++	{
++		.name = "andes_hpm",
++		.check_func = errata_probe_hpm
++	},
+ };
+ 
+ static u32 __init_or_module andes_errata_probe(unsigned long archid,
+diff --git a/arch/riscv/include/asm/errata_list.h b/arch/riscv/include/asm/errata_list.h
+index a48113dcd9e2..780e64ab125b 100644
+--- a/arch/riscv/include/asm/errata_list.h
++++ b/arch/riscv/include/asm/errata_list.h
+@@ -12,9 +12,14 @@
+ #ifdef CONFIG_ERRATA_ANDES
+ #define ERRATA_ANDES_LEGACY_MMU 0
+ #define ERRATA_ANDES_PA_MSB 1
+-#define ERRATA_ANDES_NUMBER 2
++#define ERRATA_ANDES_HPM 2
++#define ERRATA_ANDES_NUMBER 3
+ #endif
+ 
++/* Andes HPM */
++#define ANDES_RV_IRQ_HPM	18
++#define ANDES_CSR_SCOUNTEROVF	0x9d4
++
+ #ifdef CONFIG_ERRATA_SIFIVE
+ #define	ERRATA_SIFIVE_CIP_453 0
+ #define	ERRATA_SIFIVE_CIP_1200 1
+@@ -159,11 +164,14 @@ asm volatile(ALTERNATIVE_2(						\
+ #define THEAD_C9XX_CSR_SCOUNTEROF		0x5c5
+ 
+ #define ALT_SBI_PMU_OVERFLOW(__ovl)					\
+-asm volatile(ALTERNATIVE(						\
++asm volatile(ALTERNATIVE_2(						\
+ 	"csrr %0, " __stringify(CSR_SSCOUNTOVF),			\
+ 	"csrr %0, " __stringify(THEAD_C9XX_CSR_SCOUNTEROF),		\
+ 		THEAD_VENDOR_ID, ERRATA_THEAD_PMU,			\
+-		CONFIG_ERRATA_THEAD_PMU)				\
++		CONFIG_ERRATA_THEAD_PMU,				\
++	"csrr %0, " __stringify(ANDES_CSR_SCOUNTEROVF),			\
++		ANDES_VENDOR_ID, ERRATA_ANDES_HPM,			\
++		CONFIG_ERRATA_ANDES_HPM)				\
+ 	: "=r" (__ovl) :						\
+ 	: "memory")
+ 
+diff --git a/drivers/irqchip/irq-riscv-intc.c b/drivers/irqchip/irq-riscv-intc.c
+index 499e5f81b3fe..0dfeaf4bbaba 100644
+--- a/drivers/irqchip/irq-riscv-intc.c
++++ b/drivers/irqchip/irq-riscv-intc.c
+@@ -16,6 +16,8 @@
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/smp.h>
++#include <soc/andes/sbi.h>
++#include <soc/andes/csr.h>
+ 
+ static struct irq_domain *intc_domain;
+ 
+@@ -23,6 +25,8 @@ static asmlinkage void riscv_intc_irq(struct pt_regs *regs)
+ {
+ 	unsigned long cause = regs->cause & ~CAUSE_IRQ_FLAG;
+ 
++	if (cause == IRQ_S_HPM)
++		cause = cause & ~(1 << 8);
+ 	if (unlikely(cause >= BITS_PER_LONG))
+ 		panic("unexpected interrupt cause");
+ 
+diff --git a/drivers/perf/riscv_pmu_sbi.c b/drivers/perf/riscv_pmu_sbi.c
+index f9961ae69836..7fbf89398676 100644
+--- a/drivers/perf/riscv_pmu_sbi.c
++++ b/drivers/perf/riscv_pmu_sbi.c
+@@ -19,6 +19,8 @@
+ #include <linux/of.h>
+ #include <linux/cpu_pm.h>
+ #include <linux/sched/clock.h>
++#include <soc/andes/andes.h>
++#include <soc/andes/csr.h>
+ 
+ #include <asm/errata_list.h>
+ #include <asm/sbi.h>
+@@ -51,6 +53,7 @@ static union sbi_pmu_ctr_info *pmu_ctr_list;
+ static bool riscv_pmu_use_irq;
+ static unsigned int riscv_pmu_irq_num;
+ static unsigned int riscv_pmu_irq;
++static DEFINE_STATIC_KEY_FALSE_RO(andes_hpm);
+ 
+ struct sbi_pmu_event_data {
+ 	union {
+@@ -580,7 +583,10 @@ static irqreturn_t pmu_sbi_ovf_handler(int irq, void *dev)
+ 	fidx = find_first_bit(cpu_hw_evt->used_hw_ctrs, RISCV_MAX_COUNTERS);
+ 	event = cpu_hw_evt->events[fidx];
+ 	if (!event) {
+-		csr_clear(CSR_SIP, BIT(riscv_pmu_irq_num));
++		if (static_branch_unlikely(&andes_hpm))
++			csr_clear(CSR_SLIP, BIT(riscv_pmu_irq_num));
++		else
++			csr_clear(CSR_SIP, BIT(riscv_pmu_irq_num));
+ 		return IRQ_NONE;
+ 	}
+ 
+@@ -594,7 +600,10 @@ static irqreturn_t pmu_sbi_ovf_handler(int irq, void *dev)
+ 	 * Overflow interrupt pending bit should only be cleared after stopping
+ 	 * all the counters to avoid any race condition.
+ 	 */
+-	csr_clear(CSR_SIP, BIT(riscv_pmu_irq_num));
++	if (static_branch_unlikely(&andes_hpm))
++		csr_clear(CSR_SLIP, BIT(riscv_pmu_irq_num));
++	else
++		csr_clear(CSR_SIP, BIT(riscv_pmu_irq_num));
+ 
+ 	/* No overflow bit is set */
+ 	if (!overflow)
+@@ -663,8 +672,13 @@ static int pmu_sbi_starting_cpu(unsigned int cpu, struct hlist_node *node)
+ 
+ 	if (riscv_pmu_use_irq) {
+ 		cpu_hw_evt->irq = riscv_pmu_irq;
+-		csr_clear(CSR_IP, BIT(riscv_pmu_irq_num));
+-		csr_set(CSR_IE, BIT(riscv_pmu_irq_num));
++		if (static_branch_unlikely(&andes_hpm)) {
++			csr_clear(CSR_SLIP, BIT(riscv_pmu_irq_num));
++			csr_set(CSR_SLIE, BIT(riscv_pmu_irq_num));
++		} else {
++			csr_clear(CSR_IP, BIT(riscv_pmu_irq_num));
++			csr_set(CSR_IE, BIT(riscv_pmu_irq_num));
++		}
+ 		enable_percpu_irq(riscv_pmu_irq, IRQ_TYPE_NONE);
+ 	}
+ 
+@@ -675,7 +689,10 @@ static int pmu_sbi_dying_cpu(unsigned int cpu, struct hlist_node *node)
+ {
+ 	if (riscv_pmu_use_irq) {
+ 		disable_percpu_irq(riscv_pmu_irq);
+-		csr_clear(CSR_IE, BIT(riscv_pmu_irq_num));
++		if (static_branch_unlikely(&andes_hpm))
++			csr_clear(CSR_SLIE, BIT(riscv_pmu_irq_num));
++		else
++			csr_clear(CSR_IE, BIT(riscv_pmu_irq_num));
+ 	}
+ 
+ 	/* Disable all counters access for user mode now */
+@@ -690,6 +707,7 @@ static int pmu_sbi_setup_irqs(struct riscv_pmu *pmu, struct platform_device *pde
+ 	struct cpu_hw_events __percpu *hw_events = pmu->hw_events;
+ 	struct device_node *cpu, *child;
+ 	struct irq_domain *domain = NULL;
++	struct sbiret result;
+ 
+ 	if (riscv_isa_extension_available(NULL, SSCOFPMF)) {
+ 		riscv_pmu_irq_num = RV_IRQ_PMU;
+@@ -700,6 +718,16 @@ static int pmu_sbi_setup_irqs(struct riscv_pmu *pmu, struct platform_device *pde
+ 		   riscv_cached_mimpid(0) == 0) {
+ 		riscv_pmu_irq_num = THEAD_C9XX_RV_IRQ_PMU;
+ 		riscv_pmu_use_irq = true;
++	} else if (IS_ENABLED(CONFIG_ERRATA_ANDES_HPM) &&
++		   riscv_cached_mvendorid(0) == ANDES_VENDOR_ID) {
++
++		result = sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_HPM, 0,0,0,0,0,0);
++		if (result.value) {
++			riscv_pmu_irq_num = ANDES_RV_IRQ_HPM;
++			riscv_pmu_use_irq = true;
++			static_branch_enable(&andes_hpm);
++			pr_info("Andes HPM is available\n");
++		}
+ 	}
+ 
+ 	if (!riscv_pmu_use_irq)
+diff --git a/include/soc/andes/csr.h b/include/soc/andes/csr.h
+index b6569c0755c7..3907c76d0334 100644
+--- a/include/soc/andes/csr.h
++++ b/include/soc/andes/csr.h
+@@ -146,5 +146,6 @@ extern u32 CCTL_L2_STATUS_PER_CORE_OFFSET;
+ 
+ #define IRQ_HPM_OVF		18
+ #define SLIP_PMOVI		(_AC(0x1, UL) << IRQ_HPM_OVF)
++#define IRQ_S_HPM		274
+ 
+ #endif /* !__SOC_ANDES_CSR_H */
+diff --git a/include/soc/andes/sbi.h b/include/soc/andes/sbi.h
+index 562d1661c423..05ac45cc78bd 100644
+--- a/include/soc/andes/sbi.h
++++ b/include/soc/andes/sbi.h
+@@ -49,6 +49,9 @@ enum sbi_ext_andes_fid {
+ 	SBI_EXT_ANDES_PROBE_PPMA,
+ 
+ 	SBI_EXT_ANDES_DCACHE_WBINVAL_ALL,
++
++	/* HPM */
++	SBI_EXT_ANDES_HPM,
+ };
+ 
+ /* Programmable physical memory attributes (PPMA) */
+-- 
+2.34.1
+

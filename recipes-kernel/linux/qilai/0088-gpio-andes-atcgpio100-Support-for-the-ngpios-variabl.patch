@@ -1,0 +1,63 @@
+From 216aebd8a2539c906ab3a1de3572e6e276ddd0eb Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Thu, 6 Jul 2023 16:21:04 +0800
+Subject: [PATCH 088/191] gpio: andes: atcgpio100: Support for the ngpios
+ variable can be obtained from DTS.
+
+1. Support for the ngpios variable can be obtained from DTS.
+2. Start the virtual IRQ at 0.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/gpio/gpio-atcgpio100.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpio/gpio-atcgpio100.c b/drivers/gpio/gpio-atcgpio100.c
+index 34d56415f136..d65532aab08d 100644
+--- a/drivers/gpio/gpio-atcgpio100.c
++++ b/drivers/gpio/gpio-atcgpio100.c
+@@ -29,6 +29,7 @@
+ #define DEBOUNCE_ENABLE			0x70
+ 
+ #define ATCGPIO100_VIRTUAL_IRQ_BASE	0
++#define DEFAULT_PIN_NUMBER		16
+ 
+ struct atcgpio_priv {
+ 	struct gpio_chip gc;
+@@ -222,6 +223,8 @@ static int atcgpio100_gpio_probe(struct platform_device *pdev)
+ 	struct atcgpio_priv *priv;
+ 	struct gpio_chip *gc;
+ 	struct gpio_irq_chip *girq;
++	struct device_node *node;
++	u32 ngpios;
+ 
+ 	priv = devm_kzalloc(&pdev->dev,	sizeof(*priv), GFP_KERNEL);
+ 	if (!priv)
+@@ -254,6 +257,15 @@ static int atcgpio100_gpio_probe(struct platform_device *pdev)
+ 			"Failed to read ID register, ATCGPIO100 is not supported.\n");
+ 		return -ENXIO;
+ 	}
++	
++	node = pdev->dev.of_node;
++	if (!node)
++		return -EINVAL;
++	
++	ret = of_property_read_u32(node, "ngpios", &ngpios);
++	if (ret)
++		ngpios = DEFAULT_PIN_NUMBER;
++
+ 	/* disable interrupt */
+ 	GPIO_WRITEL(0x00000000UL, INT_ENABLE, priv->base);
+ 	/* clear interrupt */
+@@ -267,7 +279,7 @@ static int atcgpio100_gpio_probe(struct platform_device *pdev)
+ 	gc->parent = &pdev->dev;
+ 	gc->label = "atcgpio100";
+ 	gc->base = 0;
+-	gc->ngpio = 16;
++	gc->ngpio = ngpios;
+ 	gc->direction_output = atcgpio_dir_out;
+ 	gc->direction_input = atcgpio_dir_in;
+ 	gc->set = atcgpio_set;
+-- 
+2.34.1
+

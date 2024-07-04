@@ -1,0 +1,54 @@
+From ebd36d45527b3447f61000294c17931f4a0a6568 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Tue, 23 May 2023 16:51:16 +0800
+Subject: [PATCH 045/191] fbdev: andes: ftlcdc100: change OSD_putc if...else to
+ switch
+
+It is suggested in the Gitea code review:
+https://gitea.andestech.com/RD-SW/linux/pulls/17#issuecomment-73873
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ drivers/video/fbdev/ftlcdc100/pingpong-module.c | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/video/fbdev/ftlcdc100/pingpong-module.c b/drivers/video/fbdev/ftlcdc100/pingpong-module.c
+index d575813dbfe6..83f4752da611 100644
+--- a/drivers/video/fbdev/ftlcdc100/pingpong-module.c
++++ b/drivers/video/fbdev/ftlcdc100/pingpong-module.c
+@@ -403,20 +403,27 @@ void OSD_Scal(struct faradayfb_info *fbi, int HScal, int VScal)
+ 
+ void OSD_putc(struct faradayfb_info *fbi, char c, int position, unsigned int value)
+ {
+-	if (c >= '0' && c <= '9')
++	switch (c) {
++	case '0' ... '9':
+ 		REG32(fbi->io_base + 0xc000 + position * 4) = ((c - '0') << 4) | value;
++		break;
+ 
+-	else if (c >= 'A' && c <= 'Z')
++	case 'A' ... 'Z':
+ 		REG32(fbi->io_base + 0xc000 + position * 4) = ((c - 'A' + 10) << 4) | value;
++		break;
+ 
+-	if (c == ' ')
++	case ' ':
+ 		REG32(fbi->io_base + 0xc000 + position * 4) = (('Z' - 'A' + 10 + 1) << 4) | value;
++		break;
+ 
+-	if (c == '=')
++	case '=':
+ 		REG32(fbi->io_base + 0xc000 + position * 4) = (('Z' - 'A' + 10 + 2) << 4) | value;
++		break;
+ 
+-	if (c == ',')
++	case ',':
+ 		REG32(fbi->io_base + 0xc000 + position * 4) = (('Z' - 'A' + 10 + 3) << 4) | value;
++		break;
++	}
+ }
+ 
+ void OSD_puts(struct faradayfb_info *fbi, char *str, int position, unsigned int value)
+-- 
+2.34.1
+

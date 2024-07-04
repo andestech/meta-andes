@@ -1,0 +1,83 @@
+From a228577e7ea8c13b217feca4fed0900ed9a3110f Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Fri, 3 May 2024 10:42:46 +0800
+Subject: [PATCH 173/191] add openamp into qilai_gpu.dts
+
+---
+ arch/riscv/boot/dts/andes/qilai_gpu.dts | 60 +++++++++++++++++++++++++
+ 1 file changed, 60 insertions(+)
+
+diff --git a/arch/riscv/boot/dts/andes/qilai_gpu.dts b/arch/riscv/boot/dts/andes/qilai_gpu.dts
+index 1331e16db9f5..4ef7531e2899 100644
+--- a/arch/riscv/boot/dts/andes/qilai_gpu.dts
++++ b/arch/riscv/boot/dts/andes/qilai_gpu.dts
+@@ -142,6 +142,66 @@ memory@400000000 {
+ 		reg = <0x04 0x00000000 0x4 0x00000000>;
+ 	};
+ 
++	reserved-memory {
++		#address-cells = <0x2>;
++		#size-cells = <0x2>;
++		ranges;
++
++		andes_spbase:andes_spbase@43f000000 {
++			no-map;
++			reg = <0x4 0x3f000000 0x0 0x800000>;
++			aligment = <0x1000>;
++		};
++		test1:test1@43f800000 {
++			no-map;
++			reg = <0x4 0x3f800000 0x0 0x7e4000>;
++		};
++		vdev0buffer:vdev0buffer@43ffe4000 {
++			no-map;
++			reg = <0x4 0x3ffe4000 0x0 0x8000>;
++			alignment = <0x100>;
++		};
++		test2:test@43ffec000 {
++			no-map;
++			reg = <0x4 0x3ffec000 0x0 0x4000>;
++		};
++		/* RX vring from AX45mp, TX ring(NX27V view) */
++		vdev0vring0:vdev0vring0@43fff0000 {
++			no-map;
++			reg = <0x4 0x3fff0000 0x0 0x4000>;
++			alignment = <0x100>;
++		};
++		/* TX vring from AX45mp, RX ring(NX27V view) */
++		vdev0vring1:vdev0vring1@43fff4000 {
++			no-map;
++			reg = <0x4 0x3fff4000 0x0 0x4000>;
++			alignment = <0x100>;
++		};
++		andes_rsc_table:andes_rsc_table@43fff8000 {
++			no-map;
++			reg = <0x4 0x3fff8000 0x0 0x4000>;
++			aligment = <0x400>;
++		};
++		andes_swmbox:andes_swmbox@43fffc000 {
++			no-map;
++			reg = <0x4 0x3fffc000 0x0 0x4000>;
++			aligment = <0x1000>;
++		};
++	};
++
++	andes_remoteproc {
++		#address-cells = <0x2>;
++		#size-cells = <0x2>;
++		compatible = "andestech,andes_remoteproc";
++		memory-region = <&andes_spbase>, <&test1>,<&vdev0buffer>,<&test2>,
++		        <&vdev0vring0>, <&vdev0vring1>, <&andes_rsc_table>;
++		openamp-interrupt-method = "swplic";
++		mp_hartid = <0x1>;
++		sp_hartid = <0x4>;
++		rmem_base = <0x4 0x3f000000>;
++		rmem_size = <0x0 0x01000000>;
++	};
++
+ 	soc {
+ 		#address-cells = <0x2>;
+ 		#size-cells = <0x2>;
+-- 
+2.34.1
+

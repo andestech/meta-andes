@@ -1,0 +1,94 @@
+From 8bd4f54f9a0d947e9c1f203806bc5431ef159c82 Mon Sep 17 00:00:00 2001
+From: Andy Chiu <andy.chiu@sifive.com>
+Date: Mon, 5 Jun 2023 11:07:19 +0000
+Subject: [PATCH 117/191] riscv: Add sysctl to set the default vector rule for
+ new processes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+To support Vector extension, the series exports variable-length vector
+registers on the signal frame. However, this potentially breaks abi if
+processing vector registers is required in the signal handler for old
+binaries. For example, there is such need if user-level context switch
+is triggerred via signals[1].
+
+For this reason, it is best to leave a decision to distro maintainers,
+where the enablement of userspace Vector for new launching programs can
+be controlled. Developers may also need the switch to experiment with.
+The parameter is configurable through sysctl interface so a distro may
+turn off Vector early at init script if the break really happens in the
+wild.
+
+The switch will only take effects on new execve() calls once set. This
+will not effect existing processes that do not call execve(), nor
+processes which has been set with a non-default vstate_ctrl by making
+explicit PR_RISCV_V_SET_CONTROL prctl() calls.
+
+Link: https://lore.kernel.org/all/87cz4048rp.fsf@all.your.base.are.belong.to.us/
+Signed-off-by: Andy Chiu <andy.chiu@sifive.com>
+Reviewed-by: Greentime Hu <greentime.hu@sifive.com>
+Reviewed-by: Vincent Chen <vincent.chen@sifive.com>
+Reviewed-by: Björn Töpel <bjorn@rivosinc.com>
+Link: https://lore.kernel.org/r/20230605110724.21391-23-andy.chiu@sifive.com
+Signed-off-by: Palmer Dabbelt <palmer@rivosinc.com>
+--------------x----------------x--------------x---------------x--------
+Linux v6.1 treats ctl_table.maxlen as an integer [1], so we need
+to convert the data type for proc_dobool().
+
+[1] https://github.com/torvalds/linux/blob/v6.1/kernel/sysctl.c#L713-L714
+---
+ arch/riscv/kernel/vector.c | 33 ++++++++++++++++++++++++++++++++-
+ 1 file changed, 32 insertions(+), 1 deletion(-)
+
+diff --git a/arch/riscv/kernel/vector.c b/arch/riscv/kernel/vector.c
+index a7dec9230164..c7167207c1f6 100644
+--- a/arch/riscv/kernel/vector.c
++++ b/arch/riscv/kernel/vector.c
+@@ -180,7 +180,7 @@ void riscv_v_vstate_ctrl_init(struct task_struct *tsk)
+ 
+ 	next = riscv_v_ctrl_get_next(tsk);
+ 	if (!next) {
+-		if (riscv_v_implicit_uacc)
++		if (READ_ONCE(riscv_v_implicit_uacc))
+ 			cur = PR_RISCV_V_VSTATE_CTRL_ON;
+ 		else
+ 			cur = PR_RISCV_V_VSTATE_CTRL_OFF;
+@@ -243,3 +243,34 @@ long riscv_v_vstate_ctrl_set_current(unsigned long arg)
+ 
+ 	return -EINVAL;
+ }
++
++#ifdef CONFIG_SYSCTL
++
++static struct ctl_table riscv_v_default_vstate_table[] = {
++	{
++		.procname	= "riscv_v_default_allow",
++		.data		= &riscv_v_implicit_uacc,
++		.maxlen		= sizeof((int)riscv_v_implicit_uacc),
++		.mode		= 0644,
++		.proc_handler	= proc_dobool,
++	},
++	{ }
++};
++
++static int __init riscv_v_sysctl_init(void)
++{
++	if (has_vector())
++		if (!register_sysctl("abi", riscv_v_default_vstate_table))
++			return -EINVAL;
++	return 0;
++}
++
++#else /* ! CONFIG_SYSCTL */
++static int __init riscv_v_sysctl_init(void) { return 0; }
++#endif /* ! CONFIG_SYSCTL */
++
++static int riscv_v_init(void)
++{
++	return riscv_v_sysctl_init();
++}
++core_initcall(riscv_v_init);
+-- 
+2.34.1
+

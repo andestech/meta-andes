@@ -1,0 +1,180 @@
+From 2048ff86e1aebac10503dd6a61bbc7edbe7b6466 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Thu, 27 Oct 2022 16:41:48 +0800
+Subject: [PATCH 006/191] riscv: andes: add Andes alternative ports
+
+Add required ports of the alternative scheme for Andes.
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Kconfig.erratas             | 11 +++++++
+ arch/riscv/Kconfig.socs                |  1 +
+ arch/riscv/errata/Makefile             |  1 +
+ arch/riscv/errata/andes/Makefile       |  1 +
+ arch/riscv/errata/andes/errata.c       | 44 ++++++++++++++++++++++++++
+ arch/riscv/include/asm/alternative.h   |  3 ++
+ arch/riscv/include/asm/errata_list.h   |  4 +++
+ arch/riscv/include/asm/vendorid_list.h |  1 +
+ arch/riscv/kernel/alternative.c        |  5 +++
+ 9 files changed, 71 insertions(+)
+ create mode 100644 arch/riscv/errata/andes/Makefile
+ create mode 100644 arch/riscv/errata/andes/errata.c
+
+diff --git a/arch/riscv/Kconfig.erratas b/arch/riscv/Kconfig.erratas
+index f3623df23b5f..0d91533b2924 100644
+--- a/arch/riscv/Kconfig.erratas
++++ b/arch/riscv/Kconfig.erratas
+@@ -1,5 +1,16 @@
+ menu "CPU errata selection"
+ 
++config ERRATA_ANDES
++	bool "Andes errata"
++	depends on !XIP_KERNEL
++	select RISCV_ALTERNATIVE
++	help
++	  All Andes errata Kconfig depend on this Kconfig. Disabling
++	  this Kconfig will disable all Andes errata. Please say "Y"
++	  here if your platform uses Andes CPU cores.
++
++	  Otherwise, please say "N" here to avoid unnecessary overhead.
++
+ config ERRATA_SIFIVE
+ 	bool "SiFive errata"
+ 	depends on !XIP_KERNEL
+diff --git a/arch/riscv/Kconfig.socs b/arch/riscv/Kconfig.socs
+index c82118bd568f..e6bb7ce35ebc 100644
+--- a/arch/riscv/Kconfig.socs
++++ b/arch/riscv/Kconfig.socs
+@@ -3,6 +3,7 @@ menu "SoC selection"
+ config PLAT_AE350
+ 	bool "Andes AE350 Platform"
+ 	select SIFIVE_PLIC
++	select ERRATA_ANDES if !XIP_KERNEL
+ 	help
+ 	  This enables support for Andes AE350 platform hardware.
+ 
+diff --git a/arch/riscv/errata/Makefile b/arch/riscv/errata/Makefile
+index a1055965fbee..6f1c693af92d 100644
+--- a/arch/riscv/errata/Makefile
++++ b/arch/riscv/errata/Makefile
+@@ -1,2 +1,3 @@
++obj-$(CONFIG_ERRATA_ANDES) += andes/
+ obj-$(CONFIG_ERRATA_SIFIVE) += sifive/
+ obj-$(CONFIG_ERRATA_THEAD) += thead/
+diff --git a/arch/riscv/errata/andes/Makefile b/arch/riscv/errata/andes/Makefile
+new file mode 100644
+index 000000000000..2d644e19caef
+--- /dev/null
++++ b/arch/riscv/errata/andes/Makefile
+@@ -0,0 +1 @@
++obj-y += errata.o
+diff --git a/arch/riscv/errata/andes/errata.c b/arch/riscv/errata/andes/errata.c
+new file mode 100644
+index 000000000000..715ac4902050
+--- /dev/null
++++ b/arch/riscv/errata/andes/errata.c
+@@ -0,0 +1,44 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/string.h>
++#include <linux/bug.h>
++#include <asm/patch.h>
++#include <asm/vendorid_list.h>
++#include <asm/errata_list.h>
++
++static u32 __init_or_module andes_errata_probe(unsigned long archid,
++					       unsigned long impid)
++{
++	u32 cpu_req_errata = 0;
++
++	return cpu_req_errata;
++}
++
++void __init_or_module andes_errata_patch_func(struct alt_entry *begin,
++					      struct alt_entry *end,
++					      unsigned long archid,
++					      unsigned long impid,
++					      unsigned int stage)
++{
++	struct alt_entry *alt;
++	u32 cpu_req_errata = andes_errata_probe(archid, impid);
++	u32 tmp;
++
++	if (stage == RISCV_ALTERNATIVES_EARLY_BOOT)
++		return;
++
++	for (alt = begin; alt < end; alt++) {
++		if (alt->vendor_id != ANDES_VENDOR_ID)
++			continue;
++		if (alt->errata_id >= ERRATA_ANDES_NUMBER)
++			continue;
++		tmp = (1U << alt->errata_id);
++		if (cpu_req_errata & tmp)
++			patch_text_nosync(alt->old_ptr, alt->alt_ptr, alt->alt_len);
++	}
++}
+diff --git a/arch/riscv/include/asm/alternative.h b/arch/riscv/include/asm/alternative.h
+index 6511dd73e812..6671679e8baf 100644
+--- a/arch/riscv/include/asm/alternative.h
++++ b/arch/riscv/include/asm/alternative.h
+@@ -40,6 +40,9 @@ struct errata_checkfunc_id {
+ 	bool (*func)(struct alt_entry *alt);
+ };
+ 
++void andes_errata_patch_func(struct alt_entry *begin, struct alt_entry *end,
++			      unsigned long archid, unsigned long impid,
++			      unsigned int stage);
+ void sifive_errata_patch_func(struct alt_entry *begin, struct alt_entry *end,
+ 			      unsigned long archid, unsigned long impid,
+ 			      unsigned int stage);
+diff --git a/arch/riscv/include/asm/errata_list.h b/arch/riscv/include/asm/errata_list.h
+index 19a771085781..f90268df7e6c 100644
+--- a/arch/riscv/include/asm/errata_list.h
++++ b/arch/riscv/include/asm/errata_list.h
+@@ -8,6 +8,10 @@
+ #include <asm/alternative.h>
+ #include <asm/vendorid_list.h>
+ 
++#ifdef CONFIG_ERRATA_ANDES
++#define ERRATA_ANDES_NUMBER 0
++#endif
++
+ #ifdef CONFIG_ERRATA_SIFIVE
+ #define	ERRATA_SIFIVE_CIP_453 0
+ #define	ERRATA_SIFIVE_CIP_1200 1
+diff --git a/arch/riscv/include/asm/vendorid_list.h b/arch/riscv/include/asm/vendorid_list.h
+index cb89af3f0704..2f2bb0c84f9a 100644
+--- a/arch/riscv/include/asm/vendorid_list.h
++++ b/arch/riscv/include/asm/vendorid_list.h
+@@ -5,6 +5,7 @@
+ #ifndef ASM_VENDOR_LIST_H
+ #define ASM_VENDOR_LIST_H
+ 
++#define ANDES_VENDOR_ID		0x31e
+ #define SIFIVE_VENDOR_ID	0x489
+ #define THEAD_VENDOR_ID		0x5b7
+ 
+diff --git a/arch/riscv/kernel/alternative.c b/arch/riscv/kernel/alternative.c
+index a7d26a00beea..d9b31da4b802 100644
+--- a/arch/riscv/kernel/alternative.c
++++ b/arch/riscv/kernel/alternative.c
+@@ -38,6 +38,11 @@ static void __init_or_module riscv_fill_cpu_mfr_info(struct cpu_manufacturer_inf
+ #endif
+ 
+ 	switch (cpu_mfr_info->vendor_id) {
++#ifdef CONFIG_ERRATA_ANDES
++	case ANDES_VENDOR_ID:
++		cpu_mfr_info->patch_func = andes_errata_patch_func;
++		break;
++#endif
+ #ifdef CONFIG_ERRATA_SIFIVE
+ 	case SIFIVE_VENDOR_ID:
+ 		cpu_mfr_info->patch_func = sifive_errata_patch_func;
+-- 
+2.34.1
+

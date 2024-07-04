@@ -1,0 +1,124 @@
+From 9348d5d55b1f09f598aa94f91b17bdf9cd8a5958 Mon Sep 17 00:00:00 2001
+From: charles <dminus@andestech.com>
+Date: Tue, 9 Apr 2024 10:38:21 +0800
+Subject: [PATCH 190/191] drivers: soc: andes: fix
+ cpu_dcache_[wb/inval]_range() failed on 64-bit physical address
+
+Bug 30361 - L2 cache operation does not support physical memory larger than 4 GB
+
+This issue stemmed from using writel for writing 64-bit physical addresses (PA)
+to the L2 CCTL access line register, as writel is limited to 32-bit operations.
+The solution involved replacing writel with writeq, enabling the correct
+handling of 64-bit PAs.
+
+Signed-off-by: charles <dminus@andestech.com>
+---
+ drivers/soc/andes/cache.c | 67 +++++++++++++++++++++------------------
+ 1 file changed, 37 insertions(+), 30 deletions(-)
+
+diff --git a/drivers/soc/andes/cache.c b/drivers/soc/andes/cache.c
+index 3f1bddfc4cf9..9d6ab5a4a61d 100644
+--- a/drivers/soc/andes/cache.c
++++ b/drivers/soc/andes/cache.c
+@@ -69,11 +69,42 @@ static uint32_t cpu_l2c_get_cctl_status(void)
+ 		     mhartid * L2C_REG_STATUS_OFFSET));
+ }
+ 
++static void cpu_l2c_cctl(unsigned long long pa, int mhartid, unsigned long ops)
++{
++#ifdef CONFIG_64BIT
++	writeq(pa,
++	       (void *)(l2c_base +
++			L2C_REG_CN_ACC_OFFSET(mhartid)));
++#else
++	/*
++	 * Considering RV32 potential to use over 4G memory,
++	 * the physical address is split into upper and lower 32 bits
++	 * and stored in a 64-bits PA-type L2C CCTL access line register.
++	 */
++	writel((unsigned long)(pa & 0xFFFFFFFF),
++	       (void *)(l2c_base +
++			L2C_REG_CN_ACC_OFFSET(mhartid)));
++
++	writel((unsigned long)(pa >> 32),
++	       (void *)(l2c_base +
++			L2C_REG_CN_ACC_OFFSET(mhartid)) + 0x4);
++#endif /* !CONFIG_64BIT */
++
++	writel(ops,
++	       (void *)(l2c_base +
++			L2C_REG_CN_CMD_OFFSET(mhartid)));
++
++	while ((cpu_l2c_get_cctl_status() &
++		CCTL_L2_STATUS_CN_MASK(mhartid)) !=
++		CCTL_L2_STATUS_IDLE)
++		;
++}
++
+ void cpu_dcache_wb_range(unsigned long start, unsigned long end, int line_size,
+ 			 struct page *page)
+ {
+ 	int mhartid = get_cpu();
+-	unsigned long pa = page_to_phys(page);
++	unsigned long long pa = page_to_phys(page);
+ 
+ 	if (start & (~PAGE_MASK))
+ 		pa += start & ~PAGE_MASK;
+@@ -82,20 +113,8 @@ void cpu_dcache_wb_range(unsigned long start, unsigned long end, int line_size,
+ 		custom_csr_write(CCTL_REG_UCCTLBEGINADDR_NUM, start);
+ 		custom_csr_write(CCTL_REG_UCCTLCOMMAND_NUM, CCTL_L1D_VA_WB);
+ 
+-		if (l2c_base) {
+-			writeq(pa,
+-			       (void *)(l2c_base +
+-					L2C_REG_CN_ACC_OFFSET(mhartid)));
+-
+-			writel(CCTL_L2_PA_WB,
+-			       (void *)(l2c_base +
+-					L2C_REG_CN_CMD_OFFSET(mhartid)));
+-
+-			while ((cpu_l2c_get_cctl_status() &
+-				CCTL_L2_STATUS_CN_MASK(mhartid)) !=
+-				CCTL_L2_STATUS_IDLE)
+-				;
+-		}
++		if (likely(l2c_base))
++			cpu_l2c_cctl(pa, mhartid, CCTL_L2_PA_WB);
+ 
+ 		start += line_size;
+ 		pa += line_size;
+@@ -107,7 +126,7 @@ void cpu_dcache_inval_range(unsigned long start, unsigned long end,
+ 			    int line_size, struct page *page)
+ {
+ 	int mhartid = get_cpu();
+-	unsigned long pa = page_to_phys(page);
++	unsigned long long pa = page_to_phys(page);
+ 
+ 	if (start & (~PAGE_MASK))
+ 		pa += start & ~PAGE_MASK;
+@@ -116,20 +135,8 @@ void cpu_dcache_inval_range(unsigned long start, unsigned long end,
+ 		custom_csr_write(CCTL_REG_UCCTLBEGINADDR_NUM, start);
+ 		custom_csr_write(CCTL_REG_UCCTLCOMMAND_NUM, CCTL_L1D_VA_INVAL);
+ 
+-		if (l2c_base) {
+-			writeq(pa,
+-			       (void *)(l2c_base +
+-					L2C_REG_CN_ACC_OFFSET(mhartid)));
+-
+-			writel(CCTL_L2_PA_INVAL,
+-			       (void *)(l2c_base +
+-					L2C_REG_CN_CMD_OFFSET(mhartid)));
+-
+-			while ((cpu_l2c_get_cctl_status() &
+-				CCTL_L2_STATUS_CN_MASK(mhartid)) !=
+-				CCTL_L2_STATUS_IDLE)
+-				;
+-		}
++		if (likely(l2c_base))
++			cpu_l2c_cctl(pa, mhartid, CCTL_L2_PA_INVAL);
+ 
+ 		start += line_size;
+ 		pa += line_size;
+-- 
+2.34.1
+

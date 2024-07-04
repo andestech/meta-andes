@@ -1,0 +1,79 @@
+From 2deca7219dc5f29efe0ea3389ef50560a5d6ee5c Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Thu, 22 Feb 2024 20:16:22 +0800
+Subject: [PATCH 169/191] qilai: pcie: add pcie device support
+
+enable PCIe_to_USB, intel 225/266, intel e1000e, NVMe and AMDGPU
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ arch/riscv/configs/qilai.config | 56 ++++++++++++++++++++++++++++++++-
+ 1 file changed, 55 insertions(+), 1 deletion(-)
+
+diff --git a/arch/riscv/configs/qilai.config b/arch/riscv/configs/qilai.config
+index 421a7c6ed875..285b47683d25 100644
+--- a/arch/riscv/configs/qilai.config
++++ b/arch/riscv/configs/qilai.config
+@@ -1,2 +1,56 @@
+ # CONFIG_RISCV_PMU is not set
+-CONFIG_SOC_QILAI=y
+\ No newline at end of file
++CONFIG_SOC_QILAI=y
++CONFIG_PCIE_QILAI=y
++CONFIG_RTC_CLASS=y
++CONFIG_RTC_DRV_DS1374=y
++CONFIG_NET_VENDOR_INTEL=y
++CONFIG_E1000E=y
++CONFIG_PCI=y
++CONFIG_PCIE_DW_PLAT=y
++CONFIG_PCIE_DW_PLAT_HOST=y
++CONFIG_PCIE_DW_HOST=y
++CONFIG_PCIE_MSI_IRQ_DOMAIN=y
++CONFIG_PCI_MSI=y
++CONFIG_NVME_CORE=y
++CONFIG_BLK_DEV_NVME=y
++CONFIG_PCI_DEBUG=y
++CONFIG_USB_SUPPORT=y
++CONFIG_USB=y
++CONFIG_USB_XHCI_HCD=y
++CONFIG_USB_XHCI_PLATFORM=y
++CONFIG_USB_EHCI_HCD=y
++CONFIG_USB_EHCI_HCD_PLATFORM=y
++CONFIG_USB_OHCI_HCD=y
++CONFIG_USB_OHCI_HCD_PLATFORM=y
++CONFIG_HOTPLUG_PCI=y
++CONFIG_HOTPLUG_PCI_PCIE=y
++CONFIG_PCIEPORTBUS=y
++CONFIG_SCSI=y
++CONFIG_USB_STORAGE=y
++CONFIG_CHR_DEV_SG=y
++CONFIG_CHR_DEV_ST=y
++CONFIG_BLK_DEV_SD=y
++CONFIG_BLK_DEV_SR=y
++CONFIG_CHR_DEV_SCH=y
++CONFIG_DRM=y
++CONFIG_DRM_AMDGPU=y
++CONFIG_DRM_AMDGPU_SI=y
++CONFIG_DRM_AMDGPU_CIK=y
++CONFIG_DRM_AMDGPU_USERPTR=y
++CONFIG_DRM_VIRTIO_GPU=y
++CONFIG_DRM_TTM=y
++CONFIG_DRM_VM=y
++CONFIG_DRM_SCHED=y
++CONFIG_DRM_VGEM=y
++CONFIG_DRM_AMD_ACP=y
++CONFIG_DRM_NOUVEAU=m
++CONFIG_FB_MODE_HELPERS=y
++CONFIG_FB_TILEBLITTING=y
++CONFIG_FRAMEBUFFER_CONSOLE=y
++CONFIG_LOCALVERSION_AUTO=n
++CONFIG_MODVERSIONS=y
++CONFIG_DRM_KMS_HELPER=y
++CONFIG_DRM_KMS_FB_HELPER=y
++CONFIG_DRM_VRAM_HELPER=y
++CONFIG_HIGHMEM=y
++CONFIG_IGC=y
+\ No newline at end of file
+-- 
+2.34.1
+

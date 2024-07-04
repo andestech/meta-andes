@@ -1,0 +1,42 @@
+From ac15d648592e5dc81277d71524ca80a457d92db0 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Tue, 26 Dec 2023 16:12:48 +0800
+Subject: [PATCH 191/191] drivers: i2c: andes: using subsys_initcall
+
+Because the i2c bus driver needs to bring up other drivers, it should
+use subsys_initcall. The procedure declared as subsys_initcall is
+guaranteed to be executed before the procedure declared as module_init.
+
+Signed-off-by: Randolph <randolph@andestech.com>
+---
+ drivers/i2c/busses/i2c-atciic100.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/i2c/busses/i2c-atciic100.c b/drivers/i2c/busses/i2c-atciic100.c
+index c2232997011f..009a41400b80 100644
+--- a/drivers/i2c/busses/i2c-atciic100.c
++++ b/drivers/i2c/busses/i2c-atciic100.c
+@@ -568,7 +568,19 @@ static struct platform_driver atciic_platform_driver = {
+ 	.remove		= atciic_remove,
+ };
+ 
+-module_platform_driver(atciic_platform_driver);
++/* I2C may be needed to bring up other drivers */
++static int __init andes_i2c_init_driver(void)
++{
++	return platform_driver_register(&atciic_platform_driver);
++}
++subsys_initcall(andes_i2c_init_driver);
++
++static void __exit andes_i2c_exit_driver(void)
++{
++	platform_driver_unregister(&atciic_platform_driver);
++}
++module_exit(andes_i2c_exit_driver);
++
+ MODULE_AUTHOR("Rick Chen");
+ MODULE_AUTHOR("Dylan Jhong");
+ MODULE_DESCRIPTION("I2C driver for Andes atciic100");
+-- 
+2.34.1
+

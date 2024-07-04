@@ -1,0 +1,87 @@
+From ac33a80f0e5694c7c1836342ae1e17fda6d0b6e4 Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Thu, 9 May 2024 18:48:35 +0800
+Subject: [PATCH 180/191] sound: andes: ftssp: Refine source code to meet
+ coding style requirements
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ sound/soc/andes/Makefile       |  3 ---
+ sound/soc/andes/andes_rt5640.c |  2 +-
+ sound/soc/andes/ftssp010_i2s.c | 14 +++++++-------
+ 3 files changed, 8 insertions(+), 11 deletions(-)
+
+diff --git a/sound/soc/andes/Makefile b/sound/soc/andes/Makefile
+index 7cb52d3bfddc..468139ab8957 100644
+--- a/sound/soc/andes/Makefile
++++ b/sound/soc/andes/Makefile
+@@ -1,5 +1,2 @@
+-CFLAGS_andes_pcm.o += -O0
+-CFLAGS_andes_rt5640.o += -O0
+-CFLAGS_ftssp010_i2s.o += -O0
+ ftssp010-i2s-objs := ftssp010_i2s.o andes_pcm_dmaengin.o andes_rt5640.o
+ obj-$(CONFIG_SND_SOC_ANDES) += ftssp010-i2s.o
+diff --git a/sound/soc/andes/andes_rt5640.c b/sound/soc/andes/andes_rt5640.c
+index 72a74d2fda40..12717642f48d 100644
+--- a/sound/soc/andes/andes_rt5640.c
++++ b/sound/soc/andes/andes_rt5640.c
+@@ -59,7 +59,7 @@ static int andes_rt5640_hw_params(struct snd_pcm_substream *substream,
+ 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
+ 	int ret = 0;
+ 
+- 	ret = snd_soc_dai_set_sysclk(codec_dai, RT5640_SCLK_S_PLL1,
++	ret = snd_soc_dai_set_sysclk(codec_dai, RT5640_SCLK_S_PLL1,
+ 				     params_rate(params) * 256,
+ 				     SND_SOC_CLOCK_IN);
+ 	if (ret < 0) {
+diff --git a/sound/soc/andes/ftssp010_i2s.c b/sound/soc/andes/ftssp010_i2s.c
+index ad076ee79754..9412e58e3051 100644
+--- a/sound/soc/andes/ftssp010_i2s.c
++++ b/sound/soc/andes/ftssp010_i2s.c
+@@ -376,7 +376,7 @@ static int ftssp010_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
+ 		break;
+ 
+ 	default:
+- 		return -EINVAL;
++		return -EINVAL;
+ 	}
+ 
+ 	cr0 |= FTSSP010_CR0_MASTER;
+@@ -559,28 +559,28 @@ static int ftssp010_i2s_probe(struct platform_device *pdev)
+ 	i2s->capture_dma_data.chan_name = "rx";
+ 
+ 	/* SSP reset */
+- 	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
++	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
+ 			   FTSSP010_CR2_SSPRST, 1);
+ 
+ 	mdelay(1);
+- 	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
++	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
+ 			   FTSSP010_CR2_SSPRST, 0);
+ 	mdelay(1);
+ 	/* SSP disable interrupt source */
+- 	regmap_write(i2s->regmap, FTSSP010_OFFSET_ICR, 0);
++	regmap_write(i2s->regmap, FTSSP010_OFFSET_ICR, 0);
+ 
+ 	/* SSP reset Control Register 0 */
+- 	regmap_write(i2s->regmap, FTSSP010_OFFSET_CR0, 0);
++	regmap_write(i2s->regmap, FTSSP010_OFFSET_CR0, 0);
+ 
+ 	/* SSP Transmit/Receive FIFO clear */
+ 	reg = FTSSP010_CR2_RXFCLR | FTSSP010_CR2_TXFCLR;
+ 	INFO("ftssp010-i2s: [CR2] = %08x\n", reg);
+ 	regmap_write(i2s->regmap, FTSSP010_OFFSET_CR2, reg);
+ 
+- 	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
++	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
+ 			  FTSSP010_CR2_RXFCLR, 0);
+ 
+- 	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
++	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
+ 			  FTSSP010_CR2_TXFCLR, 0);
+ 
+ 	device_property_read_u32(&pdev->dev, "clock-frequency", &i2s->mclk);
+-- 
+2.34.1
+

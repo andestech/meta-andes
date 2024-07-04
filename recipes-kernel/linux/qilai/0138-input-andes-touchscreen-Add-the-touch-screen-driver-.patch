@@ -1,0 +1,477 @@
+From 4794fa13e12acc5abc7a05c15bc5219f4dfa0f94 Mon Sep 17 00:00:00 2001
+From: CL Wang <cl634@andestech.com>
+Date: Thu, 7 Sep 2023 10:27:24 +0800
+Subject: [PATCH 138/191] input: andes: touchscreen: Add the touch screen
+ driver from the ast520.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/input/touchscreen/cpe_ts_ae350.c | 340 +++++++++++++++++++++++
+ drivers/input/touchscreen/cpe_ts_ae350.h | 108 +++++++
+ 2 files changed, 448 insertions(+)
+ create mode 100755 drivers/input/touchscreen/cpe_ts_ae350.c
+ create mode 100755 drivers/input/touchscreen/cpe_ts_ae350.h
+
+diff --git a/drivers/input/touchscreen/cpe_ts_ae350.c b/drivers/input/touchscreen/cpe_ts_ae350.c
+new file mode 100755
+index 000000000000..565827a8e14d
+--- /dev/null
++++ b/drivers/input/touchscreen/cpe_ts_ae350.c
+@@ -0,0 +1,340 @@
++#include <linux/input.h>
++#include <linux/interrupt.h>
++#include <linux/platform_device.h>
++#include <linux/io.h>
++#include <asm/irq.h>
++#include "cpe_ts_ae350.h"
++#include <linux/module.h>
++#include <linux/irqnr.h>
++#include <linux/irq.h>
++#include <linux/delay.h>
++#include <linux/of.h>
++#include <linux/of_device.h>
++
++#define REG32(a)        (*(volatile unsigned int *)(a))
++#define ads_dbg( enabled, tagged, ...)					\
++	do{								\
++		if( enabled){						\
++			if( tagged)					\
++				printk( "[ %30s() ] ", __func__);       \
++			printk( __VA_ARGS__);				\
++		}							\
++	} while( 0)
++
++#define TS_POLL_DELAY		( 1 * 1000000)		/* ns delay before the first sample */
++#define TS_POLL_PERIOD		( delay * 1000000)	/* ns delay between samples */
++static int debug = 0;
++static int delay = 25;
++module_param(debug, int, 0);
++module_param(delay, int, 0);
++
++struct ads7846
++{
++	void __iomem * regs;
++	struct input_dev *input;
++	char phys[32];
++	struct hrtimer timer;
++	int irq;
++	spinlock_t lock;
++	bool disabled;
++};
++
++struct ts_event
++{
++	int x;
++	int y;
++	int z1, z2;
++	int Rt;
++};
++
++struct ads7846 touchscreen;
++
++#define ADS_START		( 0x1UL << 7)
++#define ADS_A2A1A0_d_y		( 0x1UL << 4)	/* differential */
++#define ADS_A2A1A0_d_z1		( 0x3UL << 4)	/* differential */
++#define ADS_A2A1A0_d_z2		( 0x4UL << 4)	/* differential */
++#define ADS_A2A1A0_d_x		( 0x5UL << 4)	/* differential */
++#define ADS_12_BIT		( 0x0UL << 3)
++#define ADS_SER			( 0x1UL << 2)	/* non-differential */
++#define ADS_DFR			( 0x0UL << 2)	/* differential */
++#define ADS_PD10_PDOWN		( 0x0UL << 0)	/* lowpower mode + penirq */
++#define ADS_PD10_ADC_ON		( 0x1UL << 0)	/* ADC on */
++#define ADS_PD10_REF_ON		( 0x2UL << 0)	/* vREF on + penirq */
++#define ADS_PD10_ALL_ON		( 0x3UL << 0)	/* ADC + vREF on */
++#define MAX_12BIT		( ( 0x1UL << 12) - 1)
++
++#define READ_X			( ADS_A2A1A0_d_x  | ADS_12_BIT | ADS_DFR)
++#define READ_Y			( ADS_A2A1A0_d_y  | ADS_12_BIT | ADS_DFR)
++#define READ_Z1			( ADS_A2A1A0_d_z1 | ADS_12_BIT | ADS_DFR)
++#define READ_Z2			( ADS_A2A1A0_d_z2 | ADS_12_BIT | ADS_DFR)
++
++static int
++read_val(struct ads7846 *ts, unsigned long cmd)
++{
++	unsigned long data = 0;
++	ads_dbg(0, 1, "Queuing data: 0x%08lx\n", cmd << 16);
++
++	while (!(REG32(ts->regs + STATUS) & TX_EMPTY));
++	REG32(ts->regs + DATA) = (ADS_START | cmd) << 16;
++	REG32(ts->regs + CMD) = 1;
++
++	while ((REG32(ts->regs + STATUS) & RX_EMPTY));
++	data = (REG32(ts->regs + DATA) >> 3) & 0xFFF;
++	ads_dbg(0, 1, "CMD <%02lx> data: 0x%08lx( %ld)\n", cmd, data, data);
++
++	return data;
++}
++
++static int pendown(struct ads7846 *ts)
++{
++	return read_val(ts, READ_Z1) > 40;
++}
++
++static void report(struct ads7846 *ts, struct ts_event *e)
++{
++	e->x = read_val(ts, READ_X);
++	e->y = read_val(ts, READ_Y);
++	e->z1 = read_val(ts, READ_Z1);
++	e->z2 = read_val(ts, READ_Z2);
++	ads_dbg(debug, 1, "x: %4d, y: %4d, z1: %4d, z2: %4d\n", e->x, e->y, e->z1, e->z2);
++}
++
++#define FILTER_LIMIT 35
++static enum hrtimer_restart ads7846_timer(struct hrtimer *handle)
++{
++	struct ads7846 *ts = container_of(handle, struct ads7846, timer);
++	struct ts_event e;
++	static int xp = 0, yp = 0;
++
++	if (ts->disabled)
++		return HRTIMER_NORESTART;
++
++	if (!pendown(ts))
++	{
++		ads_dbg(debug, 1, "Release\n");
++		input_report_key(ts->input, BTN_TOUCH, 0);
++		input_report_abs(ts->input, ABS_PRESSURE, 0);
++		input_sync(ts->input);
++		enable_irq(ts->irq);
++                return HRTIMER_NORESTART;
++	}
++	report(ts, &e);
++#ifdef CONFIG_TOUCHSCREEN_CPE_TS_DEJITTER_AE350
++	if (abs(xp - e.x) > FILTER_LIMIT || abs(yp - e.y) > FILTER_LIMIT)
++	{
++#endif
++		input_report_key(ts->input, BTN_TOUCH, 1);
++		input_report_abs(ts->input, ABS_X, e.x);
++		input_report_abs(ts->input, ABS_Y, e.y);
++		input_report_abs(ts->input, ABS_PRESSURE, 50);
++		xp = e.x;
++		yp = e.y;
++#ifdef CONFIG_TOUCHSCREEN_CPE_TS_DEJITTER_AE350
++	}
++#endif
++	input_sync(ts->input);
++	hrtimer_start(&ts->timer, ktime_set(0, TS_POLL_PERIOD), HRTIMER_MODE_REL);
++	ads_dbg(0, 1, "Leave\n");
++	return HRTIMER_NORESTART;
++}
++
++
++static irqreturn_t ads7846_irq(int irq, void *handle)
++{
++	struct ads7846 *ts = handle;
++
++	if (ts->disabled)
++		return IRQ_HANDLED;
++
++	if (!pendown(ts))
++		return IRQ_HANDLED;
++
++	disable_irq_nosync(irq);
++	hrtimer_start(&ts->timer, ktime_set(0, TS_POLL_DELAY), HRTIMER_MODE_REL);
++
++	return IRQ_HANDLED;
++}
++
++static int xspi_init_hw(struct at_ts_platdata *pdata)
++{
++	int id = REG32(pdata->regs + ID_REV);
++
++	if((id&ID_MSK) !=(ID_ATCSPI200<<ID_OFF))
++	{
++		ads_dbg(1, 0, "ADS7846 Touchscreen controller initialized failed:\n"
++			"\tcannot detect ANdes SPI Controller\n");
++		return -ENXIO;
++	}
++	REG32(pdata->regs + TIMING) |= (pdata->clk/(pdata->sclk<<1))-1;
++	REG32(pdata->regs + FORMAT) &= DATA_LEN_MSK;
++	REG32(pdata->regs + FORMAT) |= (23<<DATA_LEN_OFF);
++
++	return 0;
++}
++
++static int __exit ads7846_remove(struct platform_device *pdev)
++{
++	struct ads7846 *ts = platform_get_drvdata(pdev);
++
++	disable_irq(ts->irq);
++	free_irq(ts->irq, ts);
++	input_unregister_device(ts->input);
++
++	return 0;
++}
++
++#ifdef CONFIG_PM
++static int ads7846_suspend( struct platform_device *pdev, pm_message_t message)
++{
++	struct ads7846 *ts = platform_get_drvdata(pdev);
++
++	spin_lock_irq(&ts->lock);
++	ts->disabled = true;
++	disable_irq(ts->irq);
++	spin_unlock_irq(&ts->lock);
++
++	return 0;
++}
++
++static int ads7846_resume( struct platform_device *pdev)
++{
++	struct ads7846 *ts = platform_get_drvdata(pdev);
++
++	spin_lock_irq(&ts->lock);
++	enable_irq(ts->irq);
++	ts->disabled = false;
++	spin_unlock_irq(&ts->lock);
++
++	return 0;
++}
++#else
++#define ads7846_suspend NULL
++#define ads7846_resume NULL
++#endif
++
++static const struct of_device_id ads7846_dt_ids[] = {
++	{
++		.compatible = "andestech,atcts",
++	},
++	{},
++};
++MODULE_DEVICE_TABLE(of, ads7846_dt_ids);
++
++#ifdef CONFIG_OF
++static struct at_ts_platdata *ts_parse_dt(struct device *dev)
++{
++	struct at_ts_platdata *pdata;
++	struct device_node *np = dev->of_node;
++
++	if (!np)
++		return ERR_PTR(-ENOENT);
++
++	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
++	if (!pdata) {
++		dev_err(dev, "failed to allocate platform data\n");
++		return ERR_PTR(-ENOMEM);
++	}
++
++	if (of_property_read_u32(np, "spi-max-frequency", &pdata->sclk)){
++		dev_err(dev, "failed to get spi-max-frequency property\n");
++		return ERR_PTR(-EINVAL);
++	}
++
++	if (of_property_read_u32(np, "clock-frequency", &pdata->clk)){
++		dev_err(dev, "failed to get clock-frequency property\n");
++		return ERR_PTR(-EINVAL);
++	}
++	printk("pdata->sclk %d , pdata->clk %d\n",pdata->sclk,pdata->clk);
++
++	if (of_property_read_u32(np, "x-size", &pdata->x_max)) {
++		dev_err(dev, "failed to get x-size property\n");
++		return ERR_PTR(-EINVAL);
++	}
++
++	if (of_property_read_u32(np, "y-size", &pdata->y_max)) {
++		dev_err(dev, "failed to get y-size property\n");
++		return ERR_PTR(-EINVAL);
++	}
++
++	return pdata;
++}
++#else
++static struct at_ts_platdata *ts_parse_dt(struct device *dev)
++{
++	return ERR_PTR(-EINVAL);
++}
++#endif
++
++static int ads7846_probe(struct platform_device *pdev)
++{
++	struct ads7846 *ts = &touchscreen;
++	struct input_dev *input_dev;
++	int err = 0;
++	struct resource *r;
++	struct at_ts_platdata *pdata;
++
++	pdata = ts_parse_dt(&pdev->dev);
++	pdev->dev.platform_data = (void *)pdata;
++	platform_set_drvdata(pdev, ts);
++	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	ts->regs = devm_ioremap_resource(&pdev->dev, r);
++	pdata->regs = (resource_size_t)ts->regs;
++
++	err = xspi_init_hw(pdata);
++	if (err)
++		goto err_unmap;
++
++	input_dev = input_allocate_device();
++	if (!input_dev)
++	{
++		err = -ENOMEM;
++		goto err_free_mem;
++	}
++	ts->input = input_dev;
++	hrtimer_init(&ts->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++	ts->timer.function = ads7846_timer;
++	input_dev->name = "ADS7846 Touchscreen";
++	input_dev->phys = ts->phys;
++	input_dev->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
++	input_dev->keybit[BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH);
++	input_set_abs_params(input_dev, ABS_X, 0, MAX_12BIT, 0, 0);
++	input_set_abs_params(input_dev, ABS_Y, 0, MAX_12BIT, 0, 0);
++	input_set_abs_params(input_dev, ABS_PRESSURE, 0, MAX_12BIT, 0, 0);
++	ts->irq = platform_get_irq(pdev, 0);
++
++	if (request_irq(ts->irq, ads7846_irq, IRQF_TRIGGER_RISING, "touch screen", ts))
++		goto err_free_mem;
++
++	err = input_register_device(input_dev);
++	if (err)
++		goto err_free_irq;
++
++	spin_lock_init(&ts->lock);
++
++	return 0;
++
++err_free_irq:
++	free_irq(ts->irq, ts);
++err_free_mem:
++	input_free_device(input_dev);
++err_unmap:
++	iounmap(ts->regs);
++
++	return err;
++}
++
++static struct platform_driver ads7846_driver =
++{
++	.driver = {
++		.name = "ads7846",
++		.owner	= THIS_MODULE,
++		.of_match_table = of_match_ptr(ads7846_dt_ids),
++	},
++	.remove = __exit_p(ads7846_remove),
++	.suspend = ads7846_suspend,
++	.resume = ads7846_resume,
++};
++
++module_platform_driver_probe(ads7846_driver, ads7846_probe);
++MODULE_DESCRIPTION("ADS7846 TouchScreen Driver");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/input/touchscreen/cpe_ts_ae350.h b/drivers/input/touchscreen/cpe_ts_ae350.h
+new file mode 100755
+index 000000000000..5ca9910a0968
+--- /dev/null
++++ b/drivers/input/touchscreen/cpe_ts_ae350.h
+@@ -0,0 +1,108 @@
++#ifndef SPI_ANDES_H
++#define SPI_ANDES_H
++
++#define XILINX_SPI_NAME "andes-spi"
++
++struct at_ts_platdata {
++	resource_size_t regs;
++	unsigned int clk;
++	unsigned int sclk;
++	unsigned int x_max;
++	unsigned int y_max;
++};
++
++/* ID and Revision Register */
++#define ID_REV		0x0
++#define ID_OFF		12
++#define ID_MSK		(0xfffff<<12)
++
++#define ID_ATCSPI200	0x02002
++
++/* SPI Transfer Format Register */
++#define FORMAT		0x10
++#define DATA_LEN_OFF	8
++#define DATA_LEN_MSK	(0x1f<<8)
++
++/* SPI Transfer Control Register */
++#define TCONTROL		0x20
++#define TRANS_MODE_OFF	24
++#define TRANS_MODE_MSK	(0xf<<TRANS_MODE_OFF)
++#define WRITE_THEN_READ	(0x3<<TRANS_MODE_OFF)
++#define WRTRANCNT_OFF	12
++#define WRTRANCNT_MSK	(0x1ff<<WRTRANCNT_OFF)
++#define RDTRANCNT_OFF	0
++#define RDTRANCNT_MSK	(0x1ff<<RDTRANCNT_OFF)
++
++
++
++/* SPI Command Register */
++#define CMD		0x24
++
++/* SPI Data Register */
++#define DATA		0x2c
++
++/* SPI Control Register */
++#define CONTROL		0x30
++
++/* SPI Status Register */
++#define STATUS		0x34
++#define TX_FULL		(1<<23)
++#define TX_EMPTY	(1<<22)
++#define RX_EMPTY	(1<<14)
++#define ACTIVE		(1<<0)
++
++
++/* SPI Interface Timing Register */
++#define TIMING		0x40
++#define SCLK_DIV_MSK	(0xff<<0)
++
++
++/*
++ * Register definitions as per "OPB Serial Peripheral Interface ( SPI) ( v1.00e)
++ * Product Specification", DS464
++ */
++#define XSPI_CR_OFFSET		0x62	/* 16-bit Control Register */
++
++#define XSPI_CR_ENABLE		0x02
++#define XSPI_CR_MASTER_MODE	0x04
++#define XSPI_CR_CPOL		0x08
++#define XSPI_CR_CPHA		0x10
++#define XSPI_CR_MODE_MASK	( XSPI_CR_CPHA | XSPI_CR_CPOL)
++#define XSPI_CR_TXFIFO_RESET	0x20
++#define XSPI_CR_RXFIFO_RESET	0x40
++#define XSPI_CR_MANUAL_SSELECT	0x80
++#define XSPI_CR_TRANS_INHIBIT	0x100
++
++#define XSPI_SR_OFFSET		0x67	/* 8-bit Status Register */
++
++#define XSPI_SR_RX_EMPTY_MASK	0x01	/* Receive FIFO is empty */
++#define XSPI_SR_RX_FULL_MASK	0x02	/* Receive FIFO is full */
++#define XSPI_SR_TX_EMPTY_MASK	0x04	/* Transmit FIFO is empty */
++#define XSPI_SR_TX_FULL_MASK	0x08	/* Transmit FIFO is full */
++#define XSPI_SR_MODE_FAULT_MASK	0x10	/* Mode fault error */
++
++#define XSPI_TXD_OFFSET		0x6b	/* 8-bit Data Transmit Register */
++#define XSPI_RXD_OFFSET		0x6f	/* 8-bit Data Receive Register */
++
++#define XSPI_SSR_OFFSET		0x70	/* 32-bit Slave Select Register */
++
++/* Register definitions as per "OPB IPIF ( v3.01c) Product Specification", DS414
++ * IPIF registers are 32 bit
++ */
++#define XIPIF_V123B_DGIER_OFFSET	0x1c	/* IPIF global int enable reg */
++#define XIPIF_V123B_GINTR_ENABLE	0x80000000
++
++#define XIPIF_V123B_IISR_OFFSET		0x20	/* IPIF interrupt status reg */
++#define XIPIF_V123B_IIER_OFFSET		0x28	/* IPIF interrupt enable reg */
++
++#define XSPI_INTR_MODE_FAULT		0x01	/* Mode fault error */
++#define XSPI_INTR_SLAVE_MODE_FAULT	0x02	/* Selected as slave while disabled */
++#define XSPI_INTR_TX_EMPTY		0x04	/* TxFIFO is empty */
++#define XSPI_INTR_TX_UNDERRUN		0x08	/* TxFIFO was underrun */
++#define XSPI_INTR_RX_FULL		0x10	/* RxFIFO is full */
++#define XSPI_INTR_RX_OVERRUN		0x20	/* RxFIFO was overrun */
++
++#define XIPIF_V123B_RESETR_OFFSET	0x40	/* IPIF reset register */
++#define XIPIF_V123B_RESET_MASK		0x0a	/* the value to write */
++
++#endif /* SPI_ANDES_H */
+-- 
+2.34.1
+

@@ -1,0 +1,51 @@
+From d381fc60e691330796ab92623dd1417968c11aaa Mon Sep 17 00:00:00 2001
+From: Dylan Jhong <dylan@andestech.com>
+Date: Fri, 19 May 2023 15:27:14 +0800
+Subject: [PATCH 042/191] net: andes: ftmac100: use casting of u64 to avoid
+ overflow
+
+Fix "-Wshift-count-overflow" compile error by casting to u64.
+
+Signed-off-by: Dylan Jhong <dylan@andestech.com>
+Reviewed-on: https://gitea.andestech.com/RD-SW/linux/pulls/23
+---
+ drivers/net/ethernet/faraday/ftmac100.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/net/ethernet/faraday/ftmac100.c b/drivers/net/ethernet/faraday/ftmac100.c
+index 701f3e9ac6ac..22a249205293 100644
+--- a/drivers/net/ethernet/faraday/ftmac100.c
++++ b/drivers/net/ethernet/faraday/ftmac100.c
+@@ -305,12 +305,12 @@ static void ftmac100_rxdes_set_dma_addr(struct ftmac100_rxdes *rxdes,
+ 					dma_addr_t addr)
+ {
+ 	rxdes->rxdes2 = cpu_to_le32(addr);
+-	rxdes->rxdes3 = cpu_to_le32(addr >> 32);
++	rxdes->rxdes3 = cpu_to_le32((u64)addr >> 32);
+ }
+ 
+ static dma_addr_t ftmac100_rxdes_get_dma_addr(struct ftmac100_rxdes *rxdes)
+ {
+-	return le32_to_cpu(rxdes->rxdes2) | (dma_addr_t)le32_to_cpu(rxdes->rxdes3) << 32;
++	return le32_to_cpu(rxdes->rxdes2) | (u64)le32_to_cpu(rxdes->rxdes3) << 32;
+ }
+ 
+ static void ftmac100_rxdes_set_page(struct ftmac100 *priv, int index, struct page *page)
+@@ -567,12 +567,12 @@ static void ftmac100_txdes_set_dma_addr(struct ftmac100_txdes *txdes,
+ 					dma_addr_t addr)
+ {
+ 	txdes->txdes2 = cpu_to_le32(addr);
+-	txdes->txdes3 = cpu_to_le32(addr >> 32);
++	txdes->txdes3 = cpu_to_le32((u64)addr >> 32);
+ }
+ 
+ static dma_addr_t ftmac100_txdes_get_dma_addr(struct ftmac100_txdes *txdes)
+ {
+-	return le32_to_cpu(txdes->txdes2) | (dma_addr_t)le32_to_cpu(txdes->txdes3) << 32;
++	return le32_to_cpu(txdes->txdes2) | (u64)le32_to_cpu(txdes->txdes3) << 32;
+ }
+ 
+ static void ftmac100_txdes_skb_reset(struct ftmac100 *priv, int index)
+-- 
+2.34.1
+

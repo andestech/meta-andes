@@ -1,0 +1,361 @@
+From 97a3342bf067b5a7553bf1d58f9821841be825c5 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Thu, 10 Aug 2023 18:09:54 +0800
+Subject: [PATCH 094/191] riscv: andes: Add AX45MPV 4-core device tree
+
+Simply copy the ax45mp_c4_d_dsp_ae350.dts and add "v1p0" to
+riscv,isa of each CPU node.
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ arch/riscv/boot/dts/andes/Makefile            |   1 +
+ .../boot/dts/andes/ax45mpv_c4_d_dsp_ae350.dts | 325 ++++++++++++++++++
+ 2 files changed, 326 insertions(+)
+ create mode 100644 arch/riscv/boot/dts/andes/ax45mpv_c4_d_dsp_ae350.dts
+
+diff --git a/arch/riscv/boot/dts/andes/Makefile b/arch/riscv/boot/dts/andes/Makefile
+index 1cb9312dd28f..c165e1ab3d0a 100644
+--- a/arch/riscv/boot/dts/andes/Makefile
++++ b/arch/riscv/boot/dts/andes/Makefile
+@@ -13,6 +13,7 @@ dtb-$(CONFIG_PLAT_AE350) += a25mp_c4_d_dsp_ae350.dtb
+ dtb-$(CONFIG_PLAT_AE350) += a45mp_c4_d_dsp_ae350.dtb
+ dtb-$(CONFIG_PLAT_AE350) += ax25mp_c4_d_dsp_ae350.dtb
+ dtb-$(CONFIG_PLAT_AE350) += ax45mp_c4_d_dsp_ae350.dtb
++dtb-$(CONFIG_PLAT_AE350) += ax45mpv_c4_d_dsp_ae350.dtb
+ dtb-$(CONFIG_PLAT_AE350) += ax45mp_c8_ae350.dtb
+ 
+ # FPGA : VU19P
+diff --git a/arch/riscv/boot/dts/andes/ax45mpv_c4_d_dsp_ae350.dts b/arch/riscv/boot/dts/andes/ax45mpv_c4_d_dsp_ae350.dts
+new file mode 100644
+index 000000000000..c0d2903083f8
+--- /dev/null
++++ b/arch/riscv/boot/dts/andes/ax45mpv_c4_d_dsp_ae350.dts
+@@ -0,0 +1,325 @@
++/dts-v1/;
++
++/ {
++	#address-cells = <0x02>;
++	#size-cells = <0x02>;
++	compatible = "andestech,ae350";
++	model = "andestech,ax45";
++
++	aliases {
++		uart0 = "/soc/serial@f0300000";
++		spi0 = "/soc/spi@f0b00000";
++	};
++
++	chosen {
++		bootargs = "console=ttyS0,38400n8 debug loglevel=7 earlycon=sbi";
++		stdout-path = "uart0:38400n8";
++	};
++
++	cpus {
++		#address-cells = <0x01>;
++		#size-cells = <0x00>;
++		timebase-frequency = <0x3938700>;
++
++		cpu@0 {
++			device_type = "cpu";
++			reg = <0x00>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0v1p0xv5-1p1xdsp0p0";
++			riscv,priv-major = <0x01>;
++			riscv,priv-minor = <0x0a>;
++			mmu-type = "riscv,sv48";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x01>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x01>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x02>;
++			};
++		};
++
++		cpu@1 {
++			device_type = "cpu";
++			reg = <0x01>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0v1p0xv5-1p1xdsp0p0";
++			riscv,priv-major = <0x01>;
++			riscv,priv-minor = <0x0a>;
++			mmu-type = "riscv,sv48";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x01>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x01>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x03>;
++			};
++		};
++
++		cpu@2 {
++			device_type = "cpu";
++			reg = <0x02>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0v1p0xv5-1p1xdsp0p0";
++			riscv,priv-major = <0x01>;
++			riscv,priv-minor = <0x0a>;
++			mmu-type = "riscv,sv48";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x01>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x01>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x04>;
++			};
++		};
++
++		cpu@3 {
++			device_type = "cpu";
++			reg = <0x03>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0v1p0xv5-1p1xdsp0p0";
++			riscv,priv-major = <0x01>;
++			riscv,priv-minor = <0x0a>;
++			mmu-type = "riscv,sv48";
++			clock-frequency = <0x3938700>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x01>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x01>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x05>;
++			};
++		};
++	};
++
++	l2-cache@e0500000 {
++		compatible = "cache";
++		cache-level = <0x02>;
++		cache-size = <0x80000>;
++		reg = <0x00 0xe0500000 0x00 0x10000>;
++		andes,inst-prefetch = <0x03>;
++		andes,data-prefetch = <0x03>;
++		andes,tag-ram-ctl = <0x00 0x00>;
++		andes,data-ram-ctl = <0x00 0x00>;
++		phandle = <0x01>;
++	};
++
++	memory@0 {
++		reg = <0x00 0x00 0x00 0x80000000>;
++		device_type = "memory";
++	};
++
++	soc {
++		#address-cells = <0x02>;
++		#size-cells = <0x02>;
++		compatible = "andestech,riscv-ae350-soc","simple-bus";
++		ranges;
++
++		interrupt-controller@e4000000 {
++			compatible = "riscv,plic0";
++			reg = <0x00 0xe4000000 0x00 0x2000000>;
++			interrupts-extended = <0x02 0x0b 0x02 0x09 0x03 0x0b 0x03 0x09 0x04 0x0b 0x04 0x09 0x05 0x0b 0x05 0x09>;
++			interrupt-controller;
++			#address-cells = <0x02>;
++			#interrupt-cells = <0x02>;
++			riscv,ndev = <0x47>;
++			phandle = <0x06>;
++		};
++
++		interrupt-controller@e6400000 {
++			compatible = "riscv,plic1";
++			reg = <0x00 0xe6400000 0x00 0x400000>;
++			interrupts-extended = <0x02 0x03 0x03 0x03 0x04 0x03 0x05 0x03>;
++			interrupt-controller;
++			#address-cells = <0x02>;
++			#interrupt-cells = <0x02>;
++			riscv,ndev = <0x04>;
++		};
++
++		plmt0@e6000000 {
++			compatible = "riscv,plmt0";
++			reg = <0x00 0xe6000000 0x00 0x100000>;
++			interrupts-extended = <0x02 0x07 0x03 0x07 0x04 0x07 0x05 0x07>;
++		};
++
++		virt_100mhz {
++			compatible = "fixed-clock";
++			#clock-cells = <0x00>;
++			clock-frequency = <0x5f5e100>;
++			phandle = <0x08>;
++		};
++
++		timer@f0400000 {
++			compatible = "andestech,atcpit100";
++			reg = <0x00 0xf0400000 0x00 0x1000>;
++			interrupts = <0x03 0x04>;
++			interrupt-parent = <0x06>;
++			clock-frequency = <0x3938700>;
++		};
++
++		pwm@f0400000 {
++			compatible = "andestech,atcpit100-pwm";
++			reg = <0x00 0xf0400000 0x00 0x1000>;
++			interrupts = <0x03 0x04>;
++			interrupt-parent = <0x06>;
++			clock-frequency = <0x3938700>;
++			pwm-cells = <0x02>;
++		};
++
++		wdt@f0500000 {
++			compatible = "andestech,atcwdt200";
++			reg = <0x00 0xf0500000 0x00 0x1000>;
++			interrupts = <0x03 0x04>;
++			interrupt-parent = <0x06>;
++			clock-frequency = <0x3938700>;
++		};
++
++		serial@f0300000 {
++			compatible = "andestech,uart16550\0ns16550a";
++			reg = <0x00 0xf0300000 0x00 0x1000>;
++			interrupts = <0x09 0x04>;
++			interrupt-parent = <0x06>;
++			clock-frequency = <0x12c0000>;
++			current-speed = <0x9600>;
++			reg-shift = <0x02>;
++			reg-offset = <0x20>;
++			reg-io-width = <0x04>;
++			no-loopback-test = <0x01>;
++		};
++
++		rtc@f0600000 {
++			compatible = "andestech,atcrtc100";
++			reg = <0x00 0xf0600000 0x00 0x1000>;
++			interrupts = <0x01 0x04 0x02 0x04>;
++			interrupt-parent = <0x06>;
++			wakeup-source;
++		};
++
++		gpio@f0700000 {
++			compatible = "andestech,atcgpio100";
++			reg = <0x00 0xf0700000 0x00 0x1000>;
++			interrupts = <0x07 0x04>;
++			interrupt-parent = <0x06>;
++			wakeup-source;
++		};
++
++		i2c@f0a00000 {
++			compatible = "andestech,atciic100";
++			reg = <0x00 0xf0a00000 0x00 0x1000>;
++			interrupts = <0x06 0x04>;
++			interrupt-parent = <0x02>;
++			wakeup-source;
++		};
++
++		mac@e0100000 {
++			compatible = "andestech,atmac100";
++			reg = <0x00 0xe0100000 0x00 0x1000>;
++			interrupts = <0x13 0x04>;
++			interrupt-parent = <0x06>;
++			dma-coherent;
++		};
++
++		smu@f0100000 {
++			compatible = "andestech,atcsmu";
++			reg = <0x00 0xf0100000 0x00 0x1000>;
++		};
++
++		mmc@f0e00000 {
++			compatible = "andestech,atfsdc010g";
++			reg = <0x00 0xf0e00000 0x00 0x1000>;
++			interrupts = <0x12 0x04>;
++			interrupt-parent = <0x06>;
++			clock-freq-min-max = <0x61a80 0x5f5e100>;
++			max-frequency = <0x5f5e100>;
++			fifo-depth = <0x10>;
++			dmas = <0x07 0x09>;
++			dma-names = "rxtx";
++			dma-coherent;
++		};
++
++		dma@f0c00000 {
++			compatible = "andestech,atcdmac300g";
++			reg = <0x00 0xf0c00000 0x00 0x1000>;
++			interrupts = <0x0a 0x04>;
++			interrupt-parent = <0x06>;
++			dma-channels = <0x08>;
++			#dma-cells = <0x01>;
++			dma-coherent;
++			phandle = <0x07>;
++		};
++
++		lcd@e0200000 {
++			compatible = "andestech,atflcdc100";
++			reg = <0x00 0xe0200000 0x00 0x1000>;
++			interrupts = <0x14 0x04>;
++			interrupt-parent = <0x06>;
++			dma-coherent;
++		};
++
++		pmu {
++			compatible = "riscv,andes-pmu";
++			device_type = "pmu";
++		};
++
++		spi@f0b00000 {
++			compatible = "andestech,atcspi200";
++			reg = <0x00 0xf0b00000 0x00 0x1000>;
++			interrupts = <0x04 0x04>;
++			interrupt-parent = <0x06>;
++			#address-cells = <0x01>;
++			#size-cells = <0x00>;
++			num-cs = <0x01>;
++			clocks = <0x08>;
++
++			flash@0 {
++				compatible = "jedec,spi-nor";
++				reg = <0x00>;
++				spi-max-frequency = <0x2faf080>;
++				spi-cpol;
++				spi-cpha;
++			};
++		};
++	};
++};
+-- 
+2.34.1
+

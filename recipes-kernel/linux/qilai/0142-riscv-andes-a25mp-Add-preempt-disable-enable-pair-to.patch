@@ -1,0 +1,121 @@
+From 0584b09ad862f20970b62d50845c51b0225970f2 Mon Sep 17 00:00:00 2001
+From: Leo Yu-Chi Liang <ycliang@andestech.com>
+Date: Wed, 18 Oct 2023 18:09:49 +0800
+Subject: [PATCH 142/191] riscv: andes: a25mp: Add preempt disable/enable pair
+ to prevent migration when flushing cache
+
+It is possible that migration occurs when sync-ing kernel page table mappings
+(i.e., sync_kernel_mappings). "sync_kernel_mappings" does two things, copy
+the page table of kernel mapping and then flush the data using sfence.vma on
+25 series bitmaps.
+
+If the migration occurs between these two phases,
+(e.g., the page table modifying core and the data-flushing core are not the same),
+the page table data modification might not be sync-ed completely to L2 and memory.
+
+This could cause the page table walker to use stale data and does the VA-PA translation
+incorrectly. Therefore, we add preemption enable/disable pair when altering
+page table and flushing the modified page table data to avoid this issue.
+
+Fixes: Bugzilla 28230 ("[ASTv530_Beta] LTP failed on A25MP_4C")
+Signed-off-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+---
+ arch/riscv/include/asm/pgalloc.h    | 8 ++++++++
+ arch/riscv/include/asm/pgtable-64.h | 2 ++
+ arch/riscv/include/asm/pgtable.h    | 4 ++++
+ 3 files changed, 14 insertions(+)
+
+diff --git a/arch/riscv/include/asm/pgalloc.h b/arch/riscv/include/asm/pgalloc.h
+index 3696c23a16dc..c6809b787ef7 100644
+--- a/arch/riscv/include/asm/pgalloc.h
++++ b/arch/riscv/include/asm/pgalloc.h
+@@ -21,8 +21,10 @@ static inline void pmd_populate_kernel(struct mm_struct *mm,
+ {
+ 	unsigned long pfn = virt_to_pfn(pte);
+ 
++	preempt_disable();
+ 	set_pmd(pmd, __pmd((pfn << _PAGE_PFN_SHIFT) | _PAGE_TABLE));
+ 	ALT_LEGACY_MMU_FLUSH_TLB();
++	preempt_enable();
+ }
+ 
+ static inline void pmd_populate(struct mm_struct *mm,
+@@ -30,8 +32,10 @@ static inline void pmd_populate(struct mm_struct *mm,
+ {
+ 	unsigned long pfn = virt_to_pfn(page_address(pte));
+ 
++	preempt_disable();
+ 	set_pmd(pmd, __pmd((pfn << _PAGE_PFN_SHIFT) | _PAGE_TABLE));
+ 	ALT_LEGACY_MMU_FLUSH_TLB();
++	preempt_enable();
+ }
+ 
+ #ifndef __PAGETABLE_PMD_FOLDED
+@@ -39,8 +43,10 @@ static inline void pud_populate(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
+ {
+ 	unsigned long pfn = virt_to_pfn(pmd);
+ 
++	preempt_disable();
+ 	set_pud(pud, __pud((pfn << _PAGE_PFN_SHIFT) | _PAGE_TABLE));
+ 	ALT_LEGACY_MMU_FLUSH_TLB();
++	preempt_enable();
+ }
+ 
+ static inline void p4d_populate(struct mm_struct *mm, p4d_t *p4d, pud_t *pud)
+@@ -144,10 +150,12 @@ static inline pgd_t *pgd_alloc(struct mm_struct *mm)
+ 
+ 	pgd = (pgd_t *)__get_free_page(GFP_KERNEL);
+ 	if (likely(pgd != NULL)) {
++		preempt_disable();
+ 		memset(pgd, 0, USER_PTRS_PER_PGD * sizeof(pgd_t));
+ 		/* Copy kernel mappings */
+ 		sync_kernel_mappings(pgd);
+ 		ALT_LEGACY_MMU_FLUSH_TLB();
++		preempt_enable();
+ 	}
+ 	return pgd;
+ }
+diff --git a/arch/riscv/include/asm/pgtable-64.h b/arch/riscv/include/asm/pgtable-64.h
+index b794725b71c9..33e729fe3775 100644
+--- a/arch/riscv/include/asm/pgtable-64.h
++++ b/arch/riscv/include/asm/pgtable-64.h
+@@ -198,8 +198,10 @@ static inline int pud_user(pud_t pud)
+ 
+ static inline void set_pud(pud_t *pudp, pud_t pud)
+ {
++	preempt_disable();
+ 	*pudp = pud;
+ 	ALT_LEGACY_MMU_FLUSH_TLB();
++	preempt_enable();
+ }
+ 
+ static inline void pud_clear(pud_t *pudp)
+diff --git a/arch/riscv/include/asm/pgtable.h b/arch/riscv/include/asm/pgtable.h
+index 7b232d442b8f..8e660dbd94ff 100644
+--- a/arch/riscv/include/asm/pgtable.h
++++ b/arch/riscv/include/asm/pgtable.h
+@@ -231,8 +231,10 @@ static inline int pmd_leaf(pmd_t pmd)
+ 
+ static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
+ {
++	preempt_disable();
+ 	*pmdp = pmd;
+ 	ALT_LEGACY_MMU_FLUSH_TLB();
++	preempt_enable();
+ }
+ 
+ static inline void pmd_clear(pmd_t *pmdp)
+@@ -498,8 +500,10 @@ static inline int pte_same(pte_t pte_a, pte_t pte_b)
+  */
+ static inline void set_pte(pte_t *ptep, pte_t pteval)
+ {
++	preempt_disable();
+ 	*ptep = pteval;
+ 	ALT_LEGACY_MMU_FLUSH_TLB();
++	preempt_enable();
+ }
+ 
+ void flush_icache_pte(pte_t pte);
+-- 
+2.34.1
+

@@ -1,0 +1,221 @@
+From 2d4ed9e3c8e5f5124ef59976928584a068b2e513 Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Tue, 25 Jul 2023 17:47:27 +0800
+Subject: [PATCH 149/191] selftests: Remove some unsupported commands by
+ Busybox
+
+selftests/kselftest/runner.sh: Busybox's timeout command does not support "--foreground" option
+selftests/firmware: Busybox's diff command does not support "-Z" option
+selftests/lkdtm: Busybox's comm does not support "--nocheck-order" option
+selftests: Busybox's modprobe command does not support "-n" option
+selftests/filesystems: Busybox does not support sudo command and already login as root
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ .../filesystems/fat/run_fat_tests.sh          | 22 +++++++++----------
+ .../selftests/firmware/fw_filesystem.sh       |  4 ++--
+ tools/testing/selftests/ir/ir_loopback.sh     |  5 -----
+ tools/testing/selftests/kselftest/module.sh   |  7 ------
+ tools/testing/selftests/kselftest/runner.sh   |  2 +-
+ tools/testing/selftests/lkdtm/run.sh          |  2 +-
+ tools/testing/selftests/net/rtnetlink.sh      |  4 ----
+ .../selftests/static_keys/test_static_keys.sh | 10 ---------
+ .../testing/selftests/user/test_user_copy.sh  |  4 ----
+ 9 files changed, 15 insertions(+), 45 deletions(-)
+
+diff --git a/tools/testing/selftests/filesystems/fat/run_fat_tests.sh b/tools/testing/selftests/filesystems/fat/run_fat_tests.sh
+index 7f35dc3d15df..13e496b9d42a 100755
+--- a/tools/testing/selftests/filesystems/fat/run_fat_tests.sh
++++ b/tools/testing/selftests/filesystems/fat/run_fat_tests.sh
+@@ -35,7 +35,7 @@ create_loopback()
+ mount_image()
+ {
+     mkdir -p "${MNT_PATH}"
+-    sudo mount -o loop "${IMG_PATH}" "${MNT_PATH}"
++    mount -o loop "${IMG_PATH}" "${MNT_PATH}"
+ }
+ 
+ rename_exchange_test()
+@@ -44,10 +44,10 @@ rename_exchange_test()
+     local old_path="${MNT_PATH}/old_file"
+     local new_path="${MNT_PATH}/new_file"
+ 
+-    echo old | sudo tee "${old_path}" >/dev/null 2>&1
+-    echo new | sudo tee "${new_path}" >/dev/null 2>&1
+-    sudo "${rename_exchange}" "${old_path}" "${new_path}" >/dev/null 2>&1
+-    sudo sync -f "${MNT_PATH}"
++    echo old | tee "${old_path}" >/dev/null 2>&1
++    echo new | tee "${new_path}" >/dev/null 2>&1
++    "${rename_exchange}" "${old_path}" "${new_path}" >/dev/null 2>&1
++    sync -f "${MNT_PATH}"
+     grep new "${old_path}" >/dev/null 2>&1
+     grep old "${new_path}" >/dev/null 2>&1
+ }
+@@ -59,18 +59,18 @@ rename_exchange_subdir_test()
+     local old_path="${MNT_PATH}/old_file"
+     local new_path="${dir_path}/new_file"
+ 
+-    sudo mkdir -p "${dir_path}"
+-    echo old | sudo tee "${old_path}" >/dev/null 2>&1
+-    echo new | sudo tee "${new_path}" >/dev/null 2>&1
+-    sudo "${rename_exchange}" "${old_path}" "${new_path}" >/dev/null 2>&1
+-    sudo sync -f "${MNT_PATH}"
++    mkdir -p "${dir_path}"
++    echo old | tee "${old_path}" >/dev/null 2>&1
++    echo new | tee "${new_path}" >/dev/null 2>&1
++    "${rename_exchange}" "${old_path}" "${new_path}" >/dev/null 2>&1
++    sync -f "${MNT_PATH}"
+     grep new "${old_path}" >/dev/null 2>&1
+     grep old "${new_path}" >/dev/null 2>&1
+ }
+ 
+ unmount_image()
+ {
+-    sudo umount "${MNT_PATH}" &> /dev/null
++    umount "${MNT_PATH}" &> /dev/null
+ }
+ 
+ create_loopback
+diff --git a/tools/testing/selftests/firmware/fw_filesystem.sh b/tools/testing/selftests/firmware/fw_filesystem.sh
+index 1a99aea0549e..972b62809bd5 100755
+--- a/tools/testing/selftests/firmware/fw_filesystem.sh
++++ b/tools/testing/selftests/firmware/fw_filesystem.sh
+@@ -223,7 +223,7 @@ read_firmwares()
+ 		# -Z required for now -- check for yourself, md5sum
+ 		# on $FW and DIR/read_firmware will yield the same. Even
+ 		# cmp agrees, so something is off.
+-		if ! diff -q -Z "$fwfile" $DIR/read_firmware 2>/dev/null ; then
++		if ! diff -q "$fwfile" $DIR/read_firmware 2>/dev/null ; then
+ 			echo "request #$i: firmware was not loaded" >&2
+ 			exit 1
+ 		fi
+@@ -264,7 +264,7 @@ read_firmwares_expect_nofile()
+ 	for i in $(seq 0 3); do
+ 		config_set_read_fw_idx $i
+ 		# Ensures contents differ
+-		if diff -q -Z "$FW" $DIR/read_firmware 2>/dev/null ; then
++		if diff -q "$FW" $DIR/read_firmware 2>/dev/null ; then
+ 			echo "request $i: file was not expected to match" >&2
+ 			exit 1
+ 		fi
+diff --git a/tools/testing/selftests/ir/ir_loopback.sh b/tools/testing/selftests/ir/ir_loopback.sh
+index aff9299c9416..74ba71b809bf 100755
+--- a/tools/testing/selftests/ir/ir_loopback.sh
++++ b/tools/testing/selftests/ir/ir_loopback.sh
+@@ -9,11 +9,6 @@ if [ $UID != 0 ]; then
+ 	exit $ksft_skip
+ fi
+ 
+-if ! /sbin/modprobe -q -n rc-loopback; then
+-        echo "ir_loopback: module rc-loopback is not found in /lib/modules/`uname -r` [SKIP]"
+-        exit $ksft_skip
+-fi
+-
+ /sbin/modprobe rc-loopback
+ if [ $? -ne 0 ]; then
+ 	exit
+diff --git a/tools/testing/selftests/kselftest/module.sh b/tools/testing/selftests/kselftest/module.sh
+index fb4733faff12..14b01f8a05fc 100755
+--- a/tools/testing/selftests/kselftest/module.sh
++++ b/tools/testing/selftests/kselftest/module.sh
+@@ -22,7 +22,6 @@ modprobe="/sbin/modprobe"
+ main() {
+     parse_args "$@"
+     assert_root
+-    assert_have_module
+     run_module
+ }
+ 
+@@ -47,12 +46,6 @@ assert_root() {
+     fi
+ }
+ 
+-assert_have_module() {
+-    if ! $modprobe -q -n $module; then
+-	skip "module $module is not found"
+-    fi
+-}
+-
+ run_module() {
+     if $modprobe -q $module $args; then
+ 	$modprobe -q -r $module
+diff --git a/tools/testing/selftests/kselftest/runner.sh b/tools/testing/selftests/kselftest/runner.sh
+index 294619ade49f..36f317bf75b9 100644
+--- a/tools/testing/selftests/kselftest/runner.sh
++++ b/tools/testing/selftests/kselftest/runner.sh
+@@ -35,7 +35,7 @@ tap_timeout()
+ {
+ 	# Make sure tests will time out if utility is available.
+ 	if [ -x /usr/bin/timeout ] ; then
+-		/usr/bin/timeout --foreground "$kselftest_timeout" $1
++		/usr/bin/timeout "$kselftest_timeout" $1
+ 	else
+ 		$1
+ 	fi
+diff --git a/tools/testing/selftests/lkdtm/run.sh b/tools/testing/selftests/lkdtm/run.sh
+index 95e904959207..2d602c226677 100755
+--- a/tools/testing/selftests/lkdtm/run.sh
++++ b/tools/testing/selftests/lkdtm/run.sh
+@@ -94,7 +94,7 @@ for i in $(seq 1 $repeat); do
+ done
+ 
+ # Record and dump the results
+-dmesg | comm --nocheck-order -13 "$DMESG" - > "$LOG" || true
++dmesg | comm -13 "$DMESG" - > "$LOG" || true
+ 
+ cat "$LOG"
+ # Check for expected output
+diff --git a/tools/testing/selftests/net/rtnetlink.sh b/tools/testing/selftests/net/rtnetlink.sh
+index cafd14b1ed2a..924ff49a8119 100755
+--- a/tools/testing/selftests/net/rtnetlink.sh
++++ b/tools/testing/selftests/net/rtnetlink.sh
+@@ -520,10 +520,6 @@ kci_test_encap_fou()
+ 		return $ksft_skip
+ 	fi
+ 
+-	if ! /sbin/modprobe -q -n fou; then
+-		echo "SKIP: module fou is not found"
+-		return $ksft_skip
+-	fi
+ 	/sbin/modprobe -q fou
+ 	ip -netns "$testns" fou add port 7777 ipproto 47 2>/dev/null
+ 	if [ $? -ne 0 ];then
+diff --git a/tools/testing/selftests/static_keys/test_static_keys.sh b/tools/testing/selftests/static_keys/test_static_keys.sh
+index fc9f8cde7d42..543fdc0d6844 100755
+--- a/tools/testing/selftests/static_keys/test_static_keys.sh
++++ b/tools/testing/selftests/static_keys/test_static_keys.sh
+@@ -5,16 +5,6 @@
+ # Kselftest framework requirement - SKIP code is 4.
+ ksft_skip=4
+ 
+-if ! /sbin/modprobe -q -n test_static_key_base; then
+-	echo "static_key: module test_static_key_base is not found [SKIP]"
+-	exit $ksft_skip
+-fi
+-
+-if ! /sbin/modprobe -q -n test_static_keys; then
+-	echo "static_key: module test_static_keys is not found [SKIP]"
+-	exit $ksft_skip
+-fi
+-
+ if /sbin/modprobe -q test_static_key_base; then
+ 	if /sbin/modprobe -q test_static_keys; then
+ 		echo "static_key: ok"
+diff --git a/tools/testing/selftests/user/test_user_copy.sh b/tools/testing/selftests/user/test_user_copy.sh
+index f9b31a57439b..a88bd763eb5b 100755
+--- a/tools/testing/selftests/user/test_user_copy.sh
++++ b/tools/testing/selftests/user/test_user_copy.sh
+@@ -5,10 +5,6 @@
+ # Kselftest framework requirement - SKIP code is 4.
+ ksft_skip=4
+ 
+-if ! /sbin/modprobe -q -n test_user_copy; then
+-	echo "user: module test_user_copy is not found [SKIP]"
+-	exit $ksft_skip
+-fi
+ if /sbin/modprobe -q test_user_copy; then
+ 	/sbin/modprobe -q -r test_user_copy
+ 	echo "user_copy: ok"
+-- 
+2.34.1
+

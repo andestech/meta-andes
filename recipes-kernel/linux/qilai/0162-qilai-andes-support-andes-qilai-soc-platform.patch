@@ -1,0 +1,979 @@
+From 71a65e033aa280623d9d303377bbe36dd2680f7b Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Wed, 21 Feb 2024 11:55:45 +0800
+Subject: [PATCH 162/191] qilai: andes: support andes qilai soc platform
+
+add qilai defconfig and dts.
+---
+ arch/riscv/Kconfig                      |   2 +-
+ arch/riscv/Kconfig.socs                 |   7 +
+ arch/riscv/Makefile                     |   4 +
+ arch/riscv/boot/dts/andes/Makefile      |   4 +
+ arch/riscv/boot/dts/andes/qilai.dts     | 438 +++++++++++++++++++++++
+ arch/riscv/boot/dts/andes/qilai_gpu.dts | 439 ++++++++++++++++++++++++
+ arch/riscv/configs/qilai.config         |   2 +
+ 7 files changed, 895 insertions(+), 1 deletion(-)
+ create mode 100644 arch/riscv/boot/dts/andes/qilai.dts
+ create mode 100644 arch/riscv/boot/dts/andes/qilai_gpu.dts
+ create mode 100644 arch/riscv/configs/qilai.config
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 7db6b7587861..30c414f83925 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -129,7 +129,7 @@ config RISCV
+ 	select THREAD_INFO_IN_TASK
+ 	select TRACE_IRQFLAGS_SUPPORT
+ 	select UACCESS_MEMCPY if !MMU
+-	select ZONE_DMA32 if 64BIT
++	select ZONE_DMA32 if 64BIT && !SOC_QILAI
+ 
+ config ARCH_MMAP_RND_BITS_MIN
+ 	default 18 if 64BIT
+diff --git a/arch/riscv/Kconfig.socs b/arch/riscv/Kconfig.socs
+index d70b40f6d94a..2c3c816e9637 100644
+--- a/arch/riscv/Kconfig.socs
++++ b/arch/riscv/Kconfig.socs
+@@ -25,8 +25,15 @@ config PLAT_AE350
+ 	select ERRATA_ANDES if !XIP_KERNEL
+ 	help
+ 	  This enables support for Andes AE350 platform hardware.
++
+ endchoice
+ 
++config SOC_QILAI
++	bool "Andes QILAI Platform"
++	depends on PLAT_AE350
++	help
++	  This enables support for Andes QILAI platform hardware.
++
+ config SOC_MICROCHIP_POLARFIRE
+ 	bool "Microchip PolarFire SoCs"
+ 	select MCHP_CLK_MPFS
+diff --git a/arch/riscv/Makefile b/arch/riscv/Makefile
+index 73e975cddd03..d95009156884 100644
+--- a/arch/riscv/Makefile
++++ b/arch/riscv/Makefile
+@@ -222,3 +222,7 @@ ae350_rv64_smp_sv48_defconfig:
+ PHONY += ae350_rv64_ax25_amp_defconfig
+ ae350_rv64_ax25_amp_defconfig:
+ 	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config smp.config amp.config sv39.config
++
++PHONY += qilai_rv64_smp_defconfig
++qilai_rv64_smp_defconfig:
++	$(Q)$(MAKE) -f $(srctree)/Makefile andes_defconfig andes-support.config 64-bit.config smp.config sv39.config qilai.config
+\ No newline at end of file
+diff --git a/arch/riscv/boot/dts/andes/Makefile b/arch/riscv/boot/dts/andes/Makefile
+index c165e1ab3d0a..db80bcfdd58b 100644
+--- a/arch/riscv/boot/dts/andes/Makefile
++++ b/arch/riscv/boot/dts/andes/Makefile
+@@ -19,3 +19,7 @@ dtb-$(CONFIG_PLAT_AE350) += ax45mp_c8_ae350.dtb
+ # FPGA : VU19P
+ dtb-$(CONFIG_PLAT_AE350) += ax65mp_c2_d_dsp_ae350.dtb
+ obj-$(CONFIG_BUILTIN_DTB) += $(addsuffix .o, $(dtb-y))
++
++# Qilai
++dtb-$(CONFIG_SOC_QILAI) += qilai.dtb
++dtb-$(CONFIG_SOC_QILAI) += qilai_gpu.dtb
+\ No newline at end of file
+diff --git a/arch/riscv/boot/dts/andes/qilai.dts b/arch/riscv/boot/dts/andes/qilai.dts
+new file mode 100644
+index 000000000000..e56e1c7fa437
+--- /dev/null
++++ b/arch/riscv/boot/dts/andes/qilai.dts
+@@ -0,0 +1,438 @@
++/dts-v1/;
++
++/ {
++	compatible = "andestech,ae350";
++	#address-cells = <0x2>;
++	#size-cells = <0x2>;
++	dma-coherent;
++
++	cpus {
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		timebase-frequency = <62500000>;
++
++		cpu@0 {
++			device_type = "cpu";
++			reg = <0x0>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0xv5-0p0xdsp0p0";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x5F5E100>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x1>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x2>;
++			};
++		};
++
++		cpu@1 {
++			device_type = "cpu";
++			reg = <0x1>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0xv5-0p0xdsp0p0";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x5F5E100>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x1>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x3>;
++			};
++		};
++
++		cpu@2 {
++			device_type = "cpu";
++			reg = <0x2>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0xv5-0p0xdsp0p0";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x5F5E100>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x1>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x4>;
++			};
++		};
++
++		cpu@3 {
++			device_type = "cpu";
++			reg = <0x3>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0xv5-0p0xdsp0p0";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x5F5E100>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x1>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x5>;
++			};
++		};
++	};
++
++	l2-cache@200000 {
++		compatible = "cache";
++		cache-level = <0x2>;
++		cache-size = <0x200000>;
++		reg = <0x0 0x00200000 0x0 0x100000>;
++		andes,inst-prefetch = <0x3>;
++		andes,data-prefetch = <0x3>;
++		andes,tag-ram-ctl = <0x0 0x0>;
++		andes,data-ram-ctl = <0x0 0x0>;
++		interrupts = <0x10 0x04>;
++		phandle = <0x1>;
++	};
++
++	memory@400000000 {
++		device_type = "memory";
++		reg = <0x04 0x00000000 0x4 0x00000000>;
++	};
++
++	soc {
++		#address-cells = <0x2>;
++		#size-cells = <0x2>;
++		compatible = "andestech,riscv-ae350-soc", "simple-bus";
++		ranges;
++		dma-ranges = <0x44 0x00000000 0x4 0x00000000 0x4 0x00000000>;
++
++		interrupt-controller@2000000 {
++			compatible = "riscv,plic0";
++			#address-cells = <0x2>;
++			#interrupt-cells = <0x2>;
++			interrupt-controller;
++			reg = <0x0 0x02000000 0x0 0x2000000>;
++			riscv,ndev = <0x47>;
++			interrupts-extended = <0x2 0xb 0x2 0x9 0x3 0xb 0x3 0x9 0x4 0xb 0x4 0x9 0x5 0xb 0x5 0x9>;
++			phandle = <0x6>;
++		};
++
++		interrupt-controller@400000 {
++			compatible = "riscv,plic1";
++			#address-cells = <0x2>;
++			#interrupt-cells = <0x2>;
++			interrupt-controller;
++			reg = <0x0 0x00400000 0x0 0x400000>;
++			riscv,ndev = <0x4>;
++			interrupts-extended = <0x2 0x3 0x3 0x3 0x4 0x3 0x5 0x3>;
++		};
++
++		plmt0@100000 {
++			compatible = "riscv,plmt0";
++			reg = <0x0 0x00100000 0x0 0x100000>;
++			interrupts-extended = <0x2 0x7 0x3 0x7 0x4 0x7 0x5 0x7>;
++		};
++
++		/* DM0 */
++		pci@80000000 {
++			compatible = "snps,dw-pcie";
++			device_type = "pci";
++			reg = <0x0 0x80000000 0x0 0x20000000>,/* DBI registers */
++			<0x20 0x00000000 0x0 0x00010000>,/* Configuration registers */
++			<0x0 0x04000000 0x0 0x00001000>;/* SII registers */
++			reg-names = "dbi", "config", "sii";
++			#address-cells = <3>;
++			#size-cells = <2>;
++				/* 1.875 GB Non-prefetchable 64bit memory */
++			ranges = <0x03000000 0x00 0x10000000 0x20 0x10000000 0x0 0x70000000>,
++				<0x43000000 0x00 0x80000000 0x20 0x80000000 0x0 0xF0000000>;
++				/* 3.8 GB Prefetchable 64bit memory */
++			interrupts = <0xF 0x4>,<0xF 0x4>;
++			interrupt-parent = <0x6>;
++			interrupt-names = "pcie0_int";
++			#interrupt-cells = <1>;
++			bus-range = <0x0 0xff>;
++			num-viewport = <4>;
++			/* dma-ranges = <0x43000000 0x44 0x00000000 0x4 0x00000000 0x4 0x00000000>; */
++		};
++
++		/* DM1 */
++		pci@a0000000 {
++			compatible = "snps,dw-pcie";
++			device_type = "pci";
++			reg = <0x0 0xA0000000 0x0 0x20000000>,/* DBI registers */
++			<0x10 0x00000000 0x0 0x00010000>,/* Configuration registers */
++			<0x0 0x04001000 0x0 0x00001000>;/* SII registers */
++			reg-names = "dbi", "config", "sii";
++			#address-cells = <3>;
++			#size-cells = <2>;
++				/* 1.875 GB Non-prefetchable 64bit memory*/
++			ranges = <0x03000000 0x00 0x10000000 0x10 0x10000000 0x0 0x70000000>,
++				<0x42000000 0x00 0x80000000 0x10 0x80000000 0x0 0xF0000000>;
++				/* 3.8 GB Prefetchable 64bit memory */
++			interrupts = <0xE 0x4>,<0xE 0x4>;
++			interrupt-parent = <0x6>;
++			interrupt-names = "pcie1_int";
++			#interrupt-cells = <1>;
++			bus-range = <0x0 0xff>;
++			num-viewport = <4>;
++			/* dma-ranges = <0x43000000 0x44 0x00000000 0x4 0x00000000 0x4 0x00000000>; */
++		};
++
++		/* DM2 */
++		pci@c0000000 {
++			compatible = "snps,dw-pcie";
++			device_type = "pci";
++			reg = <0x0 0xC0000000 0x0 0x20000000>,/* DBI registers */
++			<0x18 0x00000000 0x0 0x00010000>,/* Configuration registers */
++			<0x0 0x04002000 0x0 0x00001000>;/* SII registers */
++			reg-names = "dbi", "config", "sii";
++			#address-cells = <3>;
++			#size-cells = <2>;
++				/* 1.875 GB Non-prefetchable 64bit memory*/
++			ranges = <0x03000000 0x00 0x10000000 0x18 0x10000000 0x0 0x70000000>,
++				<0x43000000 0x00 0x80000000 0x18 0x80000000 0x0 0xF0000000>;
++				/* 3.8 GB Prefetchable 64bit memory */
++			interrupts = <0xD 0x4>,<0xD 0x4>;
++			interrupt-parent = <0x6>;
++			interrupt-names = "pcie2_int";
++			#interrupt-cells = <1>;
++			bus-range = <0x0 0xff>;
++			num-viewport = <4>;
++			/* dma-ranges = <0x43000000 0x44 0x00000000 0x4 0x00000000 0x4 0x00000000>; */
++		};
++	};
++
++	virt_100mhz {
++		#clock-cells = <0x0>;
++		compatible = "fixed-clock";
++		clock-frequency = <0x5f5e100>;
++		phandle = <0x7>;
++	};
++
++	smu@30100000 {
++		compatible = "andestech,atcsmu";
++		reg = <0x0 0x30100000 0x0 0x100000>;
++	};
++
++	pclk: clock-pclk {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <62500000>;
++		clock-output-names = "pclk";
++	};
++
++	spi_clk: clock-spi {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <200000000>;
++		clock-output-names = "spi_clk";
++	};
++
++	i2c_clk: clock-i2c {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <100000000>;
++		clock-output-names = "i2c_clk";
++	};
++
++	wdt@30500000 {
++		compatible = "andestech,atcwdt200";
++		interrupts = <0x0 0x4>;
++		reg = <0x0 0x30500000 0x0 0x100000>;
++		clock-frequency = <0xe4e1c0>;
++		interrupt-parent = <0x6>;
++	};
++
++	timer@30400000 {
++		compatible = "andestech,atcpit100";
++		reg = <0x0 0x30400000 0x0 0x100000>;
++		clock-frequency = <400000000>;
++		interrupts = <0x3 0x4>;
++		interrupt-parent = <0x6>;
++	};
++
++	serial@30300000 {
++		compatible = "andestech,uart16550", "ns16550a";
++		reg = <0x0 0x30300000 0x0 0x100000>;
++		interrupts = <0x9 0x4>;
++		clock-frequency = <50000000>;
++		reg-shift = <0x2>;
++		reg-offset = <0x20>;
++		no-loopback-test = <0x1>;
++		interrupt-parent = <0x6>;
++		reg-io-width = <0x04>;
++	};
++	gpio@30700000 {
++		compatible = "andestech,atcgpio100";
++		reg = <0x0 0x30700000 0x0 0x100000>;
++		interrupts = <0x7 0x4>;
++		interrupt-parent = <0x6>;
++	};
++
++	rtc@30600000 {
++		compatible = "andestech,atcrtc100";
++		reg = <0x0 0x30600000 0x0 0x100000>;
++		interrupts = <0x1 0x4 0x2 0x4>;
++		interrupt-parent = <0x6>;
++		wakeup-source;
++	};
++
++	mmc@30c00000 {
++		compatible = "andestech,atfsdc010g";
++		max-frequency = <0x5f5e100>;
++		clock-freq-min-max = <0x61a80 0x5f5e100>;
++		fifo-depth = <0x10>;
++		reg = <0x0 0x30c00000 0x0 0x1000>;
++		interrupts = <0x12 0x4>;
++		interrupt-parent = <0x6>;
++		dmas = <&dma0 9>;
++		dma-names = "rxtx";
++		dma-coherent;
++	};
++
++	dma0: dma@30a00000 {
++		compatible = "andestech,atcdmac300g";
++		reg = <0x0 0x30a00000 0x0 0x1000>;
++		iocp-address = <0x0 0x30100400 0x0 0x10>;
++		interrupts = <10 4>;
++		interrupt-parent = <0x6>;
++		#dma-cells = <1>;
++		dma-channels = <0x8>;
++	};
++
++	pmu {
++		device_type = "pmu";
++		compatible = "riscv,andes-pmu";
++	};
++
++	nor@0,0 {
++		compatible = "cfi-flash";
++		reg = <0x0 0x88000000 0x0 0x1000>;
++		bank-width = <0x2>;
++		device-width = <0x1>;
++	};
++
++	spi@30900000 {
++		compatible = "andestech,atcspi200";
++		reg = <0x0 0x30900000 0x0 0x100000>;
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		num-cs = <0x1>;
++		interrupts = <0x4 0x4>;
++		interrupt-parent = <0x6>;
++		clocks = <&spi_clk>;
++		clock-names = "spi_clk_src";
++
++		flash@0 {
++			compatible = "mx25u1635e", "jedec,spi-nor";
++			spi-max-frequency = <20000000>;
++			reg = <0x0>;
++			spi-cpol;
++			spi-cpha;
++		};
++	};
++
++	pwm@30400000 {
++		compatible = "andestech,atcpit100-pwm";
++		reg = <0x0 0x30400000 0x0 0x100000>;
++		clock-frequency = <0x17d78400>;
++		interrupts = <0x3 0x4>;
++		interrupt-parent = <0x6>;
++		pwm-cells = <0x2>;
++	};
++
++	i2c@30800000 {
++		compatible = "andestech,atciic100";
++		reg = <0x0 0x30800000 0x0 0x100000>;
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		interrupts = <6 0x4>;
++		interrupt-parent = <0x6>;
++		clocks = <&i2c_clk>;
++		clock-names = "i2c_clk_src";
++
++		rt5640: rt5640@1c {
++			compatible = "realtek,rt5640";
++			reg = <0x1c>;
++			interrupts = <0x0 0x4>;
++			interrupt-parent = <0x6>;
++		};
++
++		rtc@68 {
++			compatible = "dallas,ds1374";
++			reg = <0x68>;
++		};
++	};
++
++	i2s: i2s@30b00000 {
++		compatible = "andestech,ftsspi2s";
++		reg = <0x0 0x30b00000 0x0 0x1000>;
++		interrupts = <17 0x4>;
++		interrupt-parent = <0x6>;
++		clock-frequency = <100000000>;
++		dmas = <&dma0 0xF>, <&dma0 0xE>;
++		dma-names = "rx", "tx";
++	};
++
++	sound-rt5640 {
++		compatible = "andes,andes-audio-rt5640";
++		andes,model = "RT5640-I2S";
++		andes,i2s-controller = <&i2s>;
++		andes,audio-codec = <&rt5640>;
++	};
++
++	aliases {
++		uart0 = "/serial@30300000";
++		spi0 = "/spi@30900000";
++		i2c0 = "/i2c@30800000";
++	};
++
++	chosen {
++		bootargs = "console=ttyS0,38400n8 earlycon=sbi debug loglevel=7";
++		stdout-path = "uart0:38400n8";
++	};
++};
+diff --git a/arch/riscv/boot/dts/andes/qilai_gpu.dts b/arch/riscv/boot/dts/andes/qilai_gpu.dts
+new file mode 100644
+index 000000000000..1331e16db9f5
+--- /dev/null
++++ b/arch/riscv/boot/dts/andes/qilai_gpu.dts
+@@ -0,0 +1,439 @@
++/dts-v1/;
++
++/ {
++	compatible = "andestech,ae350";
++	#address-cells = <0x2>;
++	#size-cells = <0x2>;
++	dma-coherent;
++
++	cpus {
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		timebase-frequency = <62500000>;
++
++		cpu@0 {
++			device_type = "cpu";
++			reg = <0x0>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0xv5-0p0xdsp0p0";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x5F5E100>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x1>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x2>;
++			};
++		};
++
++		cpu@1 {
++			device_type = "cpu";
++			reg = <0x1>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0xv5-0p0xdsp0p0";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x5F5E100>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x1>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x3>;
++			};
++		};
++
++		cpu@2 {
++			device_type = "cpu";
++			reg = <0x2>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0xv5-0p0xdsp0p0";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x5F5E100>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x1>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x4>;
++			};
++		};
++
++		cpu@3 {
++			device_type = "cpu";
++			reg = <0x3>;
++			status = "okay";
++			compatible = "riscv";
++			riscv,isa = "rv64i2p0m2p0a2p0f2p0d2p0c2p0xv5-0p0xdsp0p0";
++			riscv,priv-major = <0x1>;
++			riscv,priv-minor = <0xa>;
++			mmu-type = "riscv,sv39";
++			clock-frequency = <0x5F5E100>;
++			i-cache-size = <0x8000>;
++			i-cache-sets = <0x100>;
++			i-cache-line-size = <0x40>;
++			i-cache-block-size = <0x40>;
++			d-cache-size = <0x8000>;
++			d-cache-sets = <0x80>;
++			d-cache-line-size = <0x40>;
++			d-cache-block-size = <0x40>;
++			next-level-cache = <0x1>;
++
++			interrupt-controller {
++				#interrupt-cells = <0x1>;
++				interrupt-controller;
++				compatible = "riscv,cpu-intc";
++				phandle = <0x5>;
++			};
++		};
++	};
++
++	l2-cache@200000 {
++		compatible = "cache";
++		cache-level = <0x2>;
++		cache-size = <0x200000>;
++		reg = <0x0 0x00200000 0x0 0x100000>;
++		andes,inst-prefetch = <0x3>;
++		andes,data-prefetch = <0x3>;
++		andes,tag-ram-ctl = <0x0 0x0>;
++		andes,data-ram-ctl = <0x0 0x0>;
++		interrupts = <0x10 0x04>;
++		phandle = <0x1>;
++	};
++
++	memory@400000000 {
++		device_type = "memory";
++		reg = <0x04 0x00000000 0x4 0x00000000>;
++	};
++
++	soc {
++		#address-cells = <0x2>;
++		#size-cells = <0x2>;
++		compatible = "andestech,riscv-ae350-soc", "simple-bus";
++		ranges;
++		dma-ranges = <0x44 0x00000000 0x4 0x00000000 0x4 0x00000000>;
++
++		interrupt-controller@2000000 {
++			compatible = "riscv,plic0";
++			#address-cells = <0x2>;
++			#interrupt-cells = <0x2>;
++			interrupt-controller;
++			reg = <0x0 0x02000000 0x0 0x2000000>;
++			riscv,ndev = <0x47>;
++			interrupts-extended = <0x2 0xb 0x2 0x9 0x3 0xb 0x3 0x9 0x4 0xb 0x4 0x9 0x5 0xb 0x5 0x9>;
++			phandle = <0x6>;
++		};
++
++		interrupt-controller@400000 {
++			compatible = "riscv,plic1";
++			#address-cells = <0x2>;
++			#interrupt-cells = <0x2>;
++			interrupt-controller;
++			reg = <0x0 0x00400000 0x0 0x400000>;
++			riscv,ndev = <0x4>;
++			interrupts-extended = <0x2 0x3 0x3 0x3 0x4 0x3 0x5 0x3>;
++		};
++
++		plmt0@100000 {
++			compatible = "riscv,plmt0";
++			reg = <0x0 0x00100000 0x0 0x100000>;
++			interrupts-extended = <0x2 0x7 0x3 0x7 0x4 0x7 0x5 0x7>;
++		};
++
++		/* DM0 */
++		pci@80000000 {
++			compatible = "snps,dw-pcie";
++			device_type = "pci";
++			reg = <0x0 0x80000000 0x0 0x20000000>,/* DBI registers */
++			<0x20 0x00000000 0x0 0x00010000>,/* Configuration registers */
++			<0x0 0x04000000 0x0 0x00001000>;/* SII registers */
++			reg-names = "dbi", "config", "sii";
++			#address-cells = <3>;
++			#size-cells = <2>;
++				/* 1.875 GB Non-prefetchable 64bit memory */
++			ranges = <0x03000000 0x00 0x10000000 0x20 0x10000000 0x0 0x70000000>,
++				<0x42000000 0x00 0x80000000 0x20 0x80000000 0x1F 0x80000000>;
++				/* 126 GB Prefetchable 64bit memory */
++			interrupts = <0xF 0x4>,<0xF 0x4>;
++			interrupt-parent = <0x6>;
++			interrupt-names = "pcie0_int";
++			#interrupt-cells = <1>;
++			bus-range = <0x0 0xff>;
++			num-viewport = <4>;
++			/* dma-ranges = <0x43000000 0x44 0x00000000 0x4 0x00000000 0x4 0x00000000>; */
++		};
++
++		/* DM1 */
++		pci@a0000000 {
++			compatible = "snps,dw-pcie";
++			device_type = "pci";
++			reg = <0x0 0xA0000000 0x0 0x20000000>,/* DBI registers */
++			<0x10 0x00000000 0x0 0x00010000>,/* Configuration registers */
++			<0x0 0x04001000 0x0 0x00001000>;/* SII registers */
++			reg-names = "dbi", "config", "sii";
++			#address-cells = <3>;
++			#size-cells = <2>;
++				/* 1.875 GB Non-prefetchable 64bit memory*/
++			ranges = <0x03000000 0x00 0x10000000 0x10 0x10000000 0x0 0x70000000>,
++				<0x42000000 0x00 0x80000000 0x10 0x80000000 0x7 0x80000000>;
++				/* 30 GB Prefetchable 64bit memory */
++			interrupts = <0xE 0x4>,<0xE 0x4>;
++			interrupt-parent = <0x6>;
++			interrupt-names = "pcie1_int";
++			#interrupt-cells = <1>;
++			bus-range = <0x0 0xff>;
++			num-viewport = <4>;
++			/* dma-ranges = <0x43000000 0x44 0x00000000 0x4 0x00000000 0x4 0x00000000>; */
++		};
++
++		/* DM2 */
++		pci@c0000000 {
++			compatible = "snps,dw-pcie";
++			device_type = "pci";
++			reg = <0x0 0xC0000000 0x0 0x20000000>,/* DBI registers */
++			<0x18 0x00000000 0x0 0x00010000>,/* Configuration registers */
++			<0x0 0x04002000 0x0 0x00001000>;/* SII registers */
++			reg-names = "dbi", "config", "sii";
++			#address-cells = <3>;
++			#size-cells = <2>;
++				/* 1.875 GB Non-prefetchable 64bit memory*/
++			ranges = <0x03000000 0x00 0x10000000 0x18 0x10000000 0x0 0x70000000>,
++				<0x42000000 0x00 0x80000000 0x18 0x80000000 0x7 0x80000000>;
++				/* 30 GB Prefetchable 64bit memory */
++			interrupts = <0xD 0x4>,<0xD 0x4>;
++			interrupt-parent = <0x6>;
++			interrupt-names = "pcie2_int";
++			#interrupt-cells = <1>;
++			bus-range = <0x0 0xff>;
++			num-viewport = <4>;
++			/* dma-ranges = <0x43000000 0x44 0x00000000 0x4 0x00000000 0x4 0x00000000>; */
++		};
++	};
++
++	virt_100mhz {
++		#clock-cells = <0x0>;
++		compatible = "fixed-clock";
++		clock-frequency = <0x5f5e100>;
++		phandle = <0x7>;
++	};
++
++	smu@30100000 {
++		compatible = "andestech,atcsmu";
++		reg = <0x0 0x30100000 0x0 0x100000>;
++	};
++
++	pclk: clock-pclk {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <62500000>;
++		clock-output-names = "pclk";
++	};
++
++	spi_clk: clock-spi {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <200000000>;
++		clock-output-names = "spi_clk";
++	};
++
++	i2c_clk: clock-i2c {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <100000000>;
++		clock-output-names = "i2c_clk";
++	};
++
++	wdt@30500000 {
++		compatible = "andestech,atcwdt200";
++		interrupts = <0x0 0x4>;
++		reg = <0x0 0x30500000 0x0 0x100000>;
++		clock-frequency = <0xe4e1c0>;
++		interrupt-parent = <0x6>;
++	};
++
++	timer@30400000 {
++		compatible = "andestech,atcpit100";
++		reg = <0x0 0x30400000 0x0 0x100000>;
++		clock-frequency = <400000000>;
++		interrupts = <0x3 0x4>;
++		interrupt-parent = <0x6>;
++	};
++
++	serial@30300000 {
++		compatible = "andestech,uart16550", "ns16550a";
++		reg = <0x0 0x30300000 0x0 0x100000>;
++		interrupts = <0x9 0x4>;
++		clock-frequency = <50000000>;
++		reg-shift = <0x2>;
++		reg-offset = <0x20>;
++		no-loopback-test = <0x1>;
++		interrupt-parent = <0x6>;
++		reg-io-width = <0x04>;
++	};
++
++	gpio@30700000 {
++		compatible = "andestech,atcgpio100";
++		reg = <0x0 0x30700000 0x0 0x100000>;
++		interrupts = <0x7 0x4>;
++		interrupt-parent = <0x6>;
++	};
++
++	rtc@30600000 {
++		compatible = "andestech,atcrtc100";
++		reg = <0x0 0x30600000 0x0 0x100000>;
++		interrupts = <0x1 0x4 0x2 0x4>;
++		interrupt-parent = <0x6>;
++		wakeup-source;
++	};
++
++	mmc@30c00000 {
++		compatible = "andestech,atfsdc010g";
++		max-frequency = <0x5f5e100>;
++		clock-freq-min-max = <0x61a80 0x5f5e100>;
++		fifo-depth = <0x10>;
++		reg = <0x0 0x30c00000 0x0 0x1000>;
++		interrupts = <0x12 0x4>;
++		interrupt-parent = <0x6>;
++		dmas = <&dma0 9>;
++		dma-names = "rxtx";
++		dma-coherent;
++	};
++
++	dma0: dma@30a00000 {
++		compatible = "andestech,atcdmac300g";
++		reg = <0x0 0x30a00000 0x0 0x1000>;
++		iocp-address = <0x0 0x30100400 0x0 0x10>;
++		interrupts = <10 4>;
++		interrupt-parent = <0x6>;
++		#dma-cells = <1>;
++		dma-channels = <0x8>;
++	};
++
++	pmu {
++		device_type = "pmu";
++		compatible = "riscv,andes-pmu";
++	};
++
++	nor@0,0 {
++		compatible = "cfi-flash";
++		reg = <0x0 0x88000000 0x0 0x1000>;
++		bank-width = <0x2>;
++		device-width = <0x1>;
++	};
++
++	spi@30900000 {
++		compatible = "andestech,atcspi200";
++		reg = <0x0 0x30900000 0x0 0x100000>;
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		num-cs = <0x1>;
++		interrupts = <0x4 0x4>;
++		interrupt-parent = <0x6>;
++		clocks = <&spi_clk>;
++		clock-names = "spi_clk_src";
++
++		flash@0 {
++			compatible = "mx25u1635e", "jedec,spi-nor";
++			spi-max-frequency = <20000000>;
++			reg = <0x0>;
++			spi-cpol;
++			spi-cpha;
++		};
++	};
++
++	pwm@30400000 {
++		compatible = "andestech,atcpit100-pwm";
++		reg = <0x0 0x30400000 0x0 0x100000>;
++		clock-frequency = <0x17d78400>;
++		interrupts = <0x3 0x4>;
++		interrupt-parent = <0x6>;
++		pwm-cells = <0x2>;
++	};
++
++	i2c@30800000 {
++		compatible = "andestech,atciic100";
++		reg = <0x0 0x30800000 0x0 0x100000>;
++		#address-cells = <0x1>;
++		#size-cells = <0x0>;
++		interrupts = <6 0x4>;
++		interrupt-parent = <0x6>;
++		clocks = <&i2c_clk>;
++		clock-names = "i2c_clk_src";
++
++		rt5640: rt5640@1c {
++			compatible = "realtek,rt5640";
++			reg = <0x1c>;
++			interrupts = <0x0 0x4>;
++			interrupt-parent = <0x6>;
++		};
++
++		rtc@68 {
++			compatible = "dallas,ds1374";
++			reg = <0x68>;
++		};
++	};
++
++	i2s: i2s@30b00000 {
++		compatible = "andestech,ftsspi2s";
++		reg = <0x0 0x30b00000 0x0 0x1000>;
++		interrupts = <17 0x4>;
++		interrupt-parent = <0x6>;
++		clock-frequency = <100000000>;
++		dmas = <&dma0 0xF>, <&dma0 0xE>;
++		dma-names = "rx", "tx";
++	};
++
++	sound-rt5640 {
++		compatible = "andes,andes-audio-rt5640";
++		andes,model = "RT5640-I2S";
++		andes,i2s-controller = <&i2s>;
++		andes,audio-codec = <&rt5640>;
++	};
++
++	aliases {
++		uart0 = "/serial@30300000";
++		spi0 = "/spi@30900000";
++		i2c0 = "/i2c@30800000";
++	};
++
++	chosen {
++		bootargs = "console=ttyS0,38400n8 earlycon=sbi debug loglevel=7";
++		stdout-path = "uart0:38400n8";
++	};
++};
+diff --git a/arch/riscv/configs/qilai.config b/arch/riscv/configs/qilai.config
+new file mode 100644
+index 000000000000..421a7c6ed875
+--- /dev/null
++++ b/arch/riscv/configs/qilai.config
+@@ -0,0 +1,2 @@
++# CONFIG_RISCV_PMU is not set
++CONFIG_SOC_QILAI=y
+\ No newline at end of file
+-- 
+2.34.1
+

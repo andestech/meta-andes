@@ -1,0 +1,29 @@
+From 2a61c5465bd15164a24cb37c1c6e5e64228f2775 Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Fri, 9 Jun 2023 15:30:15 +0800
+Subject: [PATCH 063/191] i2c: andes: atciic100: Set the nr to -1 to
+ dynamically assign bus IDs for multiple I2C masters.
+
+1. Set the nr to -1 to dynamically assign bus IDs for multiple I2C masters.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/i2c/busses/i2c-atciic100.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/i2c/busses/i2c-atciic100.c b/drivers/i2c/busses/i2c-atciic100.c
+index 0370d103a188..b7780cf5457e 100644
+--- a/drivers/i2c/busses/i2c-atciic100.c
++++ b/drivers/i2c/busses/i2c-atciic100.c
+@@ -469,6 +469,8 @@ static int atciic_probe(struct platform_device *pdev)
+ 	padap->algo_data = iface;
+ 	padap->timeout = 3 * HZ;
+ 	padap->retries = 1;
++	padap->nr = -1;
++
+ 	rc = i2c_add_numbered_adapter(padap);
+ 	if (rc < 0) {
+ 		dev_err(&pdev->dev, "Can't add i2c adapter!\n");
+-- 
+2.34.1
+

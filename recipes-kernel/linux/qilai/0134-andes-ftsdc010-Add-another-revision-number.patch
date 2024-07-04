@@ -1,0 +1,66 @@
+From b7558809bc6bac1151f5305db31e0eb12b02ec50 Mon Sep 17 00:00:00 2001
+From: Leo Yu-Chi Liang <ycliang@andestech.com>
+Date: Tue, 5 Sep 2023 11:20:50 +0800
+Subject: [PATCH 134/191] andes: ftsdc010: Add another revision number
+
+According to Kavalan/James <jamesykm@andestech.com>,
+the revision number for future Andes SDC IP will be changed to 32'h0003_0108.
+Therefore, for backward compatibility, we add another revision number
+to accommodate this change.
+
+Signed-off-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+---
+ drivers/mmc/host/ftsdc010.c  | 4 +++-
+ drivers/mmc/host/ftsdc010g.c | 5 +++--
+ 2 files changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/mmc/host/ftsdc010.c b/drivers/mmc/host/ftsdc010.c
+index 220d041e1b63..3f913b396650 100644
+--- a/drivers/mmc/host/ftsdc010.c
++++ b/drivers/mmc/host/ftsdc010.c
+@@ -1416,6 +1416,7 @@ static int __init ftsdc_probe(struct platform_device *pdev)
+ 	struct ftsdc_mmc_config *pdata = NULL;
+ 	struct resource *r, *mem = NULL;
+ 	int ret = -ENOMEM;
++	int ret2 = -ENOMEM;
+ 	u32 con;
+ 	int irq = 0;
+ 	size_t mem_size;
+@@ -1471,8 +1472,9 @@ static int __init ftsdc_probe(struct platform_device *pdev)
+ 	/* Check revision register */
+ 	read_fixup = symbol_get(readl_fixup);
+ 	ret = read_fixup(host->base + SDC_REVISION_REG, 0x00030107, 0);
++	ret2 = read_fixup(host->base + SDC_REVISION_REG, 0x00030108, 0);
+ 	symbol_put(readl_fixup);
+-	if (!ret) {
++	if (!ret && !ret2) {
+ 		dev_err(&pdev->dev,
+ 			"failed to read revision reg, bitmap not support ftdsdc\n");
+ 		ret = -ENXIO;
+diff --git a/drivers/mmc/host/ftsdc010g.c b/drivers/mmc/host/ftsdc010g.c
+index 0f929775ace2..0787429e688a 100644
+--- a/drivers/mmc/host/ftsdc010g.c
++++ b/drivers/mmc/host/ftsdc010g.c
+@@ -1354,7 +1354,7 @@ static int __init ftsdc_probe(struct platform_device *pdev)
+ 	struct mmc_host	*mmc;
+ 	struct ftsdc_mmc_config *pdata = NULL;
+ 	struct resource *r, *mem = NULL;
+-	int ret = -ENOMEM;
++	int ret = -ENOMEM, ret2 = -ENOMEM;
+ 	u32 con;
+ 	int irq = 0;
+ 	size_t mem_size;
+@@ -1413,8 +1413,9 @@ static int __init ftsdc_probe(struct platform_device *pdev)
+ 	/* Check revision register */
+ 	read_fixup = symbol_get(readl_fixup);
+ 	ret = read_fixup(host->base + SDC_REVISION_REG, 0x00030107, 0);
++	ret2 = read_fixup(host->base + SDC_REVISION_REG, 0x00030108, 0);
+ 	symbol_put(readl_fixup);
+-	if (!ret) {
++	if (!ret && !ret2) {
+ 		dev_err(&pdev->dev,
+ 			"bitmap revision mismatch(ftsdc)\n");
+ 		ret = -ENXIO;
+-- 
+2.34.1
+

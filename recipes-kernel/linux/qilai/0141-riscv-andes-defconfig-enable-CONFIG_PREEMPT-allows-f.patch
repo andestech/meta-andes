@@ -1,0 +1,35 @@
+From cf500a7edf006ce17262136866d2b145c49dfbbd Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Thu, 19 Oct 2023 12:13:43 +0800
+Subject: [PATCH 141/191] riscv: andes: defconfig: enable CONFIG_PREEMPT allows
+ failed LTP timeout cases to pass the tests
+
+Board:
+  A25MP_4C  >> Pass
+  A27L2     >> Failed - timeout
+  AX27L2    >> Failed case : futex_cmp_requeue01
+
+QEMU:
+  rv32 >>  Failed case : thp01, cve-2011-0999
+  rv64 >>  Pass
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/configs/andes_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/riscv/configs/andes_defconfig b/arch/riscv/configs/andes_defconfig
+index 8e32ed0d6816..1adcc226b197 100644
+--- a/arch/riscv/configs/andes_defconfig
++++ b/arch/riscv/configs/andes_defconfig
+@@ -4,6 +4,7 @@ CONFIG_NO_HZ_IDLE=y
+ CONFIG_HZ_100=y
+ CONFIG_HIGH_RES_TIMERS=y
+ CONFIG_BPF_SYSCALL=y
++CONFIG_PREEMPT=y
+ CONFIG_IKCONFIG=y
+ CONFIG_IKCONFIG_PROC=y
+ CONFIG_CGROUPS=y
+-- 
+2.34.1
+

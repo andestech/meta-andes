@@ -1,0 +1,102 @@
+From 231f33c8888d699ffd8161c5c4bcb328fb1f66c8 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Mon, 7 Aug 2023 14:59:09 +0800
+Subject: [PATCH 095/191] riscv: Move Andes DSP context switch out of
+ __switch_to_aux
+
+This is for easier renaming __switch_to_{aux => fpu}() and
+introducing vector context save/restore functions in the
+following patches.
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ arch/riscv/include/asm/switch_to.h | 42 ++++++++++++++++--------------
+ 1 file changed, 23 insertions(+), 19 deletions(-)
+
+diff --git a/arch/riscv/include/asm/switch_to.h b/arch/riscv/include/asm/switch_to.h
+index 12010f8bd894..5e54bcfb0bae 100644
+--- a/arch/riscv/include/asm/switch_to.h
++++ b/arch/riscv/include/asm/switch_to.h
+@@ -47,6 +47,17 @@ static inline void fstate_restore(struct task_struct *task,
+ 	}
+ }
+ 
++static inline void __switch_to_aux(struct task_struct *prev,
++				   struct task_struct *next)
++{
++	struct pt_regs *regs;
++
++	regs = task_pt_regs(prev);
++	if (unlikely(regs->status & SR_SD))
++		fstate_save(prev, regs);
++	fstate_restore(next, task_pt_regs(next));
++}
++
+ static __always_inline bool has_fpu(void)
+ {
+ 	return static_branch_likely(&riscv_isa_ext_keys[RISCV_ISA_EXT_KEY_FPU]);
+@@ -55,6 +66,7 @@ static __always_inline bool has_fpu(void)
+ static __always_inline bool has_fpu(void) { return false; }
+ #define fstate_save(task, regs) do { } while (0)
+ #define fstate_restore(task, regs) do { } while (0)
++#define __switch_to_aux(__prev, __next) do { } while (0)
+ #endif /* CONFIG_FPU */
+ 
+ #ifdef CONFIG_DSP
+@@ -68,6 +80,13 @@ static inline void dspstate_restore(struct task_struct *task)
+ 	csr_write(CSR_UCODE, task->thread.dspstate.ucode);
+ }
+ 
++static inline void __switch_to_dsp(struct task_struct *prev,
++				   struct task_struct *next)
++{
++	dspstate_save(prev);
++	dspstate_restore(next);
++}
++
+ static __always_inline bool has_dsp(void)
+ {
+ 	return static_branch_likely(&riscv_isa_ext_keys[ANDES_ISA_EXT_KEY_DSP]);
+@@ -76,26 +95,9 @@ static __always_inline bool has_dsp(void)
+ static __always_inline bool has_dsp(void) { return false; }
+ #define dspstate_save(task) do { } while (0)
+ #define dspstate_restore(task) do { } while (0)
++#define __switch_to_dsp(__prev, __next) do { } while (0)
+ #endif /* CONFIG_DSP */
+ 
+-static inline void __switch_to_aux(struct task_struct *prev,
+-				   struct task_struct *next)
+-{
+-#ifdef CONFIG_FPU
+-	struct pt_regs *regs;
+-	regs = task_pt_regs(prev);
+-	if (unlikely(regs->status & SR_SD))
+-		fstate_save(prev, regs);
+-	fstate_restore(next, task_pt_regs(next));
+-#endif /* CONFIG_FPU */
+-#ifdef CONFIG_DSP
+-	if (has_dsp()) {
+-		dspstate_save(prev);
+-		dspstate_restore(next);
+-	}
+-#endif /* CONFIG_DSP */
+-}
+-
+ extern struct task_struct *__switch_to(struct task_struct *,
+ 				       struct task_struct *);
+ 
+@@ -103,8 +105,10 @@ extern struct task_struct *__switch_to(struct task_struct *,
+ do {							\
+ 	struct task_struct *__prev = (prev);		\
+ 	struct task_struct *__next = (next);		\
+-	if (has_fpu() || has_dsp())			\
++	if (has_fpu())			\
+ 		__switch_to_aux(__prev, __next);	\
++	if (has_dsp())			\
++		__switch_to_dsp(__prev, __next);	\
+ 	((last) = __switch_to(__prev, __next));		\
+ } while (0)
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,92 @@
+From 7fbef2a0d3d876154bd4fdcb91a3d3af49a92e9d Mon Sep 17 00:00:00 2001
+From: Dylan Jhong <dylan@andestech.com>
+Date: Mon, 19 Jun 2023 15:15:02 +0800
+Subject: [PATCH 079/191] posix_types.h: Add workaround fix for RV32 datatype
+ "__kernel_off_t"
+
+Please note that this patch is only a temporary workaround and SHOULD be
+reverted once we find a real solution.
+
+This patch adjusts RV32's "__kernel__off_t" datatype so that the "fcntl"
+failed test cases in the RV32 LTP are able to passed.
+
+In order to solve the problem of y2038, the glibc upstream of RISC-V used
+64-bit time_t and off_t for both RV32 and RV64[*1]. However, no corresponding
+modification was made on the kernel side, which caused the test cases of LTP
+fnctl to fail. So, when glibc passes the "struct flock" parameter to the
+kernel through fnctl(), it will cause an error due to inconsistent size.
+
+The strcuture of flock are shown as below:
+
+struct flock in glibc:
+------------------------------------------------------
+struct flock
+  {
+    short int l_type;
+    short int l_whence;
+    __off_t l_start;
+    __off_t l_len;
+    __off64_t l_start;
+    __off64_t l_len;             <------  "__off64_t" in glibc is 64bit
+    __pid_t l_pid;
+  };
+------------------------------------------------------
+
+struct flock in kernel 6.1:
+------------------------------------------------------
+struct flock {
+    short   l_type;
+    short   l_whence;
+    __kernel_off_t  l_start;
+    __kernel_off_t  l_len;       <----- "__kernel_off_t" in kernel is 32bit
+    __kernel_pid_t  l_pid;
+    __ARCH_FLOCK_EXTRA_SYSID
+    __ARCH_FLOCK_PAD
+};
+------------------------------------------------------
+
+We temporarily modify the "__kernel_off_t" of RV32 to 64bit to comply with
+the current glibc calling convention. However, since the current modification
+is in "include/uapi/asm-generic/posix_types.h", it may affect other
+architectures, so we should recheck the impact of this patch in the future.
+
+The patch is cherry-picked from AST520 RISCV-Linux-5.4, authored by Randolph.[*2][*3]
+
+[*1]: https://patchwork.ozlabs.org/project/glibc/patch/4e95f95966d8d7c6a8339160dc62d81c1f6a1bfb.1578824547.git.alistair.francis@wdc.com/#2360267
+[*2]: 91a838fcc2 riscv: add default kenenl macro into to posix_types.h to avoid leak
+[*3]: e7c71ee264 riscv: change __kernel_off_t type as __kernel_loff_t in RV32 default
+
+Signed-off-by: Dylan Jhong <dylan@andestech.com>
+---
+ include/uapi/asm-generic/posix_types.h | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/include/uapi/asm-generic/posix_types.h b/include/uapi/asm-generic/posix_types.h
+index b5f7594eee7a..5551ee85b28c 100644
+--- a/include/uapi/asm-generic/posix_types.h
++++ b/include/uapi/asm-generic/posix_types.h
+@@ -84,11 +84,20 @@ typedef struct {
+ /*
+  * anything below here should be completely generic
+  */
+-typedef __kernel_long_t	__kernel_off_t;
+ typedef long long	__kernel_loff_t;
+ typedef __kernel_long_t	__kernel_old_time_t;
+ #ifndef __KERNEL__
+ typedef __kernel_long_t	__kernel_time_t;
++typedef __kernel_long_t	__kernel_off_t;
++#else
++/*
++ * This is a workaround for RV32 and "SHOULD" be reverted in the future
++ */
++#if !defined(CONFIG_ARCH_32BIT_OFF_T) &&  __BITS_PER_LONG != 64
++typedef __kernel_loff_t	__kernel_off_t;
++#else
++typedef __kernel_long_t	__kernel_off_t;
++#endif
+ #endif
+ typedef long long __kernel_time64_t;
+ typedef __kernel_long_t	__kernel_clock_t;
+-- 
+2.34.1
+

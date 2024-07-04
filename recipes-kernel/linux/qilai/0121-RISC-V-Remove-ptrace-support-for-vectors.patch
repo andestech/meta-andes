@@ -1,0 +1,129 @@
+From 01be71682025e7169930d50d2cfa1f4106842144 Mon Sep 17 00:00:00 2001
+From: Palmer Dabbelt <palmer@rivosinc.com>
+Date: Wed, 16 Aug 2023 15:54:48 +0000
+Subject: [PATCH 121/191] RISC-V: Remove ptrace support for vectors
+
+We've found two bugs here: NT_RISCV_VECTOR steps on NT_RISCV_CSR (which
+is only for embedded), and we don't have vlenb in the core dumps.  Given
+that we've have a pair of bugs croup up as part of the GDB review we've
+probably got other issues, so let's just cut this for 6.5 and get it
+right.
+
+Fixes: 0c59922c769a ("riscv: Add ptrace vector support")
+Signed-off-by: Palmer Dabbelt <palmer@rivosinc.com>
+Reviewed-by: Maciej W. Rozycki <macro@orcam.me.uk>
+Signed-off-by: Andy Chiu <andy.chiu@sifive.com>
+---
+ arch/riscv/kernel/ptrace.c | 69 --------------------------------------
+ include/uapi/linux/elf.h   |  1 -
+ 2 files changed, 70 deletions(-)
+
+diff --git a/arch/riscv/kernel/ptrace.c b/arch/riscv/kernel/ptrace.c
+index 7308e22f5524..a9e73c849c6b 100644
+--- a/arch/riscv/kernel/ptrace.c
++++ b/arch/riscv/kernel/ptrace.c
+@@ -30,9 +30,6 @@ enum riscv_regset {
+ #ifdef CONFIG_FPU
+ 	REGSET_F,
+ #endif
+-#ifdef CONFIG_RISCV_ISA_V
+-	REGSET_V,
+-#endif
+ };
+ 
+ static int riscv_gpr_get(struct task_struct *target,
+@@ -89,61 +86,6 @@ static int riscv_fpr_set(struct task_struct *target,
+ }
+ #endif
+ 
+-#ifdef CONFIG_RISCV_ISA_V
+-static int riscv_vr_get(struct task_struct *target,
+-			const struct user_regset *regset,
+-			struct membuf to)
+-{
+-	struct __riscv_v_ext_state *vstate = &target->thread.vstate;
+-
+-	if (!riscv_v_vstate_query(task_pt_regs(target)))
+-		return -EINVAL;
+-
+-	/*
+-	 * Ensure the vector registers have been saved to the memory before
+-	 * copying them to membuf.
+-	 */
+-	if (target == current)
+-		riscv_v_vstate_save(current, task_pt_regs(current));
+-
+-	/* Copy vector header from vstate. */
+-	membuf_write(&to, vstate, offsetof(struct __riscv_v_ext_state, datap));
+-	membuf_zero(&to, sizeof(vstate->datap));
+-
+-	/* Copy all the vector registers from vstate. */
+-	return membuf_write(&to, vstate->datap, riscv_v_vsize);
+-}
+-
+-static int riscv_vr_set(struct task_struct *target,
+-			const struct user_regset *regset,
+-			unsigned int pos, unsigned int count,
+-			const void *kbuf, const void __user *ubuf)
+-{
+-	int ret, size;
+-	struct __riscv_v_ext_state *vstate = &target->thread.vstate;
+-
+-	if (!riscv_v_vstate_query(task_pt_regs(target)))
+-		return -EINVAL;
+-
+-	/* Copy rest of the vstate except datap */
+-	ret = user_regset_copyin(&pos, &count, &kbuf, &ubuf, vstate, 0,
+-				 offsetof(struct __riscv_v_ext_state, datap));
+-	if (unlikely(ret))
+-		return ret;
+-
+-	/* Skip copy datap. */
+-	size = sizeof(vstate->datap);
+-	count -= size;
+-	ubuf += size;
+-
+-	/* Copy all the vector registers. */
+-	pos = 0;
+-	ret = user_regset_copyin(&pos, &count, &kbuf, &ubuf, vstate->datap,
+-				 0, riscv_v_vsize);
+-	return ret;
+-}
+-#endif
+-
+ static const struct user_regset riscv_user_regset[] = {
+ 	[REGSET_X] = {
+ 		.core_note_type = NT_PRSTATUS,
+@@ -163,17 +105,6 @@ static const struct user_regset riscv_user_regset[] = {
+ 		.set = riscv_fpr_set,
+ 	},
+ #endif
+-#ifdef CONFIG_RISCV_ISA_V
+-	[REGSET_V] = {
+-		.core_note_type = NT_RISCV_VECTOR,
+-		.align = 16,
+-		.n = ((32 * RISCV_MAX_VLENB) +
+-		      sizeof(struct __riscv_v_ext_state)) / sizeof(__u32),
+-		.size = sizeof(__u32),
+-		.regset_get = riscv_vr_get,
+-		.set = riscv_vr_set,
+-	},
+-#endif
+ };
+ 
+ static const struct user_regset_view riscv_user_native_view = {
+diff --git a/include/uapi/linux/elf.h b/include/uapi/linux/elf.h
+index 5a5056c6a2a1..c7b056af9ef0 100644
+--- a/include/uapi/linux/elf.h
++++ b/include/uapi/linux/elf.h
+@@ -439,7 +439,6 @@ typedef struct elf64_shdr {
+ #define NT_MIPS_DSP	0x800		/* MIPS DSP ASE registers */
+ #define NT_MIPS_FP_MODE	0x801		/* MIPS floating-point mode */
+ #define NT_MIPS_MSA	0x802		/* MIPS SIMD registers */
+-#define NT_RISCV_VECTOR	0x900		/* RISC-V vector registers */
+ #define NT_LOONGARCH_CPUCFG	0xa00	/* LoongArch CPU config registers */
+ #define NT_LOONGARCH_CSR	0xa01	/* LoongArch control and status registers */
+ #define NT_LOONGARCH_LSX	0xa02	/* LoongArch Loongson SIMD Extension registers */
+-- 
+2.34.1
+

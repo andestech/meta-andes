@@ -1,0 +1,242 @@
+From 643df19783a1bb3b9e6521383fda41cc93a66e72 Mon Sep 17 00:00:00 2001
+From: CL Wang <cl634@andestech.com>
+Date: Wed, 20 Mar 2024 17:48:13 +0800
+Subject: [PATCH 187/191] rtc: andes: atcrtc100: Use the native Linux IO APIs
+ to read and write registers.
+
+1. Use the native Linux IO APIs to read and write registers.
+2. Change the register definition of hour from HOR_OFF to HOUR_OFF.
+3. Change the register definition of WriteDone from WD to WRITE_DONE.
+4. Update the copyright information.
+
+Signed off by: CL Wang <cl634@andestech.com>
+---
+ drivers/rtc/rtc-atcrtc100.c | 86 ++++++++++++++++++-------------------
+ 1 file changed, 43 insertions(+), 43 deletions(-)
+
+diff --git a/drivers/rtc/rtc-atcrtc100.c b/drivers/rtc/rtc-atcrtc100.c
+index e3bdef0f7576..f34ed71cf8f0 100644
+--- a/drivers/rtc/rtc-atcrtc100.c
++++ b/drivers/rtc/rtc-atcrtc100.c
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+- * Copyright (C) 2008-2017 Andes Technology Corporation
++ * Copyright (C) 2008-2024 Andes Technology Corporation
+  * Andes RTC Support
+  *
+  * Copyright (C) 2006, 2007, 2008  Paul Mundt
+@@ -30,21 +30,21 @@
+ #include <linux/of.h>
+ #include <linux/uaccess.h>
+ 
+-#define DRV_NAME		"atcrtc100"
+-#define RTC_REG(off)		\
+-		(*(volatile unsigned int *)(rtc->regbase + (off)))
+-#define RTC_ID			RTC_REG(0x00)	/* ID and Revision */
++#define DRV_NAME		 "atcrtc100"
++#define RTC_READ32(offset)	 readl(rtc->regbase + offset)
++#define RTC_WRITE32(val, offset) writel(val, rtc->regbase + offset)
++
++#define RTC_ID			0x00	/* ID and Revision */
+ #define ID_OFF			12
+ #define ID_MSK			(0xfffff << ID_OFF)
+ #define ATCRTC100ID		(0x03011 << ID_OFF)
+-#define RTC_RSV			RTC_REG(0x4)	/* Reserve */
+-
+-#define RTC_CNT			RTC_REG(0x10)	/* Counter */
+-#define RTC_ALM			RTC_REG(0x14)	/* Alarm */
++#define RTC_RSV			0x4	/* Reserve */
++#define RTC_CNT			0x10	/* Counter */
++#define RTC_ALM			0x14	/* Alarm */
+ #define DAY_OFF			17
+ #define DAY_MSK			(0x7fff)
+-#define HOR_OFF			12
+-#define HOR_MSK			(0x1f)
++#define HOUR_OFF		12
++#define HOUR_MSK		(0x1f)
+ #define MIN_OFF			6
+ #define MIN_MSK			(0x3f)
+ #define SEC_OFF			0
+@@ -54,29 +54,29 @@
+ #define RTC_MINUTE(x)		\
+ 			((x >> MIN_OFF) & MIN_MSK) /* RTC min */
+ #define RTC_HOUR(x)		\
+-			((x >> HOR_OFF) & HOR_MSK) /* RTC hour */
++			((x >> HOUR_OFF) & HOUR_MSK) /* RTC hour */
+ #define RTC_DAYS(x)		\
+ 			((x >> DAY_OFF) & DAY_MSK) /* RTC day */
+ #define RTC_ALM_SECOND		\
+-			((RTC_ALM >> SEC_OFF) & SEC_MSK) /* RTC alarm sec */
++			((RTC_READ32(RTC_ALM) >> SEC_OFF) & SEC_MSK) /* RTC alarm sec */
+ #define RTC_ALM_MINUTE		\
+-			((RTC_ALM >> MIN_OFF) & MIN_MSK) /* RTC alarm min */
++			((RTC_READ32(RTC_ALM) >> MIN_OFF) & MIN_MSK) /* RTC alarm min */
+ #define RTC_ALM_HOUR		\
+-			((RTC_ALM >> HOR_OFF) & HOR_MSK) /* RTC alarm hour */
+-#define RTC_CR			RTC_REG(0x18)	/* Control */
++			((RTC_READ32(RTC_ALM) >> HOUR_OFF) & HOUR_MSK) /* RTC alarm hour */
++#define RTC_CR			0x18	/* Control */
+ #define RTC_EN			(0x1UL << 0)
+ #define ALARM_WAKEUP		(0x1UL << 1)
+ #define ALARM_INT		(0x1UL << 2)
+ #define DAY_INT			(0x1UL << 3)
+-#define HOR_INT			(0x1UL << 4)
++#define HOUR_INT		(0x1UL << 4)
+ #define MIN_INT			(0x1UL << 5)
+ #define SEC_INT			(0x1UL << 6)
+ #define HSEC_INT		(0x1UL << 7)
+-#define RTC_STA			RTC_REG(0x1c)	/* Status */
+-#define WD			(0x1UL << 16)
++#define RTC_STA			0x1c	/* Status */
++#define WRITE_DONE		(0x1UL << 16)
+ 
+ /* CHeck if day is configured as  15 */
+-#define CHECK_DAY_15	0
++#define CHECK_DAY_15		0
+ 
+ struct atc_rtc {
+ 	void __iomem *regbase;
+@@ -93,8 +93,8 @@ static irqreturn_t rtc_interrupt(int irq, void *dev_id)
+ {
+ 	struct atc_rtc *rtc = dev_id;
+ 
+-	if (RTC_STA & SEC_INT) {
+-		RTC_STA |= SEC_INT;
++	if (RTC_READ32(RTC_STA) & SEC_INT) {
++		RTC_WRITE32(RTC_READ32(RTC_STA) | SEC_INT, RTC_STA);
+ 		rtc_update_irq(rtc->rtc_dev, 1, RTC_UF | RTC_IRQF);
+ 		return IRQ_HANDLED;
+ 	}
+@@ -105,9 +105,9 @@ static irqreturn_t rtc_alarm(int irq, void *dev_id)
+ {
+ 	struct atc_rtc *rtc = dev_id;
+ 
+-	if (RTC_STA & ALARM_INT) {
+-		RTC_CR &= ~ALARM_INT;
+-		RTC_STA |= ALARM_INT;
++	if (RTC_READ32(RTC_STA) & ALARM_INT) {
++		RTC_WRITE32(RTC_READ32(RTC_CR) & ~ALARM_INT, RTC_CR);
++		RTC_WRITE32(RTC_READ32(RTC_STA) | ALARM_INT, RTC_STA);
+ 		rtc_update_irq(rtc->rtc_dev, 1, RTC_AF | RTC_IRQF);
+ 		return IRQ_HANDLED;
+ 	}
+@@ -120,9 +120,9 @@ static int atc_alarm_irq_enable(struct device *dev, unsigned int enabled)
+ 
+ 	spin_lock_irq(&rtc->lock);
+ 	if (enabled)
+-		RTC_CR |= ALARM_INT;
++		RTC_WRITE32(RTC_READ32(RTC_CR) | ALARM_INT, RTC_CR);
+ 	else
+-		RTC_CR &= ~ALARM_INT;
++		RTC_WRITE32(RTC_READ32(RTC_CR) & ~ALARM_INT, RTC_CR);
+ 	spin_unlock_irq(&rtc->lock);
+ 	return 0;
+ }
+@@ -130,9 +130,9 @@ static int atc_alarm_irq_enable(struct device *dev, unsigned int enabled)
+ static int atc_rtc_read_time(struct device *dev, struct rtc_time *tm)
+ {
+ 	struct atc_rtc *rtc = dev_get_drvdata(dev);
+-	unsigned long rtc_cnt = RTC_CNT;
++	unsigned long rtc_cnt = RTC_READ32(RTC_CNT);
+ 	unsigned long time = RTC_DAYS(rtc_cnt) * 86400 + RTC_HOUR(rtc_cnt) * 3600
+-				+ RTC_MINUTE(rtc_cnt) * 60 + RTC_SECOND(rtc_cnt);
++			     + RTC_MINUTE(rtc_cnt) * 60 + RTC_SECOND(rtc_cnt);
+ 
+ 	rtc_time64_to_tm(time, tm);
+ 	if (rtc_valid_tm(tm) < 0) {
+@@ -150,16 +150,16 @@ static int atc_rtc_set_time(struct device *dev, struct rtc_time *tm)
+ 
+ 	time = rtc_tm_to_time64(tm);
+ 	cnt |= ((div_s64_rem(time, 86400, (u32 *)&time) & DAY_MSK) << DAY_OFF);
+-	cnt |= ((div_s64_rem(time, 3600, (u32 *)&time) & HOR_MSK) << HOR_OFF);
++	cnt |= ((div_s64_rem(time, 3600, (u32 *)&time) & HOUR_MSK) << HOUR_OFF);
+ 	cnt |= ((div_s64_rem(time, 60, (u32 *)&time) & MIN_MSK) << MIN_OFF);
+ 	cnt |= ((time & SEC_MSK) << SEC_OFF);
+ 
+ 	spin_lock_irq(&rtc->lock);
+-	RTC_CNT = cnt;
++	RTC_WRITE32(cnt, RTC_CNT);
+ 	spin_unlock_irq(&rtc->lock);
+ 
+ 	/* synchronization progress of RTC register updates */
+-	while ((RTC_STA & WD) != WD)
++	while ((RTC_READ32(RTC_STA) & WRITE_DONE) != WRITE_DONE)
+ 		continue;
+ 
+ 	return 0;
+@@ -173,7 +173,7 @@ static int atc_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *wkalrm)
+ 	tm->tm_sec	= RTC_ALM_SECOND;
+ 	tm->tm_min	= RTC_ALM_MINUTE;
+ 	tm->tm_hour	= RTC_ALM_HOUR;
+-	wkalrm->enabled = (RTC_CR & ALARM_INT) ? 1 : 0;
++	wkalrm->enabled = (RTC_READ32(RTC_CR) & ALARM_INT) ? 1 : 0;
+ 	return 0;
+ }
+ 
+@@ -189,20 +189,20 @@ static int atc_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *wkalrm)
+ 		return err;
+ 	}
+ 	/* disable alarm interrupt and clear the alarm flag */
+-	RTC_CR &= ~ALARM_INT;
++	RTC_WRITE32(RTC_READ32(RTC_CR) & ~ALARM_INT, RTC_CR);
+ 	/* set alarm time */
+ 	alm |= ((tm->tm_sec & SEC_MSK) << SEC_OFF);
+ 	alm |= ((tm->tm_min & MIN_MSK) << MIN_OFF);
+-	alm |= ((tm->tm_hour & HOR_MSK) << HOR_OFF);
++	alm |= ((tm->tm_hour & HOUR_MSK) << HOUR_OFF);
+ 
+ 	spin_lock_irq(&rtc->lock);
+-	RTC_ALM = alm;
++	RTC_WRITE32(alm, RTC_ALM);
+ 
+-	while ((RTC_STA & WD) != WD)
++	while ((RTC_READ32(RTC_STA) & WRITE_DONE) != WRITE_DONE)
+ 		continue;
+ 
+ 	if (wkalrm->enabled)
+-		RTC_CR |= ALARM_INT;
++		RTC_WRITE32(RTC_READ32(RTC_CR) | ALARM_INT, RTC_CR);
+ 	spin_unlock_irq(&rtc->lock);
+ 
+ 	return 0;
+@@ -262,15 +262,15 @@ static int atc_rtc_probe(struct platform_device *pdev)
+ 		return -ENOENT;
+ 	}
+ 
+-	if ((RTC_ID & ID_MSK) != ATCRTC100ID)
++	if ((RTC_READ32(RTC_ID) & ID_MSK) != ATCRTC100ID)
+ 		return -ENOENT;
+ 
+ #if CHECK_DAY_15
+ 	RTC_CNT = DAY_MSK << DAY_OFF;
+-	while ((RTC_STA & WD) != WD)
++	while ((RTC_READ32(RTC_STA) & WRITE_DONE) != WRITE_DONE)
+ 		continue;
+ 
+-	if (DAY_MSK << DAY_OFF != RTC_CNT) {
++	if (DAY_MSK << DAY_OFF != RTC_READ32(RTC_CNT)) {
+ 		pr_err("rtc initialize fail\n");
+ 		return -ENOENT;
+ 	}
+@@ -305,7 +305,7 @@ static int atc_rtc_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		goto err_interrupt_irq;
+ 
+-	RTC_CR |= RTC_EN;
++	RTC_WRITE32(RTC_READ32(RTC_CR) | RTC_EN, RTC_CR);
+ 
+ 	return 0;
+ 
+@@ -333,7 +333,7 @@ static int atc_rtc_remove(struct platform_device *pdev)
+ 	 * But if kernel fix this issue, it shell be removed away.
+ 	 */
+ 	rtc->rtc_dev->dev.release(&rtc->rtc_dev->dev);
+-	RTC_CR &= ~(RTC_EN | SEC_INT | ALARM_INT);
++	RTC_WRITE32(RTC_READ32(RTC_CR) & ~(RTC_EN | SEC_INT | ALARM_INT), RTC_CR);
+ 	free_irq(rtc->alarm_irq, rtc);
+ 	free_irq(rtc->interrupt_irq, rtc);
+ 	iounmap(rtc->regbase);
+-- 
+2.34.1
+

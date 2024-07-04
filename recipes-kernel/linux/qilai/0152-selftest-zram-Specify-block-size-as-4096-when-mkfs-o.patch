@@ -1,0 +1,42 @@
+From 8100404c5ab5d9012b8f010dd11979273c2e42b9 Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Tue, 26 Sep 2023 16:12:00 +0800
+Subject: [PATCH 152/191] selftest/zram: Specify block size as 4096 when mkfs
+ on /dev/zram
+
+In busybox, the default block size for mkfs.ext2 is 1024. This causes an
+error when mounting zram as it does not meet the requirements.
+Therefore, when running mkfs on /dev/zram, specify a block size of 4096.
+
+  # ./zram.sh
+  ...
+  make ext2 filesystem on /dev/zram1
+  zram mkfs.ext2: OK
+  mount /dev/zram1
+  [517.321021] EXT4-fs (zram1): bad block size 1024
+  [517.323146] EXT4-fs (zram1): bad block size 1024
+  [517.325233] EXT2-fs (zram1): error: bad blocksize 1024
+  mount: mounting /dev/zram1 on zram1 failed: Invalid argument
+  FAIL mount /dev/zram1 failed
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ tools/testing/selftests/zram/zram_lib.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/testing/selftests/zram/zram_lib.sh b/tools/testing/selftests/zram/zram_lib.sh
+index 21ec1966de76..91f295d67be0 100755
+--- a/tools/testing/selftests/zram/zram_lib.sh
++++ b/tools/testing/selftests/zram/zram_lib.sh
+@@ -244,7 +244,7 @@ zram_makefs()
+ 		which mkfs.$fs > /dev/null 2>&1 || fs=ext2
+ 
+ 		echo "make $fs filesystem on /dev/zram$i"
+-		mkfs.$fs /dev/zram$i > err.log 2>&1
++		mkfs.$fs /dev/zram$i -b 4096 > err.log 2>&1
+ 		if [ $? -ne 0 ]; then
+ 			cat err.log
+ 			echo "FAIL failed to make $fs on /dev/zram$i"
+-- 
+2.34.1
+

@@ -1,0 +1,27 @@
+From f3567c26f7c54bd475ef76b92c3dd0f740b6b633 Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Tue, 26 Sep 2023 17:01:26 +0800
+Subject: [PATCH 153/191] selftests/kselftest_harness.h: Increase default
+ timeout to 300 seconds
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ tools/testing/selftests/kselftest_harness.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/testing/selftests/kselftest_harness.h b/tools/testing/selftests/kselftest_harness.h
+index 25f4d54067c0..00d6021573f2 100644
+--- a/tools/testing/selftests/kselftest_harness.h
++++ b/tools/testing/selftests/kselftest_harness.h
+@@ -68,7 +68,7 @@
+ 
+ #include "kselftest.h"
+ 
+-#define TEST_TIMEOUT_DEFAULT 30
++#define TEST_TIMEOUT_DEFAULT 300
+ 
+ /* Utilities exposed to the test definitions */
+ #ifndef TH_LOG_STREAM
+-- 
+2.34.1
+

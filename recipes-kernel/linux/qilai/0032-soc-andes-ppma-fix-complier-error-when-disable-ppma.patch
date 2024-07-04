@@ -1,0 +1,99 @@
+From 975e3e5b4de053a39eb7e935b8583451d74f63fb Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Thu, 11 May 2023 15:07:20 +0800
+Subject: [PATCH 032/191] soc: andes: ppma: fix complier error when disable
+ ppma
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/configs/amp.config |  2 +-
+ arch/riscv/mm/ioremap.c       |  6 ++++--
+ include/soc/andes/ppma.h      | 24 ++++++++++++++++--------
+ 3 files changed, 21 insertions(+), 11 deletions(-)
+
+diff --git a/arch/riscv/configs/amp.config b/arch/riscv/configs/amp.config
+index 11dbd76dfca9..63ae179e0984 100644
+--- a/arch/riscv/configs/amp.config
++++ b/arch/riscv/configs/amp.config
+@@ -1,5 +1,5 @@
+ CONFIG_ATCSMU=y
+-# CONFIG_PMA is not set
++# CONFIG_ANDES_PPMA is not set
+ CONFIG_AMP=y
+ 
+ CONFIG_UIO=y
+diff --git a/arch/riscv/mm/ioremap.c b/arch/riscv/mm/ioremap.c
+index 31c3309c4726..646bd8ad4627 100644
+--- a/arch/riscv/mm/ioremap.c
++++ b/arch/riscv/mm/ioremap.c
+@@ -6,6 +6,7 @@
+ #include <linux/export.h>
+ #include <linux/io.h>
+ #include <linux/pgtable.h>
++#include <soc/andes/andes.h>
+ #include <soc/andes/ppma.h>
+ 
+ void __iomem *ioremap_wc(phys_addr_t phys_addr, size_t size)
+@@ -17,7 +18,7 @@ void __iomem *ioremap_wc(phys_addr_t phys_addr, size_t size)
+ 
+ 	ret = ioremap_prot(phys_addr, size, pgprot_val(prot));
+ 
+-	if (ret)
++	if (ret && !andes_pa_msb)
+ 		andes_set_ppma(phys_addr, ret, size);
+ 
+ 	return ret;
+@@ -26,7 +27,8 @@ EXPORT_SYMBOL(ioremap_wc);
+ 
+ bool iounmap_allowed(void *addr)
+ {
+-	andes_free_ppma(addr);
++	if (!andes_pa_msb)
++		andes_free_ppma(addr);
+ 	return true;
+ }
+ EXPORT_SYMBOL(iounmap_allowed);
+diff --git a/include/soc/andes/ppma.h b/include/soc/andes/ppma.h
+index 0d21bec9ca65..6c93d6827085 100644
+--- a/include/soc/andes/ppma.h
++++ b/include/soc/andes/ppma.h
+@@ -8,8 +8,6 @@
+ 
+ #include <linux/types.h>
+ 
+-#ifdef CONFIG_ANDES_PPMA
+-
+ struct ppma_arg_t {
+ 	phys_addr_t phys_addr;
+ 	unsigned long va_addr;
+@@ -18,11 +16,21 @@ struct ppma_arg_t {
+ 
+ extern struct ppma_arg_t ppma_arg;
+ 
+-extern void andes_set_ppma(phys_addr_t phys_addr,
+-				void *va_addr,
+-				size_t size);
+-extern void andes_free_ppma(void *addr);
+-extern long andes_probe_ppma(void);
+-
++#ifdef CONFIG_ANDES_PPMA
++void andes_set_ppma(phys_addr_t phys_addr,
++		    void *va_addr,
++		    size_t size);
++void andes_free_ppma(void *addr);
++long andes_probe_ppma(void);
++#else
++static inline void andes_set_ppma(phys_addr_t phys_addr,
++				  void *va_addr,
++				  size_t size) {}
++static inline void andes_free_ppma(void *addr) {}
++static inline long andes_probe_ppma(void)
++{
++	return 0;
++}
+ #endif /* CONFIG_ANDES_PPMA */
++
+ #endif /* !__SOC_ANDES_PPMA_H */
+-- 
+2.34.1
+

@@ -1,0 +1,102 @@
+From 48d861492992aa494f3c3a22dcc0e45b4ee63c4c Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Mon, 17 Apr 2023 15:19:13 +0800
+Subject: [PATCH 027/191] soc: andes: injection: Andes support injection
+ feature
+
+Reformed from the following patches on RISCV-Linux-5.4:
+- (87831dd706c4) Fix: inject feature
+- (62754f10ae3e) Fix injection feature
+- (42d499327dcc) Fix: inject print message
+- (6bb3adf3d930) hijack rename to inject
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ drivers/soc/andes/Makefile      |  1 +
+ drivers/soc/andes/inject_init.c | 62 +++++++++++++++++++++++++++++++++
+ 2 files changed, 63 insertions(+)
+ create mode 100644 drivers/soc/andes/inject_init.c
+
+diff --git a/drivers/soc/andes/Makefile b/drivers/soc/andes/Makefile
+index bcdbcfd42dbf..d45b9594db09 100644
+--- a/drivers/soc/andes/Makefile
++++ b/drivers/soc/andes/Makefile
+@@ -2,6 +2,7 @@
+ # Copyright (C) 2023 Andes Technology Corporation.
+ 
+ obj-y	+= andes_sbi.o
++obj-y	+= inject_init.o
+ obj-$(CONFIG_ANDES_CACHE)		+= cache.o
+ obj-$(CONFIG_ANDES_DMA_NONCOHERENT)	+= dma-noncoherent.o
+ obj-$(CONFIG_ANDES_PPMA)		+= ppma.o
+diff --git a/drivers/soc/andes/inject_init.c b/drivers/soc/andes/inject_init.c
+new file mode 100644
+index 000000000000..60b1beba2a71
+--- /dev/null
++++ b/drivers/soc/andes/inject_init.c
+@@ -0,0 +1,62 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (C) 2020 Andes Technology Corporation.
++ */
++
++#include <linux/io.h>
++#include <linux/fs.h>
++#include <linux/init.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++
++#ifdef CONFIG_PROC_FS
++
++// FIXME: make this FPGA-depedent
++#define INJECT_START    0x100000
++#define INJECT_SIZE     (0x200000 - INJECT_START)
++
++static void *inject;
++
++static int inject_show(struct seq_file *m, void *v)
++{
++	int i, pos;
++	unsigned char *p = (unsigned char *)inject;
++
++	if (inject != NULL && p[0] == 0) {
++		/* do nothing */
++	} else if (inject != NULL) {
++		for (i = 0, pos = 0; i < (INJECT_SIZE / PAGE_SIZE); i++, pos += PAGE_SIZE)
++			seq_write(m, (void *)&p[pos], PAGE_SIZE);
++	} else {
++		seq_printf(m, "#!/bin/sh\necho not found: ioremap failed.\n");
++	}
++	return 0;
++}
++
++static int inject_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, inject_show, NULL);
++}
++
++static const struct file_operations inject_fops = {
++	.open		= inject_open,
++	.read		= seq_read,
++	.llseek		= seq_lseek,
++	.release	= single_release,
++};
++
++static int __init inject_init(void)
++{
++	unsigned char *p;
++
++	inject = (void *)ioremap((phys_addr_t)INJECT_START, INJECT_SIZE);
++	p = (unsigned char *)inject;
++
++	if (p[0] != '#' && p[0] != 0x79)
++		p[0] = 0;
++
++	proc_create("inject", 0444, NULL, &inject_fops);
++	return 0;
++}
++arch_initcall(inject_init);
++#endif /* CONFIG_PROC_FS */
+-- 
+2.34.1
+

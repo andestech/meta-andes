@@ -1,0 +1,295 @@
+From 6c1616b390b563d1cbfb48ad0de6e6df6ec7074f Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Thu, 20 Apr 2023 17:50:46 +0800
+Subject: [PATCH 029/191] riscv: andes: dsp: DSP support
+
+Reformed from the following patches on RISCV-Linux-5.4:
+-(15a3b9f259b0) Fix DSP condition during context switch
+-(43d9b4a32420) DSP support
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Kconfig                       |  6 +++
+ arch/riscv/include/asm/hwcap.h           |  4 ++
+ arch/riscv/include/asm/processor.h       |  3 ++
+ arch/riscv/include/asm/switch_to.h       | 54 ++++++++++++++++++------
+ arch/riscv/include/uapi/asm/ptrace.h     |  6 +++
+ arch/riscv/include/uapi/asm/sigcontext.h |  3 ++
+ arch/riscv/kernel/cpufeature.c           |  3 ++
+ arch/riscv/kernel/process.c              |  3 ++
+ arch/riscv/kernel/signal.c               | 37 ++++++++++++++++
+ 9 files changed, 106 insertions(+), 13 deletions(-)
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 982ccf011fb0..293d0245c159 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -464,6 +464,12 @@ config TOOLCHAIN_NEEDS_OLD_ISA_SPEC
+ 	  of clang to be passed to GAS, which has the same result as passing zicsr
+ 	  and zifencei to -march.
+ 
++config DSP
++       bool "DSP support"
++       default y
++       help
++         Say N here if you want to disable DSP support.
++
+ config FPU
+ 	bool "FPU support"
+ 	default y
+diff --git a/arch/riscv/include/asm/hwcap.h b/arch/riscv/include/asm/hwcap.h
+index b22525290073..9da1eae9057b 100644
+--- a/arch/riscv/include/asm/hwcap.h
++++ b/arch/riscv/include/asm/hwcap.h
+@@ -59,6 +59,7 @@ enum riscv_isa_ext_id {
+ 	RISCV_ISA_EXT_ZIHINTPAUSE,
+ 	RISCV_ISA_EXT_SSTC,
+ 	RISCV_ISA_EXT_SVINVAL,
++	ANDES_ISA_EXT_DSP,
+ 	RISCV_ISA_EXT_ID_MAX = RISCV_ISA_EXT_MAX,
+ };
+ 
+@@ -71,6 +72,7 @@ enum riscv_isa_ext_key {
+ 	RISCV_ISA_EXT_KEY_FPU,		/* For 'F' and 'D' */
+ 	RISCV_ISA_EXT_KEY_ZIHINTPAUSE,
+ 	RISCV_ISA_EXT_KEY_SVINVAL,
++	ANDES_ISA_EXT_KEY_DSP,
+ 	RISCV_ISA_EXT_KEY_MAX,
+ };
+ 
+@@ -94,6 +96,8 @@ static __always_inline int riscv_isa_ext2key(int num)
+ 		return RISCV_ISA_EXT_KEY_ZIHINTPAUSE;
+ 	case RISCV_ISA_EXT_SVINVAL:
+ 		return RISCV_ISA_EXT_KEY_SVINVAL;
++	case ANDES_ISA_EXT_DSP:
++		return ANDES_ISA_EXT_KEY_DSP;
+ 	default:
+ 		return -EINVAL;
+ 	}
+diff --git a/arch/riscv/include/asm/processor.h b/arch/riscv/include/asm/processor.h
+index 94a0590c6971..a193477fb4e0 100644
+--- a/arch/riscv/include/asm/processor.h
++++ b/arch/riscv/include/asm/processor.h
+@@ -38,6 +38,9 @@ struct thread_struct {
+ 	unsigned long sp;	/* Kernel mode stack */
+ 	unsigned long s[12];	/* s[0]: frame pointer */
+ 	struct __riscv_d_ext_state fstate;
++#ifdef CONFIG_DSP
++	struct __riscv_dsp_state dspstate;
++#endif
+ 	unsigned long bad_cause;
+ };
+ 
+diff --git a/arch/riscv/include/asm/switch_to.h b/arch/riscv/include/asm/switch_to.h
+index 11463489fec6..12010f8bd894 100644
+--- a/arch/riscv/include/asm/switch_to.h
++++ b/arch/riscv/include/asm/switch_to.h
+@@ -8,6 +8,7 @@
+ 
+ #include <linux/jump_label.h>
+ #include <linux/sched/task_stack.h>
++#include <soc/andes/csr.h>
+ #include <asm/hwcap.h>
+ #include <asm/processor.h>
+ #include <asm/ptrace.h>
+@@ -46,28 +47,55 @@ static inline void fstate_restore(struct task_struct *task,
+ 	}
+ }
+ 
++static __always_inline bool has_fpu(void)
++{
++	return static_branch_likely(&riscv_isa_ext_keys[RISCV_ISA_EXT_KEY_FPU]);
++}
++#else
++static __always_inline bool has_fpu(void) { return false; }
++#define fstate_save(task, regs) do { } while (0)
++#define fstate_restore(task, regs) do { } while (0)
++#endif /* CONFIG_FPU */
++
++#ifdef CONFIG_DSP
++static inline void dspstate_save(struct task_struct *task)
++{
++	task->thread.dspstate.ucode = csr_read(CSR_UCODE);
++}
++
++static inline void dspstate_restore(struct task_struct *task)
++{
++	csr_write(CSR_UCODE, task->thread.dspstate.ucode);
++}
++
++static __always_inline bool has_dsp(void)
++{
++	return static_branch_likely(&riscv_isa_ext_keys[ANDES_ISA_EXT_KEY_DSP]);
++}
++#else
++static __always_inline bool has_dsp(void) { return false; }
++#define dspstate_save(task) do { } while (0)
++#define dspstate_restore(task) do { } while (0)
++#endif /* CONFIG_DSP */
++
+ static inline void __switch_to_aux(struct task_struct *prev,
+ 				   struct task_struct *next)
+ {
++#ifdef CONFIG_FPU
+ 	struct pt_regs *regs;
+-
+ 	regs = task_pt_regs(prev);
+ 	if (unlikely(regs->status & SR_SD))
+ 		fstate_save(prev, regs);
+ 	fstate_restore(next, task_pt_regs(next));
++#endif /* CONFIG_FPU */
++#ifdef CONFIG_DSP
++	if (has_dsp()) {
++		dspstate_save(prev);
++		dspstate_restore(next);
++	}
++#endif /* CONFIG_DSP */
+ }
+ 
+-static __always_inline bool has_fpu(void)
+-{
+-	return static_branch_likely(&riscv_isa_ext_keys[RISCV_ISA_EXT_KEY_FPU]);
+-}
+-#else
+-static __always_inline bool has_fpu(void) { return false; }
+-#define fstate_save(task, regs) do { } while (0)
+-#define fstate_restore(task, regs) do { } while (0)
+-#define __switch_to_aux(__prev, __next) do { } while (0)
+-#endif
+-
+ extern struct task_struct *__switch_to(struct task_struct *,
+ 				       struct task_struct *);
+ 
+@@ -75,7 +103,7 @@ extern struct task_struct *__switch_to(struct task_struct *,
+ do {							\
+ 	struct task_struct *__prev = (prev);		\
+ 	struct task_struct *__next = (next);		\
+-	if (has_fpu())					\
++	if (has_fpu() || has_dsp())			\
+ 		__switch_to_aux(__prev, __next);	\
+ 	((last) = __switch_to(__prev, __next));		\
+ } while (0)
+diff --git a/arch/riscv/include/uapi/asm/ptrace.h b/arch/riscv/include/uapi/asm/ptrace.h
+index 882547f6bd5c..5e42d28845cb 100644
+--- a/arch/riscv/include/uapi/asm/ptrace.h
++++ b/arch/riscv/include/uapi/asm/ptrace.h
+@@ -51,6 +51,12 @@ struct user_regs_struct {
+ 	unsigned long t6;
+ };
+ 
++#ifdef CONFIG_DSP
++struct __riscv_dsp_state {
++	unsigned long ucode;
++};
++#endif
++
+ struct __riscv_f_ext_state {
+ 	__u32 f[32];
+ 	__u32 fcsr;
+diff --git a/arch/riscv/include/uapi/asm/sigcontext.h b/arch/riscv/include/uapi/asm/sigcontext.h
+index 84f2dfcfdbce..94addf0067c5 100644
+--- a/arch/riscv/include/uapi/asm/sigcontext.h
++++ b/arch/riscv/include/uapi/asm/sigcontext.h
+@@ -17,6 +17,9 @@
+ struct sigcontext {
+ 	struct user_regs_struct sc_regs;
+ 	union __riscv_fp_state sc_fpregs;
++#ifdef CONFIG_DSP
++	struct __riscv_dsp_state sc_dspregs;
++#endif /* CONFIG_DSP */
+ };
+ 
+ #endif /* _UAPI_ASM_RISCV_SIGCONTEXT_H */
+diff --git a/arch/riscv/kernel/cpufeature.c b/arch/riscv/kernel/cpufeature.c
+index fd1238df6149..740d4761a794 100644
+--- a/arch/riscv/kernel/cpufeature.c
++++ b/arch/riscv/kernel/cpufeature.c
+@@ -206,6 +206,9 @@ void __init riscv_fill_hwcap(void)
+ 				SET_ISA_EXT_MAP("zihintpause", RISCV_ISA_EXT_ZIHINTPAUSE);
+ 				SET_ISA_EXT_MAP("sstc", RISCV_ISA_EXT_SSTC);
+ 				SET_ISA_EXT_MAP("svinval", RISCV_ISA_EXT_SVINVAL);
++
++				/* Andes vendor extensions: DSP */
++				SET_ISA_EXT_MAP("xdsp", ANDES_ISA_EXT_DSP);
+ 			}
+ #undef SET_ISA_EXT_MAP
+ 		}
+diff --git a/arch/riscv/kernel/process.c b/arch/riscv/kernel/process.c
+index 8955f2432c2d..edd7a2571e01 100644
+--- a/arch/riscv/kernel/process.c
++++ b/arch/riscv/kernel/process.c
+@@ -148,6 +148,9 @@ void flush_thread(void)
+ 	fstate_off(current, task_pt_regs(current));
+ 	memset(&current->thread.fstate, 0, sizeof(current->thread.fstate));
+ #endif
++#ifdef CONFIG_DSP
++	memset(&current->thread.dspstate, 0, sizeof(current->thread.dspstate));
++#endif
+ }
+ 
+ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
+diff --git a/arch/riscv/kernel/signal.c b/arch/riscv/kernel/signal.c
+index dee66c9290cc..5a5aa23f3418 100644
+--- a/arch/riscv/kernel/signal.c
++++ b/arch/riscv/kernel/signal.c
+@@ -87,6 +87,39 @@ static long save_fp_state(struct pt_regs *regs,
+ #define restore_fp_state(task, regs) (0)
+ #endif
+ 
++#ifdef CONFIG_DSP
++static long restore_dsp_state(struct pt_regs *regs,
++			      struct __riscv_dsp_state *sc_dspregs)
++{
++	long err;
++
++	err = __copy_from_user(&current->thread.dspstate.ucode,
++			       &sc_dspregs->ucode,
++			       sizeof(unsigned long));
++	if (unlikely(err))
++		return err;
++	dspstate_restore(current);
++	return 0;
++}
++
++static long save_dsp_state(struct pt_regs *regs,
++			   struct __riscv_dsp_state *sc_dspregs)
++{
++	long err;
++
++	dspstate_save(current);
++	err = __copy_to_user(&sc_dspregs->ucode,
++			     &current->thread.dspstate.ucode,
++			     sizeof(unsigned long));
++	if (unlikely(err))
++		return err;
++	return 0;
++}
++#else
++#define save_dsp_state(task, regs) (0)
++#define restore_dsp_state(task, regs) (0)
++#endif
++
+ static long restore_sigcontext(struct pt_regs *regs,
+ 	struct sigcontext __user *sc)
+ {
+@@ -96,6 +129,8 @@ static long restore_sigcontext(struct pt_regs *regs,
+ 	/* Restore the floating-point state. */
+ 	if (has_fpu())
+ 		err |= restore_fp_state(regs, &sc->sc_fpregs);
++	if (has_dsp())
++		err |= restore_dsp_state(regs, &sc->sc_dspregs);
+ 	return err;
+ }
+ 
+@@ -151,6 +186,8 @@ static long setup_sigcontext(struct rt_sigframe __user *frame,
+ 	/* Save the floating-point state. */
+ 	if (has_fpu())
+ 		err |= save_fp_state(regs, &sc->sc_fpregs);
++	if (has_dsp())
++		err |= save_dsp_state(regs, &sc->sc_dspregs);
+ 	return err;
+ }
+ 
+-- 
+2.34.1
+

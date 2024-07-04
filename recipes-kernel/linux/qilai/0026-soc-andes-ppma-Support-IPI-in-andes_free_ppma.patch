@@ -1,0 +1,82 @@
+From 505acbac886848046a5dc681fef337840d66c4e3 Mon Sep 17 00:00:00 2001
+From: Dylan Jhong <dylan@andestech.com>
+Date: Fri, 28 Apr 2023 16:34:51 +0800
+Subject: [PATCH 026/191] soc: andes: ppma: Support IPI in andes_free_ppma()
+
+Andes PMA is a per hart CSR. So when freeing PMA, it is necessary to
+use the IPI mechanism to let each hart free its own PMA settings
+through OpenSBI.
+
+Signed-off-by: Dylan Jhong <dylan@andestech.com>
+---
+ drivers/soc/andes/andes_sbi.c |  4 ++--
+ drivers/soc/andes/ppma.c      | 23 ++++++++++++++++++++++-
+ include/soc/andes/sbi.h       |  2 +-
+ 3 files changed, 25 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/soc/andes/andes_sbi.c b/drivers/soc/andes/andes_sbi.c
+index ca0744623aa1..5492fa88bf0d 100644
+--- a/drivers/soc/andes/andes_sbi.c
++++ b/drivers/soc/andes/andes_sbi.c
+@@ -15,10 +15,10 @@ void sbi_andes_set_ppma(void *arg)
+ 			phys_addr, va_addr, size, 0, 0, 0);
+ }
+ 
+-void sbi_andes_free_ppma(unsigned long addr)
++void sbi_andes_free_ppma(void *addr)
+ {
+ 	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_FREE_PPMA,
+-				addr, 0, 0, 0, 0, 0);
++				(unsigned long)addr, 0, 0, 0, 0, 0);
+ }
+ 
+ long sbi_andes_probe_ppma(void)
+diff --git a/drivers/soc/andes/ppma.c b/drivers/soc/andes/ppma.c
+index aac3f0f7253d..7987c020f0dd 100644
+--- a/drivers/soc/andes/ppma.c
++++ b/drivers/soc/andes/ppma.c
+@@ -69,6 +69,27 @@ EXPORT_SYMBOL(andes_set_ppma);
+ 
+ void andes_free_ppma(void *addr)
+ {
+-	sbi_andes_free_ppma((unsigned long)addr);
++	int cpu_num = num_online_cpus();
++	int id = smp_processor_id();
++	int i, err;
++
++	/*
++	 * Send IPI
++	 * FIXME: we need online CPU mask, not the number
++	 */
++	for (i = 0; i < cpu_num; i++) {
++		if (i == id)
++			continue;
++
++		err = smp_call_function_single(i, sbi_andes_free_ppma,
++						(void *)addr, true);
++		if (err) {
++			pr_err("Core %d fails to free ppma\n"
++				"Error Code: %d\n", i, err);
++		}
++	}
++
++	sbi_andes_free_ppma(addr);
++
+ }
+ EXPORT_SYMBOL(andes_free_ppma);
+diff --git a/include/soc/andes/sbi.h b/include/soc/andes/sbi.h
+index d71232eb8774..562d1661c423 100644
+--- a/include/soc/andes/sbi.h
++++ b/include/soc/andes/sbi.h
+@@ -53,7 +53,7 @@ enum sbi_ext_andes_fid {
+ 
+ /* Programmable physical memory attributes (PPMA) */
+ void sbi_andes_set_ppma(void *arg);
+-void sbi_andes_free_ppma(unsigned long addr);
++void sbi_andes_free_ppma(void *addr);
+ long sbi_andes_probe_ppma(void);
+ 
+ #endif /* !__SOC_ANDES_SBI_H */
+-- 
+2.34.1
+

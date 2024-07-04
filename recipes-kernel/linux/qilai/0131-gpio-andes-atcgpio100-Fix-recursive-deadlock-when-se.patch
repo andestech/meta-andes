@@ -1,0 +1,63 @@
+From b27b0cd6e64deaaa29fb04b79ff9fe1d05558bf5 Mon Sep 17 00:00:00 2001
+From: CL Wang <cl634@andestech.com>
+Date: Mon, 4 Sep 2023 15:52:49 +0800
+Subject: [PATCH 131/191] gpio: andes: atcgpio100: Fix recursive deadlock when
+ setting the direction of a GPIO.
+
+Please see the following link for details.
+https://es.andestech.com/scp/tasks.php?id=3717
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/gpio/gpio-atcgpio100.c | 18 ++++++++++++------
+ 1 file changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/gpio/gpio-atcgpio100.c b/drivers/gpio/gpio-atcgpio100.c
+index d65532aab08d..f6c16bce53df 100644
+--- a/drivers/gpio/gpio-atcgpio100.c
++++ b/drivers/gpio/gpio-atcgpio100.c
+@@ -72,19 +72,25 @@ static int atcgpio_get(struct gpio_chip *gc, unsigned int gpio)
+ 	return (val >> gpio & 1);
+ }
+ 
+-static void atcgpio_set(struct gpio_chip *gc, unsigned int gpio, int data)
++static void atcgpio_setgpio_val(struct atcgpio_priv *priv, unsigned int gpio, int data)
+ {
+-	unsigned long flags;
+-	struct atcgpio_priv *priv;
+ 	unsigned long val;
+ 
+-	priv = gpiochip_get_data(gc);
+-	spin_lock_irqsave(&priv->lock, flags);
+ 	if (data)
+ 		val = GPIO_READL(GPIO_DATA_OUT, priv->base) | (0x1UL << gpio);
+ 	else
+ 		val = GPIO_READL(GPIO_DATA_OUT, priv->base) & ~(0x1UL << gpio);
+ 	GPIO_WRITEL(val, GPIO_DATA_OUT, priv->base);
++}
++
++static void atcgpio_set(struct gpio_chip *gc, unsigned int gpio, int data)
++{
++	unsigned long flags;
++	struct atcgpio_priv *priv;
++
++	priv = gpiochip_get_data(gc);
++	spin_lock_irqsave(&priv->lock, flags);
++	atcgpio_setgpio_val(priv, gpio, data);
+ 	spin_unlock_irqrestore(&priv->lock, flags);
+ }
+ 
+@@ -111,9 +117,9 @@ static int atcgpio_dir_out(struct gpio_chip *gc, unsigned int gpio, int data)
+ 
+ 	priv = gpiochip_get_data(gc);
+ 	spin_lock_irqsave(&priv->lock, flags);
++	atcgpio_setgpio_val(priv, gpio, data);
+ 	val = GPIO_READL(PIN_DIR, priv->base) | (0x1UL << gpio);
+ 	GPIO_WRITEL(val, PIN_DIR, priv->base);
+-	gc->set(gc, gpio, data);
+ 	spin_unlock_irqrestore(&priv->lock, flags);
+ 
+ 	return 0;
+-- 
+2.34.1
+

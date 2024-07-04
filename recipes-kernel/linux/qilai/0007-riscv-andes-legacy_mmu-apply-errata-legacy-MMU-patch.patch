@@ -1,0 +1,243 @@
+From 28d57411dae853b71d0069cbc06222feda0e028c Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Tue, 1 Nov 2022 10:26:59 +0800
+Subject: [PATCH 007/191] riscv: andes: legacy_mmu: apply errata legacy MMU
+ patch
+
+Apply the Andes legacy MMU errata. We need to flush TLB immediately after a
+new PTE is allocated because the legacy MMU could retrieve stale data even if
+the PTE is updated. Note that legacy MMU only exists in Andes 2X-series CPU.
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Kconfig.erratas           | 12 ++++++++
+ arch/riscv/errata/andes/errata.c     | 43 ++++++++++++++++++++++++++--
+ arch/riscv/include/asm/errata_list.h |  8 +++++-
+ arch/riscv/include/asm/pgalloc.h     |  5 ++++
+ arch/riscv/include/asm/pgtable-64.h  |  1 +
+ arch/riscv/include/asm/pgtable.h     |  2 ++
+ include/soc/andes/andes.h            | 11 +++++++
+ 7 files changed, 78 insertions(+), 4 deletions(-)
+ create mode 100644 include/soc/andes/andes.h
+
+diff --git a/arch/riscv/Kconfig.erratas b/arch/riscv/Kconfig.erratas
+index 0d91533b2924..d52ed6a5fc1f 100644
+--- a/arch/riscv/Kconfig.erratas
++++ b/arch/riscv/Kconfig.erratas
+@@ -11,6 +11,18 @@ config ERRATA_ANDES
+ 
+ 	  Otherwise, please say "N" here to avoid unnecessary overhead.
+ 
++config ERRATA_ANDES_LEGACY_MMU
++	bool "Apply Andes errata legacy MMU"
++	depends on ERRATA_ANDES
++	default y
++	help
++	  This will apply the Andes legacy MMU errata. We need to
++	  flush TLB immediately after a new PTE is allocated because
++	  the legacy MMU could retrieve stale data even if the PTE is
++	  updated. Note that legacy MMU only exists in Andes 2X-series CPU.
++
++	  If you don't know what to do here, say "Y".
++
+ config ERRATA_SIFIVE
+ 	bool "SiFive errata"
+ 	depends on !XIP_KERNEL
+diff --git a/arch/riscv/errata/andes/errata.c b/arch/riscv/errata/andes/errata.c
+index 715ac4902050..d4ab8f51790d 100644
+--- a/arch/riscv/errata/andes/errata.c
++++ b/arch/riscv/errata/andes/errata.c
+@@ -8,13 +8,47 @@
+ #include <linux/string.h>
+ #include <linux/bug.h>
+ #include <asm/patch.h>
++#include <asm/alternative.h>
+ #include <asm/vendorid_list.h>
+ #include <asm/errata_list.h>
++#include <soc/andes/andes.h>
++
++bool andes_legacy_mmu;
++EXPORT_SYMBOL(andes_legacy_mmu);
++
++struct errata_info_t {
++	char name[ERRATA_STRING_LENGTH_MAX];
++	bool (*check_func)(unsigned long arch_id,
++			   unsigned long impid,
++			   unsigned int stage);
++};
++
++static bool errata_legacy_mmu_check_func(unsigned long arch_id,
++					 unsigned long impid,
++					 unsigned int stage)
++{
++	/* legacy MMU only exists in 2X-series CPU.*/
++	andes_legacy_mmu = (((arch_id & 0xF0) >> 4) == 0x2) ? true : false;
++	return andes_legacy_mmu;
++}
++
++static struct errata_info_t errata_list[ERRATA_ANDES_NUMBER] = {
++	{
++		.name = "legacy_mmu",
++		.check_func = errata_legacy_mmu_check_func
++	},
++};
+ 
+ static u32 __init_or_module andes_errata_probe(unsigned long archid,
+-					       unsigned long impid)
++					       unsigned long impid,
++					       unsigned int stage)
+ {
+ 	u32 cpu_req_errata = 0;
++	int idx;
++
++	for (idx = 0; idx < ERRATA_ANDES_NUMBER; idx++)
++		if (errata_list[idx].check_func(archid, impid, stage))
++			cpu_req_errata |= (1U << idx);
+ 
+ 	return cpu_req_errata;
+ }
+@@ -26,17 +60,20 @@ void __init_or_module andes_errata_patch_func(struct alt_entry *begin,
+ 					      unsigned int stage)
+ {
+ 	struct alt_entry *alt;
+-	u32 cpu_req_errata = andes_errata_probe(archid, impid);
+-	u32 tmp;
++	u32 cpu_req_errata;
++	u32 tmp = 0;
+ 
+ 	if (stage == RISCV_ALTERNATIVES_EARLY_BOOT)
+ 		return;
+ 
++	cpu_req_errata = andes_errata_probe(archid, impid, stage);
++
+ 	for (alt = begin; alt < end; alt++) {
+ 		if (alt->vendor_id != ANDES_VENDOR_ID)
+ 			continue;
+ 		if (alt->errata_id >= ERRATA_ANDES_NUMBER)
+ 			continue;
++
+ 		tmp = (1U << alt->errata_id);
+ 		if (cpu_req_errata & tmp)
+ 			patch_text_nosync(alt->old_ptr, alt->alt_ptr, alt->alt_len);
+diff --git a/arch/riscv/include/asm/errata_list.h b/arch/riscv/include/asm/errata_list.h
+index f90268df7e6c..3f4358987379 100644
+--- a/arch/riscv/include/asm/errata_list.h
++++ b/arch/riscv/include/asm/errata_list.h
+@@ -9,7 +9,8 @@
+ #include <asm/vendorid_list.h>
+ 
+ #ifdef CONFIG_ERRATA_ANDES
+-#define ERRATA_ANDES_NUMBER 0
++#define ERRATA_ANDES_LEGACY_MMU 0
++#define ERRATA_ANDES_NUMBER 1
+ #endif
+ 
+ #ifdef CONFIG_ERRATA_SIFIVE
+@@ -48,6 +49,11 @@ asm(ALTERNATIVE("sfence.vma %0", "sfence.vma", SIFIVE_VENDOR_ID,	\
+ 		ERRATA_SIFIVE_CIP_1200, CONFIG_ERRATA_SIFIVE_CIP_1200)	\
+ 		: : "r" (addr) : "memory")
+ 
++#define ALT_LEGACY_MMU_FLUSH_TLB()						\
++asm volatile (ALTERNATIVE("nop", "sfence.vma", ANDES_VENDOR_ID,			\
++		ERRATA_ANDES_LEGACY_MMU, CONFIG_ERRATA_ANDES_LEGACY_MMU)	\
++		: : : "memory")
++
+ /*
+  * _val is marked as "will be overwritten", so need to set it to 0
+  * in the default case.
+diff --git a/arch/riscv/include/asm/pgalloc.h b/arch/riscv/include/asm/pgalloc.h
+index 59dc12b5b7e8..3696c23a16dc 100644
+--- a/arch/riscv/include/asm/pgalloc.h
++++ b/arch/riscv/include/asm/pgalloc.h
+@@ -9,6 +9,7 @@
+ 
+ #include <linux/mm.h>
+ #include <asm/tlb.h>
++#include <asm/errata_list.h>
+ 
+ #ifdef CONFIG_MMU
+ #define __HAVE_ARCH_PUD_ALLOC_ONE
+@@ -21,6 +22,7 @@ static inline void pmd_populate_kernel(struct mm_struct *mm,
+ 	unsigned long pfn = virt_to_pfn(pte);
+ 
+ 	set_pmd(pmd, __pmd((pfn << _PAGE_PFN_SHIFT) | _PAGE_TABLE));
++	ALT_LEGACY_MMU_FLUSH_TLB();
+ }
+ 
+ static inline void pmd_populate(struct mm_struct *mm,
+@@ -29,6 +31,7 @@ static inline void pmd_populate(struct mm_struct *mm,
+ 	unsigned long pfn = virt_to_pfn(page_address(pte));
+ 
+ 	set_pmd(pmd, __pmd((pfn << _PAGE_PFN_SHIFT) | _PAGE_TABLE));
++	ALT_LEGACY_MMU_FLUSH_TLB();
+ }
+ 
+ #ifndef __PAGETABLE_PMD_FOLDED
+@@ -37,6 +40,7 @@ static inline void pud_populate(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
+ 	unsigned long pfn = virt_to_pfn(pmd);
+ 
+ 	set_pud(pud, __pud((pfn << _PAGE_PFN_SHIFT) | _PAGE_TABLE));
++	ALT_LEGACY_MMU_FLUSH_TLB();
+ }
+ 
+ static inline void p4d_populate(struct mm_struct *mm, p4d_t *p4d, pud_t *pud)
+@@ -143,6 +147,7 @@ static inline pgd_t *pgd_alloc(struct mm_struct *mm)
+ 		memset(pgd, 0, USER_PTRS_PER_PGD * sizeof(pgd_t));
+ 		/* Copy kernel mappings */
+ 		sync_kernel_mappings(pgd);
++		ALT_LEGACY_MMU_FLUSH_TLB();
+ 	}
+ 	return pgd;
+ }
+diff --git a/arch/riscv/include/asm/pgtable-64.h b/arch/riscv/include/asm/pgtable-64.h
+index 42a042c0e13e..496f1fdb86d7 100644
+--- a/arch/riscv/include/asm/pgtable-64.h
++++ b/arch/riscv/include/asm/pgtable-64.h
+@@ -165,6 +165,7 @@ static inline int pud_user(pud_t pud)
+ static inline void set_pud(pud_t *pudp, pud_t pud)
+ {
+ 	*pudp = pud;
++	ALT_LEGACY_MMU_FLUSH_TLB();
+ }
+ 
+ static inline void pud_clear(pud_t *pudp)
+diff --git a/arch/riscv/include/asm/pgtable.h b/arch/riscv/include/asm/pgtable.h
+index 59bb53da473d..20f18a165596 100644
+--- a/arch/riscv/include/asm/pgtable.h
++++ b/arch/riscv/include/asm/pgtable.h
+@@ -226,6 +226,7 @@ static inline int pmd_leaf(pmd_t pmd)
+ static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
+ {
+ 	*pmdp = pmd;
++	ALT_LEGACY_MMU_FLUSH_TLB();
+ }
+ 
+ static inline void pmd_clear(pmd_t *pmdp)
+@@ -443,6 +444,7 @@ static inline int pte_same(pte_t pte_a, pte_t pte_b)
+ static inline void set_pte(pte_t *ptep, pte_t pteval)
+ {
+ 	*ptep = pteval;
++	ALT_LEGACY_MMU_FLUSH_TLB();
+ }
+ 
+ void flush_icache_pte(pte_t pte);
+diff --git a/include/soc/andes/andes.h b/include/soc/andes/andes.h
+new file mode 100644
+index 000000000000..f089fbd3ba47
+--- /dev/null
++++ b/include/soc/andes/andes.h
+@@ -0,0 +1,11 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++
++#ifndef __SOC_ANDES_ANDES_H
++#define __SOC_ANDES_ANDES_H
++
++extern bool andes_legacy_mmu;
++
++#endif /* !__SOC_ANDES_ANDES_H */
+-- 
+2.34.1
+

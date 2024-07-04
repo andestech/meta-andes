@@ -1,0 +1,1407 @@
+From 0538a97cea1318e3f5e8fdcf11b5bd7432898352 Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Wed, 27 Mar 2024 15:23:24 +0800
+Subject: [PATCH 172/191] sound: andes: ftssp: Support ftssp010 driver
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ arch/riscv/configs/andes-support.config |  12 +-
+ drivers/dma/atcdmac300g.c               |  79 ++-
+ sound/soc/Kconfig                       |   1 +
+ sound/soc/Makefile                      |   1 +
+ sound/soc/andes/Kconfig                 |   8 +
+ sound/soc/andes/Makefile                |   5 +
+ sound/soc/andes/andes_pcm.h             |  12 +
+ sound/soc/andes/andes_pcm_dmaengin.c    |  47 ++
+ sound/soc/andes/andes_rt5640.c          | 224 ++++++++
+ sound/soc/andes/ftssp010.h              | 150 ++++++
+ sound/soc/andes/ftssp010_i2s.c          | 651 ++++++++++++++++++++++++
+ sound/soc/codecs/rt5640.c               |  52 ++
+ 12 files changed, 1236 insertions(+), 6 deletions(-)
+ create mode 100644 sound/soc/andes/Kconfig
+ create mode 100644 sound/soc/andes/Makefile
+ create mode 100644 sound/soc/andes/andes_pcm.h
+ create mode 100644 sound/soc/andes/andes_pcm_dmaengin.c
+ create mode 100644 sound/soc/andes/andes_rt5640.c
+ create mode 100644 sound/soc/andes/ftssp010.h
+ create mode 100644 sound/soc/andes/ftssp010_i2s.c
+
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+index 6110ce28d31c..0e3e52f322c8 100644
+--- a/arch/riscv/configs/andes-support.config
++++ b/arch/riscv/configs/andes-support.config
+@@ -30,9 +30,6 @@ CONFIG_PANEL_AUA036QN01=y
+ CONFIG_FFB_MODE_RGB=y
+ CONFIG_FFB_MODE_16BPP=y
+ 
+-CONFIG_SND_FTSSP010=y
+-CONFIG_SND_FTSSP010_AC97=y
+-
+ CONFIG_RTC_CLASS=y
+ CONFIG_RTC_DRV_ATCRTC100=y
+ 
+@@ -45,3 +42,12 @@ CONFIG_SPI=y
+ CONFIG_SPI_ATCSPI200=y
+ CONFIG_MTD=y
+ CONFIG_MTD_SPI_NOR=y
++
++CONFIG_SOUND=y
++CONFIG_SND=y
++CONFIG_SND_OSSEMUL=y
++CONFIG_SND_PCM_OSS=y
++CONFIG_SND_SOC=y
++CONFIG_SND_SOC_RT5640=y
++CONFIG_SND_DMAENGINE_PCM=y
++CONFIG_SND_SOC_ANDES=y
+\ No newline at end of file
+diff --git a/drivers/dma/atcdmac300g.c b/drivers/dma/atcdmac300g.c
+index 7fa3bf22dc1f..2417c81ea562 100644
+--- a/drivers/dma/atcdmac300g.c
++++ b/drivers/dma/atcdmac300g.c
+@@ -162,6 +162,7 @@ static void v5_desc_put(struct v5_dma_chan *v5chan, struct v5_desc *desc)
+ 		dev_vdbg(chan2dev(&v5chan->chan_common),
+ 			 "moving desc %p to freelist\n", desc);
+ 		list_add(&desc->desc_node, &v5chan->free_list);
++
+ 		spin_unlock_irqrestore(&v5chan->lock, flags);
+ 	}
+ }
+@@ -188,6 +189,7 @@ static void v5_desc_chain(struct v5_desc **first, struct v5_desc **prev,
+ 
+ 		/* insert the descriptor to the ring */
+ 		list_add_tail(&desc->desc_node, &(*first)->tx_list);
++
+ 	}
+ 	*prev = desc;
+ 
+@@ -909,8 +911,15 @@ static int v5_config(struct dma_chan *chan,
+ 
+ static int v5_terminate_all(struct dma_chan *chan)
+ {
+-	struct v5_dma_chan	*v5chan = to_v5_dma_chan(chan);
++	struct v5_dma_chan *v5chan = to_v5_dma_chan(chan);
++	struct v5_desc *desc, *_desc;
++	struct v5_desc *cyclic_desc, *next_cyclic_desc;
++	struct v5_desc *first_desc;
+ 	LIST_HEAD(list);
++	struct list_head *desc_node;
++	int flags;
++	u16 index;
++
+ 
+ 	dev_vdbg(chan2dev(chan), "%s\n", __func__);
+ 	/*
+@@ -925,11 +934,75 @@ static int v5_terminate_all(struct dma_chan *chan)
+ 	/* confirm that this channel is disabled */
+ 	while (v5_chan_is_enabled(v5chan))
+ 		cpu_relax();
++
++	spin_lock_irqsave(&v5chan->lock, flags);
++
++
+ 	/* active_list entries will end up before queued entries */
+-	list_splice_init(&v5chan->queue, &v5chan->free_list);
+-	list_splice_init(&v5chan->active_list, &v5chan->free_list);
++	if (!list_empty(&v5chan->queue)) {
++		list_for_each_entry_safe(desc, _desc, &v5chan->queue, desc_node) {
++
++			if (desc->cyclic == true) {
++				struct list_head *desc_node;
++				struct v5_desc *first_desc, *desc;
++				u16 index;
++
++				first_desc = desc;
++
++				desc_node = first_desc->tx_list.next;
++				list_del(&first_desc->desc_node);
++				list_add_tail(&first_desc->desc_node, &v5chan->free_list);
++
++				for (index = 1; index < first_desc->num_sg; index++) {
++					desc = list_entry(desc_node, struct v5_desc,
++						desc_node);
++
++					desc_node = desc->desc_node.next;
++
++					list_del(&desc->desc_node);
++					list_add_tail(&desc->desc_node, &v5chan->free_list);
++					desc->at = NULL;
++					desc->cyclic = false;
++					desc->num_sg = 0;
++				}
++			} else {
++				list_del(&desc->desc_node);
++				list_add_tail(&desc->desc_node, &v5chan->free_list);
++			}
++		}
++	}
++
++	if (!list_empty(&v5chan->active_list)) {
++		list_for_each_entry_safe(desc, _desc, &v5chan->active_list, desc_node) {
++			if (desc->cyclic == true) {
++				first_desc = desc;
++
++				desc_node = first_desc->tx_list.next;
++				list_del(&first_desc->desc_node);
++				list_add_tail(&first_desc->desc_node, &v5chan->free_list);
++
++				for (index = 1; index < first_desc->num_sg; index++) {
++					desc = list_entry(desc_node, struct v5_desc,
++						desc_node);
++
++					desc_node = desc->desc_node.next;
++
++					list_del(&desc->desc_node);
++					list_add_tail(&desc->desc_node, &v5chan->free_list);
++					desc->at = NULL;
++					desc->cyclic = false;
++					desc->num_sg = 0;
++				}
++			} else {
++				list_del(&desc->desc_node);
++				list_add_tail(&desc->desc_node, &v5chan->free_list);
++			}
++		}
++	}
++
+ 
+ 	clear_bit(V5_IS_PAUSED, &v5chan->status);
++	spin_unlock_irqrestore(&v5chan->lock, flags);
+ 
+ 	return 0;
+ }
+diff --git a/sound/soc/Kconfig b/sound/soc/Kconfig
+index 848fbae26c3b..cc4ae8c44656 100644
+--- a/sound/soc/Kconfig
++++ b/sound/soc/Kconfig
+@@ -70,6 +70,7 @@ source "sound/soc/adi/Kconfig"
+ source "sound/soc/amd/Kconfig"
+ source "sound/soc/apple/Kconfig"
+ source "sound/soc/atmel/Kconfig"
++source "sound/soc/andes/Kconfig"
+ source "sound/soc/au1x/Kconfig"
+ source "sound/soc/bcm/Kconfig"
+ source "sound/soc/cirrus/Kconfig"
+diff --git a/sound/soc/Makefile b/sound/soc/Makefile
+index 507eaed1d6a1..367eefcca0b3 100644
+--- a/sound/soc/Makefile
++++ b/sound/soc/Makefile
+@@ -34,6 +34,7 @@ obj-$(CONFIG_SND_SOC_ACPI) += snd-soc-acpi.o
+ obj-$(CONFIG_SND_SOC)	+= snd-soc-core.o
+ obj-$(CONFIG_SND_SOC)	+= codecs/
+ obj-$(CONFIG_SND_SOC)	+= generic/
++obj-$(CONFIG_SND_SOC)	+= andes/
+ obj-$(CONFIG_SND_SOC)	+= apple/
+ obj-$(CONFIG_SND_SOC)	+= adi/
+ obj-$(CONFIG_SND_SOC)	+= amd/
+diff --git a/sound/soc/andes/Kconfig b/sound/soc/andes/Kconfig
+new file mode 100644
+index 000000000000..a9849714cadf
+--- /dev/null
++++ b/sound/soc/andes/Kconfig
+@@ -0,0 +1,8 @@
++config SND_SOC_ANDES
++	tristate "SoC Audio for Andes Qilai Platform"
++	depends on SND && RISCV
++	select REGMAP_MMIO
++	select SND_SOC_RT5640
++	select SND_SOC_GENERIC_DMAENGINE_PCM
++
++
+diff --git a/sound/soc/andes/Makefile b/sound/soc/andes/Makefile
+new file mode 100644
+index 000000000000..7cb52d3bfddc
+--- /dev/null
++++ b/sound/soc/andes/Makefile
+@@ -0,0 +1,5 @@
++CFLAGS_andes_pcm.o += -O0
++CFLAGS_andes_rt5640.o += -O0
++CFLAGS_ftssp010_i2s.o += -O0
++ftssp010-i2s-objs := ftssp010_i2s.o andes_pcm_dmaengin.o andes_rt5640.o
++obj-$(CONFIG_SND_SOC_ANDES) += ftssp010-i2s.o
+diff --git a/sound/soc/andes/andes_pcm.h b/sound/soc/andes/andes_pcm.h
+new file mode 100644
+index 000000000000..c455452c55ab
+--- /dev/null
++++ b/sound/soc/andes/andes_pcm.h
+@@ -0,0 +1,12 @@
++/*
++ * andes_pcm.h - Definitions for Andes PCM driver
++ *
++ */
++
++struct snd_dmaengine_pcm_config;
++
++int andes_pcm_platform_register(struct device *dev);
++int andes_pcm_platform_register_with_chan_names(struct device *dev,
++				struct snd_dmaengine_pcm_config *config,
++				char *txdmachan, char *rxdmachan);
++void andes_pcm_platform_unregister(struct device *dev);
+diff --git a/sound/soc/andes/andes_pcm_dmaengin.c b/sound/soc/andes/andes_pcm_dmaengin.c
+new file mode 100644
+index 000000000000..352651fe588f
+--- /dev/null
++++ b/sound/soc/andes/andes_pcm_dmaengin.c
+@@ -0,0 +1,47 @@
++/*
++ * andes_pcm.c - Andes PCM driver
++ *
++ */
++
++#include <linux/module.h>
++#include <sound/core.h>
++#include <sound/pcm.h>
++#include <sound/pcm_params.h>
++#include <sound/soc.h>
++#include <sound/dmaengine_pcm.h>
++
++#include "andes_pcm.h"
++
++static const struct snd_pcm_hardware andes_pcm_hardware = {
++	.info			= SNDRV_PCM_INFO_MMAP |
++				  SNDRV_PCM_INFO_MMAP_VALID |
++				  SNDRV_PCM_INFO_INTERLEAVED,
++	.period_bytes_min	= 1024,
++	.period_bytes_max	= PAGE_SIZE,
++	.periods_min		= 2,
++	.periods_max		= 8,
++	.buffer_bytes_max	= PAGE_SIZE * 8,
++	.fifo_size		= 4,
++};
++
++static const struct snd_dmaengine_pcm_config andes_dmaengine_pcm_config = {
++	.pcm_hardware = &andes_pcm_hardware,
++	.prepare_slave_config = snd_dmaengine_pcm_prepare_slave_config,
++	.prealloc_buffer_size = PAGE_SIZE * 8,
++};
++
++int andes_pcm_platform_register(struct device *dev)
++{
++	return snd_dmaengine_pcm_register(dev, &andes_dmaengine_pcm_config, 0);
++}
++EXPORT_SYMBOL_GPL(andes_pcm_platform_register);
++
++void andes_pcm_platform_unregister(struct device *dev)
++{
++	return snd_dmaengine_pcm_unregister(dev);
++}
++EXPORT_SYMBOL_GPL(andes_pcm_platform_unregister);
++
++MODULE_AUTHOR("Mina Chou <minachou@andestech.com>");
++MODULE_DESCRIPTION("Andes PCM ASoC driver");
++MODULE_LICENSE("GPL");
+diff --git a/sound/soc/andes/andes_rt5640.c b/sound/soc/andes/andes_rt5640.c
+new file mode 100644
+index 000000000000..72a74d2fda40
+--- /dev/null
++++ b/sound/soc/andes/andes_rt5640.c
+@@ -0,0 +1,224 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * ASoC machine driver for boards using a RT5640 CODEC.
++ *
++ * Copyright (C) 2021 Andes Technology Corporation
++ */
++
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/slab.h>
++#include <linux/gpio.h>
++#include <linux/of_gpio.h>
++#include <linux/delay.h>
++#include <sound/core.h>
++#include <sound/jack.h>
++#include <sound/pcm.h>
++#include <sound/pcm_params.h>
++#include <sound/soc.h>
++#include "ftssp010.h"
++#include "../codecs/rt5640.h"
++
++#define DRV_NAME "andes-snd-rt5640"
++
++static struct snd_soc_jack andes_rt5640_headset_jack;
++
++static struct snd_soc_jack_pin andes_rt5640_hp_jack_pins[] = {
++	{
++		.pin = "Headphones",
++		.mask = SND_JACK_HEADPHONE,
++	},
++};
++
++static const struct snd_soc_dapm_widget andes_rt5640_dapm_widgets[] = {
++	SND_SOC_DAPM_HP("Headphones", NULL),
++	SND_SOC_DAPM_SPK("Speakers", NULL),
++	SND_SOC_DAPM_MIC("Mic Jack", NULL),
++};
++
++static const struct snd_soc_dapm_route andes_rt5640_audio_map[] = {
++	/* Input Lines */
++	{"Mic Jack", NULL, "MICBIAS1"},
++	{"IN2P", NULL, "Mic Jack"},
++
++	/* Output Lines */
++	{"Headphones", NULL, "HPOR"},
++	{"Headphones", NULL, "HPOL"},
++};
++
++static const struct snd_kcontrol_new andes_rt5640_controls[] = {
++	SOC_DAPM_PIN_SWITCH("Headphones"),
++	SOC_DAPM_PIN_SWITCH("Speakers"),
++	SOC_DAPM_PIN_SWITCH("Mic Jack"),
++};
++
++static int andes_rt5640_hw_params(struct snd_pcm_substream *substream,
++			     struct snd_pcm_hw_params *params)
++{
++	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
++	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
++	int ret = 0;
++
++ 	ret = snd_soc_dai_set_sysclk(codec_dai, RT5640_SCLK_S_PLL1,
++				     params_rate(params) * 256,
++				     SND_SOC_CLOCK_IN);
++	if (ret < 0) {
++		dev_err(codec_dai->dev, "can't set codec clock %d\n", ret);
++		return ret;
++	}
++	ret = snd_soc_dai_set_pll(codec_dai, 0, RT5640_PLL1_S_BCLK1,
++				  params_rate(params) * 32,
++				  params_rate(params) * 256);
++	if (ret < 0) {
++		dev_err(codec_dai->dev, "can't set codec pll: %d\n", ret);
++		return ret;
++	}
++
++	return ret;
++}
++
++static int andes_rt5640_init(struct snd_soc_pcm_runtime *runtime)
++{
++	struct snd_soc_card *card = runtime->card;
++	int ret;
++
++	dev_info(card->dev, ">>> %s\n", __func__);
++
++	/* Enable Headset and 4 Buttons Jack detection */
++	ret = snd_soc_card_jack_new_pins(card, "Headphones",
++				    SND_JACK_HEADPHONE | SND_JACK_MICROPHONE,
++				    &andes_rt5640_headset_jack, andes_rt5640_hp_jack_pins,
++				    ARRAY_SIZE(andes_rt5640_hp_jack_pins));
++	if (ret) {
++		dev_err(card->dev, "New Headset Jack failed! (%d)\n", ret);
++		return ret;
++	}
++	return 0;
++
++}
++
++static const struct snd_soc_ops andes_rt5640_ops = {
++	.hw_params = andes_rt5640_hw_params,
++};
++
++SND_SOC_DAILINK_DEFS(pcm,
++	DAILINK_COMP_ARRAY(COMP_EMPTY()),
++	DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "rt5640-aif1")),
++	DAILINK_COMP_ARRAY(COMP_EMPTY()));
++
++static struct snd_soc_dai_link andes_rt5640_dai = {
++	.name = "rt5640",
++	.stream_name = "rt5640 PCM",
++	.init = andes_rt5640_init,
++	.ops = &andes_rt5640_ops,
++	/* set rt5640 as slave */
++	.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
++		SND_SOC_DAIFMT_CBS_CFS,
++	SND_SOC_DAILINK_REG(pcm),
++};
++
++static struct snd_soc_card snd_soc_card_andes_rt5640 = {
++	.name = "RT5640-I2S",
++	.owner = THIS_MODULE,
++	.dai_link = &andes_rt5640_dai,
++	.num_links = 1,
++	.dapm_widgets = andes_rt5640_dapm_widgets,
++	.num_dapm_widgets = ARRAY_SIZE(andes_rt5640_dapm_widgets),
++	.dapm_routes = andes_rt5640_audio_map,
++	.num_dapm_routes = ARRAY_SIZE(andes_rt5640_audio_map),
++	.controls = andes_rt5640_controls,
++	.num_controls = ARRAY_SIZE(andes_rt5640_controls),
++};
++
++static int andes_rt5640_probe(struct platform_device *pdev)
++{
++	int ret = 0;
++	struct snd_soc_card *card = &snd_soc_card_andes_rt5640;
++	struct device_node *np = pdev->dev.of_node;
++
++	/* register the soc card */
++	card->dev = &pdev->dev;
++	dev_info(&pdev->dev, ">>> %s\n", __func__);
++
++	andes_rt5640_dai.codecs->of_node = of_parse_phandle(np,
++			"andes,audio-codec", 0);
++	if (!andes_rt5640_dai.codecs->of_node) {
++		dev_err(&pdev->dev,
++			"Property 'andes,audio-codec' missing or invalid\n");
++		return -EINVAL;
++	}
++
++	andes_rt5640_dai.cpus->of_node = of_parse_phandle(np,
++			"andes,i2s-controller", 0);
++	if (!andes_rt5640_dai.cpus->of_node) {
++		dev_err(&pdev->dev,
++			"Property 'andes,i2s-controller' missing or invalid\n");
++		ret = -EINVAL;
++		goto put_codec_of_node;
++	}
++
++	andes_rt5640_dai.platforms->of_node = andes_rt5640_dai.cpus->of_node;
++
++	ret = snd_soc_of_parse_card_name(card, "andes,model");
++	if (ret) {
++		dev_err(&pdev->dev,
++			"Soc parse card name failed %d\n", ret);
++		goto put_cpu_of_node;
++	}
++
++	ret = devm_snd_soc_register_card(&pdev->dev, card);
++	if (ret) {
++		dev_err(&pdev->dev,
++			"Soc register card failed %d\n", ret);
++		goto put_cpu_of_node;
++	}
++
++	return ret;
++
++put_cpu_of_node:
++	of_node_put(andes_rt5640_dai.cpus->of_node);
++	andes_rt5640_dai.cpus->of_node = NULL;
++put_codec_of_node:
++	of_node_put(andes_rt5640_dai.codecs->of_node);
++	andes_rt5640_dai.codecs->of_node = NULL;
++
++	return ret;
++}
++
++static int andes_rt5640_remove(struct platform_device *pdev)
++{
++	struct snd_soc_card *card = platform_get_drvdata(pdev);
++
++	dev_info(&pdev->dev, ">>> %s\n", __func__);
++	snd_soc_unregister_card(card);
++	of_node_put(andes_rt5640_dai.cpus->of_node);
++	andes_rt5640_dai.cpus->of_node = NULL;
++	of_node_put(andes_rt5640_dai.codecs->of_node);
++	andes_rt5640_dai.codecs->of_node = NULL;
++
++	return 0;
++}
++
++static const struct of_device_id andes_rt5640_of_match[] = {
++	{ .compatible = "andes,andes-audio-rt5640", },
++	{},
++};
++
++MODULE_DEVICE_TABLE(of, andes_rt5640_of_match);
++
++static struct platform_driver andes_rt5640_driver = {
++	.probe = andes_rt5640_probe,
++	.remove = andes_rt5640_remove,
++	.driver = {
++		.name = DRV_NAME,
++		.pm = &snd_soc_pm_ops,
++		.of_match_table = andes_rt5640_of_match,
++	},
++};
++
++module_platform_driver(andes_rt5640_driver);
++
++MODULE_AUTHOR("Mina Chou <minachou@andestech.com>");
++MODULE_DESCRIPTION("andes technology rt5640 machine ASoC driver");
++MODULE_LICENSE("GPL v2");
++MODULE_ALIAS("platform:" DRV_NAME);
+diff --git a/sound/soc/andes/ftssp010.h b/sound/soc/andes/ftssp010.h
+new file mode 100644
+index 000000000000..92f0fe42590d
+--- /dev/null
++++ b/sound/soc/andes/ftssp010.h
+@@ -0,0 +1,150 @@
++/*
++ * Faraday FTSSP010
++ *
++ * (C) Copyright 2010 Faraday Technology
++ * Po-Yu Chuang <ratbert@faraday-tech.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
++ */
++
++#ifndef __FTSSP010_H
++#define __FTSSP010_H
++
++#define FTSSP010_OFFSET_CR0		0x00
++#define FTSSP010_OFFSET_CR1		0x04
++#define FTSSP010_OFFSET_CR2		0x08
++#define FTSSP010_OFFSET_STATUS		0x0c
++#define FTSSP010_OFFSET_ICR		0x10
++#define FTSSP010_OFFSET_ISR		0x14
++#define FTSSP010_OFFSET_DATA		0x18
++
++#define FTSSP010_OFFSET_ACLSV		0x20	/* AC-Link slot valid register */
++
++#define FTSSP010_OFFSET_REVISION	0x60
++#define FTSSP010_OFFSET_FEATURE		0x64
++
++/*
++ * Control Register 0
++ */
++#define FTSSP010_CR0_SCLKPH		(1 << 0)	/* SPI SCLK phase */
++#define FTSSP010_CR0_SCLKPO		(1 << 1)	/* SPI SCLK polarity */
++#define FTSSP010_CR0_STEREO		(1 << 2)
++#define FTSSP010_CR0_MASTER		(1 << 3)
++#define FTSSP010_CR0_FSJSTFY		(1 << 4)
++#define FTSSP010_CR0_FSPO		(1 << 5)
++#define FTSSP010_CR0_LSB		(1 << 6)
++#define FTSSP010_CR0_LBM		(1 << 7)	/* Loopback mode */
++#define FTSSP010_CR0_FSDIST(x)		(((x) & 0x3) << 8)
++#define FTSSP010_CR0_SPDIFVALIDITY	(1 << 10)
++#define FTSSP010_CR0_FFMT_TI_SSP	(0x0 << 12)
++#define FTSSP010_CR0_FFMT_SPI		(0x1 << 12)	/* Motorola  SPI */
++#define FTSSP010_CR0_FFMT_MICROWIRE	(0x2 << 12)	/* NS  Microwire */
++#define FTSSP010_CR0_FFMT_I2S		(0x3 << 12)	/* Philips   I2S */
++#define FTSSP010_CR0_FFMT_ACLINK	(0x4 << 12)	/* Intel AC-Link */
++#define FTSSP010_CR0_FFMT_SPDIF		(0x4 << 12)	/* S/PDIF        */
++
++/*
++ * Control Register 1
++ */
++#define FTSSP010_CR1_SCLKDIV(x)	(((x) & 0xffff) << 0)	/* SCLK divider */
++#define FTSSP010_CR1_SDL_MASK	(0x1f << 16)		/* serial  data length */
++#define FTSSP010_CR1_SDL(x)	(((x) & 0x1f) << 16)	/* serial  data length */
++#define FTSSP010_CR1_PDL(x)	(((x) & 0xff) << 24)	/* padding data length */
++
++/*
++ * Control Register 2
++ */
++#define FTSSP010_CR2_SSPEN	(1 << 0)	/* SSP enable */
++#define FTSSP010_CR2_TXDOE	(1 << 1)	/* transmit data output enable */
++#define FTSSP010_CR2_RXFCLR	(1 << 2)	/* receive  FIFO clear */
++#define FTSSP010_CR2_TXFCLR	(1 << 3)	/* transmit FIFO clear */
++#define FTSSP010_CR2_ACWRST	(1 << 4)	/* AC-Link warm reset enable */
++#define FTSSP010_CR2_ACCRST	(1 << 5)	/* AC-Link cold reset enable */
++#define FTSSP010_CR2_SSPRST	(1 << 6)	/* SSP reset */
++
++/*
++ * Status Register
++ */
++#define FTSSP010_STATUS_RFF		(1 << 0)		/* receive FIFO full */
++#define FTSSP010_STATUS_TFNF		(1 << 1)		/* transmit FIFO not full */
++#define FTSSP010_STATUS_BUSY		(1 << 2)		/* bus is busy */
++#define FTSSP010_STATUS_GET_RFVE(reg)	(((reg) >> 4) & 0x1f)	/* receive  FIFO valid entries */
++#define FTSSP010_STATUS_GET_TFVE(reg)	(((reg) >> 12) & 0x1f)	/* transmit FIFO valid entries */
++
++/*
++ * Interrupt Control Register
++ */
++#define FTSSP010_ICR_RFOR	(1 << 0)	/* receive  FIFO overrun   interrupt */
++#define FTSSP010_ICR_TFUR	(1 << 1)	/* transmit FIFO underrun  interrupt */
++#define FTSSP010_ICR_RFTH	(1 << 2)	/* receive  FIFO threshold interrupt */
++#define FTSSP010_ICR_TFTH	(1 << 3)	/* transmit FIFO threshold interrupt */
++#define FTSSP010_ICR_RFDMA	(1 << 4)	/* receive  DMA request */
++#define FTSSP010_ICR_TFDMA	(1 << 5)	/* transmit DMA request */
++#define FTSSP010_ICR_AC97FCEN	(1 << 6)	/* AC97 frame complete  */
++#define FTSSP010_ICR_RFTHOD(x)	(((x) & 0xf) << 8)	/* receive  FIFO threshold */
++#define FTSSP010_ICR_TFTHOD(x)	(((x) & 0xf) << 12)	/* transmit FIFO threshold */
++
++/*
++ * Interrupt Status Register
++ */
++#define FTSSP010_ISR_RFOR	(1 << 0)	/* receive  FIFO overrun  */
++#define FTSSP010_ISR_TFUR	(1 << 1)	/* transmit FIFO underrun */
++#define FTSSP010_ISR_RFTH	(1 << 2)	/* receive  FIFO threshold */
++#define FTSSP010_ISR_TFTH	(1 << 3)	/* transmit FIFO threshold */
++#define FTSSP010_ISR_AC97FC	(1 << 4)	/* AC97 frame complete */
++
++/*
++ * AC-Link Slot Valid Register
++ */
++#define FTSSP010_ACLSV_CODECID(x)	(((x) & 0x3) << 0)
++#define FTSSP010_ACLSV_SLOT12V		(1 << 3)
++#define FTSSP010_ACLSV_SLOT11V		(1 << 4)
++#define FTSSP010_ACLSV_SLOT10V		(1 << 5)
++#define FTSSP010_ACLSV_SLOT9V		(1 << 6)
++#define FTSSP010_ACLSV_SLOT8V		(1 << 7)
++#define FTSSP010_ACLSV_SLOT7V		(1 << 8)
++#define FTSSP010_ACLSV_SLOT6V		(1 << 9)
++#define FTSSP010_ACLSV_SLOT5V		(1 << 10)
++#define FTSSP010_ACLSV_SLOT4V		(1 << 11)
++#define FTSSP010_ACLSV_SLOT3V		(1 << 12)
++#define FTSSP010_ACLSV_SLOT2V		(1 << 13)
++#define FTSSP010_ACLSV_SLOT1V		(1 << 14)
++
++/*
++ * Revision Register
++ */
++#define FTSSP010_REVISION_RELEASE(reg)	(((reg) >> 0) & 0xff)
++#define FTSSP010_REVISION_MINOR(reg)	(((reg) >> 8) & 0xff)
++#define FTSSP010_REVISION_MAJOR(reg)	(((reg) >> 16) & 0xff)
++
++/*
++ * Feature Register
++ */
++#define FTSSP010_FEATURE_WIDTH(reg)		(((reg) >>  0) & 0xff)
++#define FTSSP010_FEATURE_RXFIFO_DEPTH(reg)	(((reg) >>  8) & 0xff)
++#define FTSSP010_FEATURE_TXFIFO_DEPTH(reg)	(((reg) >> 16) & 0xff)
++#define FTSSP010_FEATURE_AC97			(1 << 24)
++#define FTSSP010_FEATURE_I2S			(1 << 25)
++#define FTSSP010_FEATURE_SPI_MWR		(1 << 26)
++#define FTSSP010_FEATURE_SSP			(1 << 27)
++
++/*
++ * FIFO Size
++ */
++#define FTSSP010_TXRXFIFO_DEPTH			16
++#define FTSSP010_TXFIFO_THRESHOLD		6
++#define FTSSP010_RXFIFO_THRESHOLD		(FTSSP010_TXRXFIFO_DEPTH - FTSSP010_TXFIFO_THRESHOLD)
++
++#endif /* __FTSSP010_H */
+diff --git a/sound/soc/andes/ftssp010_i2s.c b/sound/soc/andes/ftssp010_i2s.c
+new file mode 100644
+index 000000000000..ad076ee79754
+--- /dev/null
++++ b/sound/soc/andes/ftssp010_i2s.c
+@@ -0,0 +1,651 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2018 Andes Technology Corporation
++ *
++ */
++#include <linux/init.h>
++#include <linux/module.h>
++#include <asm/io.h>
++#include <linux/delay.h>
++#include <linux/dma-mapping.h>
++#include <sound/core.h>
++#include <sound/pcm.h>
++#include <sound/initval.h>
++#include <sound/asound.h>
++#include <linux/i2c.h>
++#include <sound/control.h>
++#include <linux/interrupt.h>
++#include <linux/of.h>
++#include <linux/of_device.h>
++#include <asm/irq.h>
++#include <asm/io.h>
++#include <linux/uaccess.h>
++#include <linux/regmap.h>
++#include <linux/clk.h>
++
++#include <sound/dmaengine_pcm.h>
++#include <linux/device.h>
++#include <linux/platform_device.h>
++#include <linux/pm_runtime.h>
++#include <linux/slab.h>
++#include <sound/pcm_params.h>
++#include <sound/soc.h>
++#include "ftssp010.h"
++#include "andes_pcm.h"
++
++
++/* ---------------------------------------------------------------------------
++ * Define the debug level of FTSSP_DEBUG
++ */
++#define FTSSP_DEBUG     	0
++#define FTSSP_DEBUG_VERBOSE	0
++#define FTSSP_PROC_FS   	0
++
++#undef VVDBG
++#if (FTSSP_DEBUG_VERBOSE)
++#define VVDBG(vvar...)	(void)0
++#define VVDBG(vvar...)	printk(KERN_INFO vvar)
++#else
++#define VVDBG(vvar...)	(void)0
++#endif
++
++#undef ERR
++#define ERR(vvar...)	printk(KERN_ERR vvar)
++
++#undef INFO
++//#define INFO(vvar...)	printk(KERN_INFO vvar)
++#define INFO(vvar...)
++
++#if (FTSSP_DEBUG)
++#undef DBG
++#define DBG(vvar...)	printk(KERN_INFO vvar)
++#else
++#define DBG(vvar...)	(void)0
++#endif
++
++#if (FTSSP_DEBUG_VERBOSE)
++#undef VDBG
++#define VDBG(vvar...)	printk(KERN_INFO vvar)
++#else
++#define VDBG(vvar...)	(void)0
++#endif
++
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("Faraday Technology Corp.");
++MODULE_DESCRIPTION("FTSSP010 Linux 2.6 Driver");
++
++// ----------------------------------------------
++
++struct ftssp010_i2s {
++	struct device *dev;
++	unsigned int mclk;
++	const struct regmap_config *regmap_conf;
++	struct regmap *regmap;
++	struct platform_device *pdev;
++	struct snd_dmaengine_dai_dma_data capture_dma_data;
++	struct snd_dmaengine_dai_dma_data playback_dma_data;
++	struct snd_dmaengine_pcm_config dma_config;
++};
++
++static void ftssp010_read_register(struct ftssp010_i2s *i2s)
++{
++	unsigned int val_isr, val_cr0, val_cr1, val_cr2, val_icr, val_stat;
++
++	regmap_read(i2s->regmap, FTSSP010_OFFSET_ISR, &val_isr);
++	regmap_read(i2s->regmap, FTSSP010_OFFSET_CR0, &val_cr0);
++	regmap_read(i2s->regmap, FTSSP010_OFFSET_CR1, &val_cr1);
++	regmap_read(i2s->regmap, FTSSP010_OFFSET_CR2, &val_cr2);
++	regmap_read(i2s->regmap, FTSSP010_OFFSET_ICR, &val_icr);
++	regmap_read(i2s->regmap, FTSSP010_OFFSET_STATUS, &val_stat);
++	INFO(">>> isr = %08x, ctrl0 = %08x, ctrl1 = %08x, ctrl2 = %08x, ctrl_int = %08x, status = %08x\n", val_isr, val_cr0, val_cr1, val_cr2, val_icr, val_stat);
++}
++
++extern void fill_codec_reg(void);
++static void ftssp010_i2s_start_playback(struct ftssp010_i2s *i2s)
++{
++	unsigned int reg;
++	INFO(">>> %s()\n", __func__);
++
++	reg = /* FTSSP010_ICR_TFUR |*/ FTSSP010_ICR_TFDMA | FTSSP010_ICR_RFDMA
++		| FTSSP010_ICR_RFTHOD(FTSSP010_RXFIFO_THRESHOLD) | FTSSP010_ICR_TFTHOD(FTSSP010_TXFIFO_THRESHOLD);
++	INFO("ftssp010-i2s start_playback: [ICR] = %08x\n", reg);
++	regmap_write(i2s->regmap, FTSSP010_OFFSET_ICR, reg);
++
++	reg = FTSSP010_CR2_TXDOE;
++	INFO("ftssp010-i2s start_playback: [CR2] = %08x\n", reg);
++	regmap_write(i2s->regmap, FTSSP010_OFFSET_CR2, reg);
++
++	reg = FTSSP010_CR2_SSPEN | FTSSP010_CR2_TXDOE;
++	INFO("ftssp010-i2s start_playback: [CR2] = %08x\n", reg);
++	regmap_write(i2s->regmap, FTSSP010_OFFSET_CR2, reg);
++
++	ftssp010_read_register(i2s);
++
++}
++
++static void ftssp010_i2s_stop_playback(struct ftssp010_i2s *i2s)
++{
++	INFO(">>> %s()\n", __func__);
++
++	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_ICR,
++			   FTSSP010_ICR_TFUR, 0);
++	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_ICR,
++			   FTSSP010_ICR_TFDMA, 0);
++	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
++			   FTSSP010_CR2_SSPEN, 0);
++	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
++			   FTSSP010_CR2_TXDOE, 0);
++}
++
++static void ftssp010_i2s_start_capture(struct ftssp010_i2s *i2s)
++{
++	unsigned int reg;
++	INFO(">>> %s()\n", __func__);
++
++	reg = FTSSP010_ICR_RFOR | FTSSP010_ICR_RFDMA | FTSSP010_ICR_TFDMA
++		| FTSSP010_ICR_RFTHOD(FTSSP010_RXFIFO_THRESHOLD) | FTSSP010_ICR_TFTHOD(FTSSP010_TXFIFO_THRESHOLD);
++	INFO("ftssp010-i2s start_capture: [ICR] = %08x\n", reg);
++	regmap_write(i2s->regmap, FTSSP010_OFFSET_ICR, reg);
++
++	reg = FTSSP010_CR2_SSPEN | FTSSP010_CR2_TXDOE;
++	INFO("ftssp010-i2s start_capture: [CR2] = %08x\n", reg);
++	regmap_write(i2s->regmap, FTSSP010_OFFSET_CR2, reg);
++
++	ftssp010_read_register(i2s);
++}
++
++static void ftssp010_i2s_stop_capture(struct ftssp010_i2s *i2s)
++{
++	INFO(">>> %s()\n", __func__);
++	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_ICR,
++			   FTSSP010_ICR_RFOR, 0);
++	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_ICR,
++			   FTSSP010_ICR_RFDMA, 0);
++}
++
++static int ftssp010_i2s_trigger(struct snd_pcm_substream *substream, int cmd,
++				struct snd_soc_dai *cpu_dai)
++{
++	struct ftssp010_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
++	INFO(">>> %s() cmd:%d\n", __func__, cmd);
++
++	switch (cmd) {
++	case SNDRV_PCM_TRIGGER_START:
++	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
++	case SNDRV_PCM_TRIGGER_RESUME:
++		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
++			ftssp010_i2s_start_playback(i2s);
++		else
++			ftssp010_i2s_start_capture(i2s);
++		break;
++	case SNDRV_PCM_TRIGGER_STOP:
++	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
++	case SNDRV_PCM_TRIGGER_SUSPEND:
++		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
++			ftssp010_i2s_stop_playback(i2s);
++		else
++			ftssp010_i2s_stop_capture(i2s);
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++
++
++/**
++ * ftssp010_i2s_hw_params() - Setup CPU DAI resources according to hardware parameters
++ *
++ * Called by soc_pcm_hw_params().
++ */
++static int ftssp010_i2s_hw_params(struct snd_pcm_substream *substream,
++		struct snd_pcm_hw_params *params, struct snd_soc_dai *cpu_dai)
++{
++	struct device *dev = cpu_dai->dev;
++	struct ftssp010_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
++	struct snd_dmaengine_dai_dma_data *dma_data;
++
++	unsigned int rate = params_rate(params);
++	unsigned int channels = params_channels(params);
++	unsigned int cr0;
++	unsigned int cr1;
++	int data_len;
++	int padding;
++	unsigned int mclk_rate, bclk_rate, div_bclk;
++
++	INFO(">>> %s()\n", __func__);
++
++	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
++		dma_data = &i2s->playback_dma_data;
++	else
++		dma_data = &i2s->capture_dma_data;
++	snd_soc_dai_set_dma_data(cpu_dai, substream, dma_data);
++
++	regmap_read(i2s->regmap, FTSSP010_OFFSET_CR0, &cr0);
++	switch (channels) {
++	case 1:
++		cr0 &= ~FTSSP010_CR0_STEREO;
++		break;
++
++	case 2:
++		cr0 |= FTSSP010_CR0_STEREO;
++		break;
++
++	default:
++		dev_err(dev, "Invalid number of channels: %d\n",
++			channels);
++		return -EINVAL;
++	}
++
++	INFO("[CR0] = %08x\n", cr0);
++	regmap_write(i2s->regmap, FTSSP010_OFFSET_CR0, cr0);
++
++
++	/* bit size */
++	switch (params_format(params)) {
++	case SNDRV_PCM_FORMAT_S8:
++	case SNDRV_PCM_FORMAT_U8:
++		INFO("Support SNDRV_PCM_FORMAT_U8");
++		data_len = 8;
++		padding = 0;
++		break;
++
++	case SNDRV_PCM_FORMAT_S16:
++		INFO("Support SNDRV_PCM_FORMAT_S16");
++	case SNDRV_PCM_FORMAT_U16:
++		INFO("Support SNDRV_PCM_FORMAT_U16");
++		data_len = 16;
++		padding	= 0;
++		break;
++
++	case SNDRV_PCM_FORMAT_S24:
++	case SNDRV_PCM_FORMAT_U24:
++		INFO("Support SNDRV_PCM_FORMAT_U24");
++		data_len = 24;
++		padding = 8;
++		break;
++
++	case SNDRV_PCM_FORMAT_S32:
++	case SNDRV_PCM_FORMAT_U32:
++		INFO("Support SNDRV_PCM_FORMAT_U32");
++		data_len = 32;
++		padding = 0;
++		break;
++
++	default:
++		dev_err(dev, "Format not supported\n");
++		return -EINVAL;
++	}
++
++	cr1 = FTSSP010_CR1_SDL(data_len - 1) | FTSSP010_CR1_PDL(padding);
++
++	/* MCLK */
++	mclk_rate = i2s->mclk;
++	/* BCLK = channel * bit size * sampele rate */
++	bclk_rate = 2 * (data_len + padding) * rate;
++	div_bclk = (mclk_rate / (2 * bclk_rate)) - 1;
++
++	/*  debug purpose */
++//	div_bclk *= 27;
++//	div_bclk *= 21;
++//	div_bclk *= 18; //sin wave => output 2.27Hz
++//	div_bclk *= 3; //For 8000
++//	div_bclk *= 1; //sin wave => output 2KHz
++	div_bclk *= 2; //sin wave => output 1KHz
++
++	INFO("mclk_rate: %d, rate: %d, data_len: %d, padding: %d, blck_rate: %d, div_bclk: %d\n", mclk_rate, rate, data_len, padding, bclk_rate, div_bclk);
++
++/*	if (bclk_rate * div_bclk * 2 != mclk_rate) {
++		dev_err(dev, "Sample rate %d not supported\n", rate);
++		return -EINVAL;
++	}
++*/
++
++	cr1 |= FTSSP010_CR1_SCLKDIV(div_bclk);
++	INFO("[CR1] = %08x\n", cr1);
++	regmap_write(i2s->regmap, FTSSP010_OFFSET_CR1, cr1);
++
++	ftssp010_read_register(i2s);
++
++	return 0;
++}
++
++
++/**
++ * ftssp010_i2s_set_fmt() - Setup hardware according to the DAI format
++ *
++ * Called by snd_soc_dai_set_fmt().
++ */
++static int ftssp010_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
++		unsigned int fmt)
++{
++	struct ftssp010_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
++	unsigned int cr0;
++
++	INFO(">>> %s fmt:0x%x\n", __func__, fmt);
++	cr0 = FTSSP010_CR0_FFMT_I2S;
++
++	/* interface format */
++	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
++	case SND_SOC_DAIFMT_I2S:
++		cr0 |= FTSSP010_CR0_FSDIST(1);
++		break;
++
++	case SND_SOC_DAIFMT_RIGHT_J:
++		cr0 |= FTSSP010_CR0_FSDIST(0);
++		cr0 |= FTSSP010_CR0_FSJSTFY;	/* padding in front of data */
++		break;
++
++	case SND_SOC_DAIFMT_LEFT_J:
++		cr0 |= FTSSP010_CR0_FSDIST(0);
++		break;
++
++	default:
++		return -EINVAL;
++	}
++
++	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
++	case SND_SOC_DAIFMT_NB_NF:
++		break;
++
++	case SND_SOC_DAIFMT_NB_IF:
++		cr0 |= FTSSP010_CR0_FSPO;	/* frame sync active low */
++		break;
++
++	default:
++		return -EINVAL;
++	}
++
++	/* set master/slave audio interface */
++	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
++	case SND_SOC_DAIFMT_CBM_CFM:
++		/*
++		 * codec is clock & frame master ->
++		 * interface is clock & frame slave
++		 */
++		break;
++
++	case SND_SOC_DAIFMT_CBS_CFS:
++		/*
++		 * codec is clock & frame slave ->
++		 * interface is clock & frame master
++		 */
++		cr0 |= FTSSP010_CR0_MASTER;
++		break;
++
++	default:
++ 		return -EINVAL;
++	}
++
++	cr0 |= FTSSP010_CR0_MASTER;
++
++	INFO("[CR0] = %08x\n", cr0);
++	pm_runtime_get_sync(cpu_dai->dev);
++	regmap_write(i2s->regmap, FTSSP010_OFFSET_CR0, cr0);
++	pm_runtime_put(cpu_dai->dev);
++
++	return 0;
++}
++
++static irqreturn_t ftssp010_i2s_isr(int irq, void *ftssp_i2s)
++{
++	struct ftssp010_i2s *i2s = ftssp_i2s;
++	unsigned int val;
++
++	regmap_read(i2s->regmap, FTSSP010_OFFSET_ISR, &val);
++
++	return IRQ_HANDLED;
++}
++
++static int ftssp010_i2s_dai_probe(struct snd_soc_dai *cpu_dai)
++{
++	struct ftssp010_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
++
++	INFO(">>> %s()\n", __func__);
++	cpu_dai->capture_dma_data = &i2s->capture_dma_data;
++	cpu_dai->playback_dma_data = &i2s->playback_dma_data;
++
++	snd_soc_dai_init_dma_data(cpu_dai, &i2s->playback_dma_data,
++			&i2s->capture_dma_data);
++
++	return 0;
++}
++
++
++static const struct snd_soc_dai_ops ftssp010_i2s_dai_ops = {
++	.hw_params = ftssp010_i2s_hw_params,
++	.set_fmt = ftssp010_i2s_set_fmt,
++	.trigger = ftssp010_i2s_trigger,
++};
++
++static struct snd_soc_dai_driver ftssp010_i2s_dai = {
++	.probe = ftssp010_i2s_dai_probe,
++	.name = "ssp_soc_dai",
++	.playback = {
++		.stream_name = "Playback",
++		.channels_min = 1,
++		.channels_max = 2,
++		.rates = SNDRV_PCM_RATE_8000_48000,
++		.formats = SNDRV_PCM_FMTBIT_S16_LE,
++	},
++	.capture = {
++		.stream_name = "Capture",
++		.channels_min = 1,
++		.channels_max = 2,
++		.rates = SNDRV_PCM_RATE_8000_48000,
++		.formats = SNDRV_PCM_FMTBIT_S16_LE,
++	},
++	.ops = &ftssp010_i2s_dai_ops,
++	.symmetric_rate = 1,
++};
++
++
++static const struct snd_soc_component_driver ftssp010_i2s_component = {
++	.name		= "ftssp010-i2s",
++};
++
++static bool ftssp010_i2s_wr_reg(struct device *dev, unsigned int reg)
++{
++	switch (reg) {
++	case FTSSP010_OFFSET_DATA:
++	case FTSSP010_OFFSET_CR0:
++	case FTSSP010_OFFSET_CR1:
++	case FTSSP010_OFFSET_CR2:
++	case FTSSP010_OFFSET_ICR:
++		return true;
++	default:
++		return false;
++	}
++}
++static bool ftssp010_i2s_rd_reg(struct device *dev, unsigned int reg)
++{
++	switch (reg) {
++	case FTSSP010_OFFSET_DATA:
++	case FTSSP010_OFFSET_CR0:
++	case FTSSP010_OFFSET_CR1:
++	case FTSSP010_OFFSET_CR2:
++	case FTSSP010_OFFSET_ICR:
++	case FTSSP010_OFFSET_STATUS:
++	case FTSSP010_OFFSET_ISR:
++	case FTSSP010_OFFSET_REVISION:
++	case FTSSP010_OFFSET_FEATURE:
++	case FTSSP010_OFFSET_ACLSV:
++		return true;
++	default:
++		return false;
++	}
++}
++static bool ftssp010_i2s_volatile_reg(struct device *dev, unsigned int reg)
++{
++	switch (reg) {
++	case FTSSP010_OFFSET_DATA:
++	case FTSSP010_OFFSET_CR0:
++	case FTSSP010_OFFSET_CR1:
++	case FTSSP010_OFFSET_CR2:
++	case FTSSP010_OFFSET_ICR:
++		return true;
++	default:
++		return false;
++	}
++}
++static const struct regmap_config ftssp010_i2s_regmap_config = {
++	.reg_bits = 32,
++	.reg_stride = 4,
++	.val_bits = 32,
++	.max_register = FTSSP010_OFFSET_FEATURE,
++	.writeable_reg = ftssp010_i2s_wr_reg,
++	.readable_reg = ftssp010_i2s_rd_reg,
++	.volatile_reg = ftssp010_i2s_volatile_reg,
++	.cache_type = REGCACHE_FLAT,
++};
++
++static int ftssp010_i2s_probe(struct platform_device *pdev)
++{
++	int (*read_fixup)(void __iomem *addr, unsigned int val,
++		unsigned int shift_bits);
++	int ret;
++	/* Add for i2s */
++	struct ftssp010_i2s *i2s;
++	int err, irq;
++	unsigned int val;
++	unsigned int reg;
++	struct resource *mem;
++	void __iomem *regs;
++
++	i2s = devm_kzalloc(&pdev->dev, sizeof(*i2s), GFP_KERNEL);
++	if (!i2s) {
++		err = -ENOMEM;
++		goto err;
++	}
++	platform_set_drvdata(pdev, i2s);
++	i2s->dev = &pdev->dev;
++	INFO("dev: %p, i2s: %p\n", &pdev->dev, i2s);
++
++	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	regs = devm_ioremap_resource(&pdev->dev, mem);
++
++	if (IS_ERR(regs)) {
++		ret = PTR_ERR(regs);
++		goto err;
++	}
++
++	/* Check SSP revision register */
++	read_fixup = symbol_get(readl_fixup);
++	ret = read_fixup((void __iomem *)(unsigned long)regs + 0x40,  0x00011506, 0);
++	symbol_put(readl_fixup);
++	if (!ret){
++		ERR("%s: fail to read revision reg, bitmap no support ftssp \n", __func__);
++		return -ENXIO;
++	}
++
++	i2s->regmap = devm_regmap_init_mmio(&pdev->dev, regs,
++					    &ftssp010_i2s_regmap_config);
++	if (IS_ERR(i2s->regmap)) {
++		dev_err(&pdev->dev, "regmap init failed\n");
++		err = PTR_ERR(i2s->regmap);
++		goto err;
++	}
++
++	i2s->playback_dma_data.addr = mem->start + FTSSP010_OFFSET_DATA;
++	i2s->playback_dma_data.addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
++	i2s->playback_dma_data.maxburst = 4;
++	i2s->playback_dma_data.chan_name = "tx";
++
++	i2s->capture_dma_data.addr = mem->start + FTSSP010_OFFSET_DATA;
++	i2s->capture_dma_data.addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
++	i2s->capture_dma_data.maxburst = 4;
++	i2s->capture_dma_data.chan_name = "rx";
++
++	/* SSP reset */
++ 	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
++			   FTSSP010_CR2_SSPRST, 1);
++
++	mdelay(1);
++ 	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
++			   FTSSP010_CR2_SSPRST, 0);
++	mdelay(1);
++	/* SSP disable interrupt source */
++ 	regmap_write(i2s->regmap, FTSSP010_OFFSET_ICR, 0);
++
++	/* SSP reset Control Register 0 */
++ 	regmap_write(i2s->regmap, FTSSP010_OFFSET_CR0, 0);
++
++	/* SSP Transmit/Receive FIFO clear */
++	reg = FTSSP010_CR2_RXFCLR | FTSSP010_CR2_TXFCLR;
++	INFO("ftssp010-i2s: [CR2] = %08x\n", reg);
++	regmap_write(i2s->regmap, FTSSP010_OFFSET_CR2, reg);
++
++ 	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
++			  FTSSP010_CR2_RXFCLR, 0);
++
++ 	regmap_update_bits(i2s->regmap, FTSSP010_OFFSET_CR2,
++			  FTSSP010_CR2_TXFCLR, 0);
++
++	device_property_read_u32(&pdev->dev, "clock-frequency", &i2s->mclk);
++	INFO("i2s_mclk = %d\n", i2s->mclk);
++	if (!i2s->mclk) {
++		dev_err(&pdev->dev, "couldn't get clock\n");
++		err = PTR_ERR(i2s->mclk);
++		goto err;
++	}
++
++	irq = platform_get_irq(pdev, 0);
++	if (irq < 0)
++		return irq;
++
++	err = request_irq(irq, ftssp010_i2s_isr, 0, "ftssp010", i2s);
++	if (err) {
++		pr_err("%s request irq failed %d\n", __func__, err);
++		goto err;
++	}
++
++	ret = devm_snd_soc_register_component(&pdev->dev, &ftssp010_i2s_component,
++				   &ftssp010_i2s_dai, 1);
++	if (ret) {
++		pr_err("Could not register DAI: %d\n", ret);
++		ret = -ENOMEM;
++		goto err;
++	}
++
++	ret = andes_pcm_platform_register(&pdev->dev);
++	if (ret) {
++		pr_err("Could not register PCM: %d\n", ret);
++		goto err;
++	}
++
++	fill_codec_reg();
++
++	return 0;
++
++err:
++	dev_err(&pdev->dev, "%s: err = %d\n", __func__, err);
++	return err;
++
++}
++
++static int ftssp010_i2s_remove(struct platform_device *pdev)
++{
++	DBG("%s, cleaning up\n",__func__);
++	andes_pcm_platform_unregister(&pdev->dev);
++	snd_soc_unregister_component(&pdev->dev);
++
++	return 0;
++}
++
++static const struct of_device_id ftssp010_i2s_of_match[] = {
++	{ .compatible = "andestech,ftsspi2s", },
++	{},
++};
++
++static struct platform_driver ftssp010_i2s_driver = {
++	.driver = {
++		.name = "ftssp010",
++		.owner = THIS_MODULE,
++		.of_match_table = ftssp010_i2s_of_match,
++	},
++	.probe = ftssp010_i2s_probe,
++	.remove = ftssp010_i2s_remove,
++};
++module_platform_driver(ftssp010_i2s_driver);
+diff --git a/sound/soc/codecs/rt5640.c b/sound/soc/codecs/rt5640.c
+index a7071d0a2562..debc3d7b18d3 100644
+--- a/sound/soc/codecs/rt5640.c
++++ b/sound/soc/codecs/rt5640.c
+@@ -2986,6 +2986,56 @@ static int rt5640_parse_dt(struct rt5640_priv *rt5640, struct device_node *np)
+ 	return 0;
+ }
+ 
++struct rt5640_priv *rt5640_p;
++void alc5640_write_codec(unsigned int reg, unsigned short value, int unused)
++{
++	regmap_write(rt5640_p->regmap, reg, value);
++}
++
++void fill_codec_reg(void)
++{
++	int sai = 0;
++
++	alc5640_write_codec(0x1, 0x0808, sai); //
++	alc5640_write_codec(0x2, 0x0808, sai); //
++	alc5640_write_codec(0x3, 0x0808, sai); //
++
++	alc5640_write_codec(0x19, 0x8080, sai); //
++	alc5640_write_codec(0x1A, 0x8080, sai); //
++	alc5640_write_codec(0x3C, 0x007D, sai); // BST1 to RECMIXL
++	alc5640_write_codec(0x3E, 0x007D, sai); // BST1 to RECMIXR
++	alc5640_write_codec(0x27, 0x3020, sai); // ADCL&R Path
++	alc5640_write_codec(0x2A, 0x1414, sai); // DACL1&DACR1 to Stereo_DAC_Mixer_L&R
++	alc5640_write_codec(0x1C, 0x5F5F, sai); // Digital Mic gain
++	alc5640_write_codec(0x29, 0x8080, sai); // I2S1 in or Mic path to DAC
++	alc5640_write_codec(0x4F, 0x01FE, sai); // DACL1 to OUTMIXL
++	alc5640_write_codec(0x52, 0x01FE, sai); // DACR1 to OUTMIXR
++	alc5640_write_codec(0x03, 0x0808, sai); // Lineout & OUTVOLL&R
++	alc5640_write_codec(0x53, 0xC000, sai); // OUTVOLL&R to LOUTMIX
++	// Power
++	alc5640_write_codec(0x61, 0x9807, sai); // I2S1, DACL/R1, ADCL/R1, D AMP
++	alc5640_write_codec(0x62, 0x8000, sai); // ADC filter
++	alc5640_write_codec(0x63, 0xF814, sai); // VREF1, VREF1 fast mode, MBIAS, LOUTMIX, VERF2, VERF2 fast mode
++	alc5640_write_codec(0x64, 0x8A00, sai); // MIC BST1, MICBIAS1, PLL
++	alc5640_write_codec(0x65, 0xCC00, sai); // RECMIXL/R, OUTMIXL/R
++	alc5640_write_codec(0x66, 0x3000, sai); // OUTVOL
++	// System Clock div
++	alc5640_write_codec(0x73, 0x0000, sai);
++	// PLL BCLK x8
++	alc5640_write_codec(0x80, 0x5000, sai); // PLL Source BCLK1
++	alc5640_write_codec(0x81, 0x1F06, sai); // N = 62 , K = 6
++	alc5640_write_codec(0x82, 0x0800, sai); // Bypass M
++	// Other
++	alc5640_write_codec(0x6A, 0x003D, sai); // PR-3D
++	alc5640_write_codec(0x6C, 0x3600, sai); // PR-3D ADC/DAC clock
++	alc5640_write_codec(0xFA, 0x7601, sai); // I2S1 Interface
++	alc5640_write_codec(0x8E, 0x0019, sai); // pow HP AMP , Charge Pump Power, Enable Headphone Output
++	alc5640_write_codec(0x8F, 0x3000, sai); // HP Depop Mode 2
++	alc5640_write_codec(0x91, 0x0E00, sai); // HP High voltage mode
++	alc5640_write_codec(0x93, 0x3030, sai);
++}
++EXPORT_SYMBOL(fill_codec_reg);
++
+ static int rt5640_i2c_probe(struct i2c_client *i2c)
+ {
+ 	struct rt5640_priv *rt5640;
+@@ -3052,6 +3102,8 @@ static int rt5640_i2c_probe(struct i2c_client *i2c)
+ 	ret = devm_add_action_or_reset(&i2c->dev, rt5640_cancel_work, rt5640);
+ 	if (ret)
+ 		return ret;
++	rt5640_p = rt5640;
++	fill_codec_reg();
+ 
+ 	return devm_snd_soc_register_component(&i2c->dev,
+ 				      &soc_component_dev_rt5640,
+-- 
+2.34.1
+

@@ -1,0 +1,39 @@
+From f119c4f807325bc1540fcb30ef092f9b847acf94 Mon Sep 17 00:00:00 2001
+From: Rick Chen <rick@andestech.com>
+Date: Wed, 28 Sep 2022 11:09:40 +0800
+Subject: [PATCH 085/191] riscv: fpu: refine FPU save flow
+
+When Kernel first time run to arch_dup_task_struct(),
+it will check if sstatus.FS is dirty. If it is dirty,
+then it will do FPU save flow. But this field is
+floating currently. Meanwhile if the combination between
+platform(HW) and Kernel(SW) about FPU configuration
+is mismatch. eq: The platform is without FPU and Kernel
+is with FPU. Then Kernel may trigger illegal instruction
+here.
+
+Hence it shall check by has_fpu before do FPU save flow
+in arch_dup_task_struct().
+
+Signed-off-by: Rick Chen <rick@andestech.com>
+---
+ arch/riscv/kernel/process.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/riscv/kernel/process.c b/arch/riscv/kernel/process.c
+index dffe2b379670..6146dd89eeb7 100644
+--- a/arch/riscv/kernel/process.c
++++ b/arch/riscv/kernel/process.c
+@@ -155,7 +155,8 @@ void flush_thread(void)
+ 
+ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
+ {
+-	fstate_save(src, task_pt_regs(src));
++	if (has_fpu())
++		fstate_save(src, task_pt_regs(src));
+ 	*dst = *src;
+ 	return 0;
+ }
+-- 
+2.34.1
+

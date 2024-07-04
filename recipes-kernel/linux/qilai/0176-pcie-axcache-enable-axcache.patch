@@ -1,0 +1,43 @@
+From 0082bb82cf514a25f3789c240c58d834f76bba67 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Mon, 6 May 2024 17:20:12 +0800
+Subject: [PATCH 176/191] pcie: axcache: enable axcache
+
+GPU timeout if the axcache not enabled.
+
+Reviewed-by: Randolph <randolph@andestech.com>
+---
+ .../pci/controller/dwc/pcie-designware-host.c   | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/drivers/pci/controller/dwc/pcie-designware-host.c b/drivers/pci/controller/dwc/pcie-designware-host.c
+index 69ded77203ae..643e3a33447d 100644
+--- a/drivers/pci/controller/dwc/pcie-designware-host.c
++++ b/drivers/pci/controller/dwc/pcie-designware-host.c
+@@ -789,6 +789,23 @@ int dw_pcie_setup_rc(struct dw_pcie_rp *pp)
+ 	val |= PORT_LOGIC_SPEED_CHANGE;
+ 	dw_pcie_writel_dbi(pci, PCIE_LINK_WIDTH_SPEED_CONTROL, val);
+ 
++	/* AXcache ON */
++	/* Read PF0_PORT_LOGIC_COHERENCY_CONTROL_3_OFF */
++	dw_pcie_read(pci->dbi_base + PF0_PORT_LOGIC_COHERENCY_CONTROL_3_OFF, 0x4, &val);
++	pr_info("PF0_PORT_LOGIC_COHERENCY_CONTROL_3_OFF=%x", val);
++
++	val |= CFG_MSTR_ARCACHE_MODE;
++	val |= CFG_MSTR_AWCACHE_MODE;
++	dw_pcie_write(pci->dbi_base + PF0_PORT_LOGIC_COHERENCY_CONTROL_3_OFF, 0x4, val);
++	dw_pcie_read(pci->dbi_base + PF0_PORT_LOGIC_COHERENCY_CONTROL_3_OFF, 0x4, &val);
++	pr_info("PF0_PORT_LOGIC_COHERENCY_CONTROL_3_OFF=%x", val);
++
++	val |= CFG_MSTR_ARCACHE_VALUE;
++	val |= CFG_MSTR_AWCACHE_VALUE;
++	dw_pcie_write(pci->dbi_base + PF0_PORT_LOGIC_COHERENCY_CONTROL_3_OFF, 0x4, val);
++	dw_pcie_read(pci->dbi_base + PF0_PORT_LOGIC_COHERENCY_CONTROL_3_OFF, 0x4, &val);
++	pr_info("PF0_PORT_LOGIC_COHERENCY_CONTROL_3_OFF=%x", val);
++
+ 	dw_pcie_dbi_ro_wr_dis(pci);
+ 
+ 	return 0;
+-- 
+2.34.1
+

@@ -1,0 +1,95 @@
+From aa0ded391f1c08c6c85e790561c274da3b1a2d4a Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Tue, 2 Aug 2022 09:39:00 +0800
+Subject: [PATCH 017/191] net: andes: ftmac100: add new readl_fixup() when
+ driver probing
+
+Reformed from the following patches on RISCV-Linux-5.4:
+- (77573fb3af94) riscv: Add new readl_fixup() when driver probing
+- (2c7bf75454be) Modify readl_fixup check register to Revision register
+- (21033a8b8069) riscv: Add shift_bits parameter on readl_fixup()
+- (86c6918870fe) riscv: Fix readl_fixup undefined problem
+- (Create by Peter) fixup FTMAC100 riscv: Fix readl_fixup undefined problem
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ drivers/net/ethernet/faraday/ftmac100.c | 17 +++++++++++++++--
+ drivers/net/ethernet/faraday/ftmac100.h |  1 +
+ 2 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/ethernet/faraday/ftmac100.c b/drivers/net/ethernet/faraday/ftmac100.c
+index beb674241bef..701f3e9ac6ac 100644
+--- a/drivers/net/ethernet/faraday/ftmac100.c
++++ b/drivers/net/ethernet/faraday/ftmac100.c
+@@ -34,6 +34,7 @@
+ #include <linux/platform_device.h>
+ 
+ #include "ftmac100.h"
++#include <linux/uaccess.h>
+ 
+ #define DRV_NAME	"ftmac100"
+ 
+@@ -990,6 +991,7 @@ static int ftmac100_poll(struct napi_struct *napi, int budget)
+ static int ftmac100_open(struct net_device *netdev)
+ {
+ 	struct ftmac100 *priv = netdev_priv(netdev);
++	struct net *net;
+ 	int err;
+ 
+ 	err = ftmac100_alloc_buffers(priv);
+@@ -1007,7 +1009,6 @@ static int ftmac100_open(struct net_device *netdev)
+ 	// set sysctl ip fragmentation parameters.
+ 	// sysctl -w net.ipv4.ipfrag_time
+ 	// sysctl -w net.ipv4.ipfrag_high_thresh
+-	struct net *net;
+ 
+ 	net = dev_net(netdev);
+ 	net->ipv4.fqdir->timeout = (5 * HZ);		/* Decrease fragment timeout, 30 -> 5 */
+@@ -1103,11 +1104,13 @@ static const struct net_device_ops ftmac100_netdev_ops = {
+  *****************************************************************************/
+ static int ftmac100_probe(struct platform_device *pdev)
+ {
++	int (*read_fixup)(void __iomem *addr, unsigned int val,
++		unsigned int shift_bits);
+ 	struct resource *res;
+ 	int irq;
+ 	struct net_device *netdev;
+ 	struct ftmac100 *priv;
+-	int err;
++	int err, ret;
+ 
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!res)
+@@ -1161,6 +1164,16 @@ static int ftmac100_probe(struct platform_device *pdev)
+ 		goto err_ioremap;
+ 	}
+ 
++	/* Check feature register */
++	read_fixup = symbol_get(readl_fixup);
++	ret = read_fixup(priv->base + FTMAC100_OFFSET_REVISION, 0x00010407, 0);
++	symbol_put(readl_fixup);
++	if (!ret) {
++		dev_err(&pdev->dev, "fail to read revision reg, bitmap not support ftmac100\n");
++		err = -EIO;
++		goto err_ioremap;
++	}
++
+ 	priv->irq = irq;
+ 
+ 	/* initialize struct mii_if_info */
+diff --git a/drivers/net/ethernet/faraday/ftmac100.h b/drivers/net/ethernet/faraday/ftmac100.h
+index 4269b0c1400a..11fe1f1d5862 100644
+--- a/drivers/net/ethernet/faraday/ftmac100.h
++++ b/drivers/net/ethernet/faraday/ftmac100.h
+@@ -35,6 +35,7 @@
+ #define	FTMAC100_OFFSET_ITC		0x28
+ #define	FTMAC100_OFFSET_APTC		0x2c
+ #define	FTMAC100_OFFSET_DBLAC		0x30
++#define	FTMAC100_OFFSET_REVISION	0x34
+ #define	FTMAC100_OFFSET_TXR_BADR_H	0x40
+ #define	FTMAC100_OFFSET_RXR_BADR_H	0x44
+ #define	FTMAC100_OFFSET_MACCR		0x88
+-- 
+2.34.1
+

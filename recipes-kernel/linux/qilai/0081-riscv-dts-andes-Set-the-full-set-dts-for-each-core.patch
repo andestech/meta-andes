@@ -1,0 +1,294 @@
+From 38f6841231a81a455cb046f2dae8b72ef55bd358 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Fri, 30 Jun 2023 14:27:01 +0800
+Subject: [PATCH 081/191] riscv: dts: andes: Set the full set dts for each core
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ .../dts/andes/a25_c1_d_dsp_noncoherent_ae350.dts  | 13 ++++++++-----
+ .../riscv/boot/dts/andes/a25mp_c4_d_dsp_ae350.dts |  8 ++++++++
+ .../andes/a27l2_c1_d_dsp_noncoherent_ae350.dts    | 15 +++++++++------
+ .../riscv/boot/dts/andes/a45mp_c4_d_dsp_ae350.dts |  8 ++++++++
+ .../dts/andes/ax25_c1_d_dsp_noncoherent_ae350.dts | 13 ++++++++-----
+ .../boot/dts/andes/ax25mp_c4_d_dsp_ae350.dts      |  8 ++++++++
+ .../andes/ax27l2_c1_d_dsp_noncoherent_ae350.dts   | 15 +++++++++------
+ .../boot/dts/andes/ax45mp_c4_d_dsp_ae350.dts      |  8 ++++++++
+ arch/riscv/boot/dts/andes/ax45mp_c8_ae350.dts     |  8 ++++++++
+ .../boot/dts/andes/ax65mp_c2_d_dsp_ae350.dts      |  8 ++++++++
+ 10 files changed, 82 insertions(+), 22 deletions(-)
+
+diff --git a/arch/riscv/boot/dts/andes/a25_c1_d_dsp_noncoherent_ae350.dts b/arch/riscv/boot/dts/andes/a25_c1_d_dsp_noncoherent_ae350.dts
+index e6b60db8fae2..9c231ad30cbb 100644
+--- a/arch/riscv/boot/dts/andes/a25_c1_d_dsp_noncoherent_ae350.dts
++++ b/arch/riscv/boot/dts/andes/a25_c1_d_dsp_noncoherent_ae350.dts
+@@ -91,7 +91,7 @@ virt_100mhz {
+ 			compatible = "fixed-clock";
+ 			#clock-cells = <0x00>;
+ 			clock-frequency = <0x5f5e100>;
+-			phandle = <0x03>;
++			phandle = <0x04>;
+ 		};
+ 
+ 		timer@f0400000 {
+@@ -167,22 +167,25 @@ smu@f0100000 {
+ 		};
+ 
+ 		mmc@f0e00000 {
+-			compatible = "andestech,atfsdc010";
++			compatible = "andestech,atfsdc010g";
+ 			reg = <0x00 0xf0e00000 0x00 0x1000>;
+ 			interrupts = <0x12 0x04>;
+ 			interrupt-parent = <0x02>;
+ 			clock-freq-min-max = <0x61a80 0x5f5e100>;
+ 			max-frequency = <0x5f5e100>;
+ 			fifo-depth = <0x10>;
+-			cap-sd-highspeed;
++			dma-names = "rxtx";
++			dmas = <0x03 0x09>;
+ 		};
+ 
+ 		dma@f0c00000 {
+-			compatible = "andestech,atcdmac300";
++			compatible = "andestech,atcdmac300g";
+ 			reg = <0x00 0xf0c00000 0x00 0x1000>;
+-			interrupts = <0x0a 0x04 0x40 0x04 0x41 0x04 0x42 0x04 0x43 0x04 0x44 0x04 0x45 0x04 0x46 0x04 0x47 0x04>;
++			interrupts = <0x0a 0x04>;
+ 			interrupt-parent = <0x02>;
+ 			dma-channels = <0x08>;
++			#dma-cells = <0x01>;
++			phandle = <0x03>;
+ 		};
+ 
+ 		lcd@e0200000 {
+diff --git a/arch/riscv/boot/dts/andes/a25mp_c4_d_dsp_ae350.dts b/arch/riscv/boot/dts/andes/a25mp_c4_d_dsp_ae350.dts
+index 49a56d0eb00f..83c97202ec75 100644
+--- a/arch/riscv/boot/dts/andes/a25mp_c4_d_dsp_ae350.dts
++++ b/arch/riscv/boot/dts/andes/a25mp_c4_d_dsp_ae350.dts
+@@ -245,6 +245,14 @@ gpio@f0700000 {
+ 			wakeup-source;
+ 		};
+ 
++		i2c@f0a00000 {
++			compatible = "andestech,atciic100";
++			reg = <0x00 0xf0a00000 0x00 0x1000>;
++			interrupts = <0x06 0x04>;
++			interrupt-parent = <0x02>;
++			wakeup-source;
++		};
++
+ 		mac@e0100000 {
+ 			compatible = "andestech,atmac100";
+ 			reg = <0x00 0xe0100000 0x00 0x1000>;
+diff --git a/arch/riscv/boot/dts/andes/a27l2_c1_d_dsp_noncoherent_ae350.dts b/arch/riscv/boot/dts/andes/a27l2_c1_d_dsp_noncoherent_ae350.dts
+index fbe1021235f1..a60738c1e43d 100644
+--- a/arch/riscv/boot/dts/andes/a27l2_c1_d_dsp_noncoherent_ae350.dts
++++ b/arch/riscv/boot/dts/andes/a27l2_c1_d_dsp_noncoherent_ae350.dts
+@@ -180,22 +180,25 @@ smu@f0100000 {
+ 		};
+ 
+ 		mmc@f0e00000 {
+-			compatible = "andestech,atfsdc010";
++			compatible = "andestech,atfsdc010g";
+ 			reg = <0x00 0xf0e00000 0x00 0x1000>;
+ 			interrupts = <0x12 0x04>;
+-			interrupt-parent = <0x03>;
++			interrupt-parent = <0x02>;
+ 			clock-freq-min-max = <0x61a80 0x5f5e100>;
+ 			max-frequency = <0x5f5e100>;
+ 			fifo-depth = <0x10>;
+-			cap-sd-highspeed;
++			dma-names = "rxtx";
++			dmas = <0x03 0x09>;
+ 		};
+ 
+ 		dma@f0c00000 {
+-			compatible = "andestech,atcdmac300";
++			compatible = "andestech,atcdmac300g";
+ 			reg = <0x00 0xf0c00000 0x00 0x1000>;
+-			interrupts = <0x0a 0x04 0x40 0x04 0x41 0x04 0x42 0x04 0x43 0x04 0x44 0x04 0x45 0x04 0x46 0x04 0x47 0x04>;
+-			interrupt-parent = <0x03>;
++			interrupts = <0x0a 0x04>;
++			interrupt-parent = <0x02>;
+ 			dma-channels = <0x08>;
++			#dma-cells = <0x01>;
++			phandle = <0x05>;
+ 		};
+ 
+ 		lcd@e0200000 {
+diff --git a/arch/riscv/boot/dts/andes/a45mp_c4_d_dsp_ae350.dts b/arch/riscv/boot/dts/andes/a45mp_c4_d_dsp_ae350.dts
+index f4db227ca36f..689c633b9026 100644
+--- a/arch/riscv/boot/dts/andes/a45mp_c4_d_dsp_ae350.dts
++++ b/arch/riscv/boot/dts/andes/a45mp_c4_d_dsp_ae350.dts
+@@ -245,6 +245,14 @@ gpio@f0700000 {
+ 			wakeup-source;
+ 		};
+ 
++		i2c@f0a00000 {
++			compatible = "andestech,atciic100";
++			reg = <0x00 0xf0a00000 0x00 0x1000>;
++			interrupts = <0x06 0x04>;
++			interrupt-parent = <0x02>;
++			wakeup-source;
++		};
++
+ 		mac@e0100000 {
+ 			compatible = "andestech,atmac100";
+ 			reg = <0x00 0xe0100000 0x00 0x1000>;
+diff --git a/arch/riscv/boot/dts/andes/ax25_c1_d_dsp_noncoherent_ae350.dts b/arch/riscv/boot/dts/andes/ax25_c1_d_dsp_noncoherent_ae350.dts
+index 2b9a934f27af..7d31312b735a 100644
+--- a/arch/riscv/boot/dts/andes/ax25_c1_d_dsp_noncoherent_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax25_c1_d_dsp_noncoherent_ae350.dts
+@@ -91,7 +91,7 @@ virt_100mhz {
+ 			compatible = "fixed-clock";
+ 			#clock-cells = <0x00>;
+ 			clock-frequency = <0x5f5e100>;
+-			phandle = <0x03>;
++			phandle = <0x04>;
+ 		};
+ 
+ 		timer@f0400000 {
+@@ -167,22 +167,25 @@ smu@f0100000 {
+ 		};
+ 
+ 		mmc@f0e00000 {
+-			compatible = "andestech,atfsdc010";
++			compatible = "andestech,atfsdc010g";
+ 			reg = <0x00 0xf0e00000 0x00 0x1000>;
+ 			interrupts = <0x12 0x04>;
+ 			interrupt-parent = <0x02>;
+ 			clock-freq-min-max = <0x61a80 0x5f5e100>;
+ 			max-frequency = <0x5f5e100>;
+ 			fifo-depth = <0x10>;
+-			cap-sd-highspeed;
++			dma-names = "rxtx";
++			dmas = <0x03 0x09>;
+ 		};
+ 
+ 		dma@f0c00000 {
+-			compatible = "andestech,atcdmac300";
++			compatible = "andestech,atcdmac300g";
+ 			reg = <0x00 0xf0c00000 0x00 0x1000>;
+-			interrupts = <0x0a 0x04 0x40 0x04 0x41 0x04 0x42 0x04 0x43 0x04 0x44 0x04 0x45 0x04 0x46 0x04 0x47 0x04>;
++			interrupts = <0x0a 0x04>;
+ 			interrupt-parent = <0x02>;
+ 			dma-channels = <0x08>;
++			#dma-cells = <0x01>;
++			phandle = <0x03>;
+ 		};
+ 
+ 		lcd@e0200000 {
+diff --git a/arch/riscv/boot/dts/andes/ax25mp_c4_d_dsp_ae350.dts b/arch/riscv/boot/dts/andes/ax25mp_c4_d_dsp_ae350.dts
+index c2a1e319b5ea..1a0f9bd6ebfb 100644
+--- a/arch/riscv/boot/dts/andes/ax25mp_c4_d_dsp_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax25mp_c4_d_dsp_ae350.dts
+@@ -245,6 +245,14 @@ gpio@f0700000 {
+ 			wakeup-source;
+ 		};
+ 
++		i2c@f0a00000 {
++			compatible = "andestech,atciic100";
++			reg = <0x00 0xf0a00000 0x00 0x1000>;
++			interrupts = <0x06 0x04>;
++			interrupt-parent = <0x02>;
++			wakeup-source;
++		};
++
+ 		mac@e0100000 {
+ 			compatible = "andestech,atmac100";
+ 			reg = <0x00 0xe0100000 0x00 0x1000>;
+diff --git a/arch/riscv/boot/dts/andes/ax27l2_c1_d_dsp_noncoherent_ae350.dts b/arch/riscv/boot/dts/andes/ax27l2_c1_d_dsp_noncoherent_ae350.dts
+index 69fca2a7236a..f72ebc972366 100644
+--- a/arch/riscv/boot/dts/andes/ax27l2_c1_d_dsp_noncoherent_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax27l2_c1_d_dsp_noncoherent_ae350.dts
+@@ -180,22 +180,25 @@ smu@f0100000 {
+ 		};
+ 
+ 		mmc@f0e00000 {
+-			compatible = "andestech,atfsdc010";
++			compatible = "andestech,atfsdc010g";
+ 			reg = <0x00 0xf0e00000 0x00 0x1000>;
+ 			interrupts = <0x12 0x04>;
+-			interrupt-parent = <0x03>;
++			interrupt-parent = <0x02>;
+ 			clock-freq-min-max = <0x61a80 0x5f5e100>;
+ 			max-frequency = <0x5f5e100>;
+ 			fifo-depth = <0x10>;
+-			cap-sd-highspeed;
++			dma-names = "rxtx";
++			dmas = <0x03 0x09>;
+ 		};
+ 
+ 		dma@f0c00000 {
+-			compatible = "andestech,atcdmac300";
++			compatible = "andestech,atcdmac300g";
+ 			reg = <0x00 0xf0c00000 0x00 0x1000>;
+-			interrupts = <0x0a 0x04 0x40 0x04 0x41 0x04 0x42 0x04 0x43 0x04 0x44 0x04 0x45 0x04 0x46 0x04 0x47 0x04>;
+-			interrupt-parent = <0x03>;
++			interrupts = <0x0a 0x04>;
++			interrupt-parent = <0x02>;
+ 			dma-channels = <0x08>;
++			#dma-cells = <0x01>;
++			phandle = <0x05>;
+ 		};
+ 
+ 		lcd@e0200000 {
+diff --git a/arch/riscv/boot/dts/andes/ax45mp_c4_d_dsp_ae350.dts b/arch/riscv/boot/dts/andes/ax45mp_c4_d_dsp_ae350.dts
+index 23e97b8d22ae..96d7daa8c90f 100644
+--- a/arch/riscv/boot/dts/andes/ax45mp_c4_d_dsp_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax45mp_c4_d_dsp_ae350.dts
+@@ -245,6 +245,14 @@ gpio@f0700000 {
+ 			wakeup-source;
+ 		};
+ 
++		i2c@f0a00000 {
++			compatible = "andestech,atciic100";
++			reg = <0x00 0xf0a00000 0x00 0x1000>;
++			interrupts = <0x06 0x04>;
++			interrupt-parent = <0x02>;
++			wakeup-source;
++		};
++
+ 		mac@e0100000 {
+ 			compatible = "andestech,atmac100";
+ 			reg = <0x00 0xe0100000 0x00 0x1000>;
+diff --git a/arch/riscv/boot/dts/andes/ax45mp_c8_ae350.dts b/arch/riscv/boot/dts/andes/ax45mp_c8_ae350.dts
+index 3e4273b3786d..a7db6e1810af 100644
+--- a/arch/riscv/boot/dts/andes/ax45mp_c8_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax45mp_c8_ae350.dts
+@@ -357,6 +357,14 @@ gpio@f0700000 {
+ 			wakeup-source;
+ 		};
+ 
++		i2c@f0a00000 {
++			compatible = "andestech,atciic100";
++			reg = <0x00 0xf0a00000 0x00 0x1000>;
++			interrupts = <0x06 0x04>;
++			interrupt-parent = <0x02>;
++			wakeup-source;
++		};
++
+ 		mac@e0100000 {
+ 			compatible = "andestech,atmac100";
+ 			reg = <0x00 0xe0100000 0x00 0x1000>;
+diff --git a/arch/riscv/boot/dts/andes/ax65mp_c2_d_dsp_ae350.dts b/arch/riscv/boot/dts/andes/ax65mp_c2_d_dsp_ae350.dts
+index a5097ac70108..1e3c6da34035 100644
+--- a/arch/riscv/boot/dts/andes/ax65mp_c2_d_dsp_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax65mp_c2_d_dsp_ae350.dts
+@@ -192,6 +192,14 @@ gpio@f0700000 {
+ 			wakeup-source;
+ 		};
+ 
++		i2c@f0a00000 {
++			compatible = "andestech,atciic100";
++			reg = <0x00 0xf0a00000 0x00 0x1000>;
++			interrupts = <0x06 0x04>;
++			interrupt-parent = <0x02>;
++			wakeup-source;
++		};
++
+ 		mac@e0100000 {
+ 			compatible = "andestech,atmac100";
+ 			reg = <0x00 0xe0100000 0x00 0x1000>;
+-- 
+2.34.1
+

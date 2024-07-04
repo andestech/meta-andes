@@ -1,0 +1,290 @@
+From 22ba82c7872a4388b544ebdf7166820ffba01ea7 Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Fri, 2 Jun 2023 08:23:27 +0800
+Subject: [PATCH 080/191] riscv: andes: trigger_module: Support Andes
+ trigger_module
+
+Reformed from the following patches on RISCV-Linux-5.4:
+- (953a98950e1b) RISC-V: support trigger module for single step
+- (5b65b55bdcc0) Bug 18635 - Limitation about trigger module for icount type
+- (c2d003ee060d) Use scontext/svalue match to fire trigger
+- (d74ad2ce523b) warning: ISO C90 forbids mixed declarations and code
+- (c3699a445dd2) Fix unknown CSR error by using upstream musl toolchain
+- (b4716ef9b379) andes: rename sbi calls of andes vendor extension
+
+TIF_SINGLESETP define number workaround :
+During the system call switch, the current context's thread flag uses
+the 'andi' instruction with _TIF_SYSCALL_WORK for a bitwise check.
+Therefore, if TIF_SINGLESTEP exceeds 12, it will cause a compile error.
+So, we swap the values of the new TIF_SINGLESETP and OOM's TIF_MEMDIE
+since TIF_MEMDIE doesn't judge in this case.
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/include/asm/ptrace.h      |  3 ++
+ arch/riscv/include/asm/thread_info.h | 16 ++++++++--
+ arch/riscv/kernel/entry.S            |  6 ++++
+ arch/riscv/kernel/ptrace.c           | 44 +++++++++++++++++++++++++++-
+ drivers/soc/andes/andes_sbi.c        | 14 +++++++--
+ include/soc/andes/csr.h              |  5 +++-
+ include/soc/andes/sbi.h              |  3 ++
+ include/soc/andes/trigger_module.h   | 19 ++++++++++++
+ 8 files changed, 103 insertions(+), 7 deletions(-)
+ create mode 100644 include/soc/andes/trigger_module.h
+
+diff --git a/arch/riscv/include/asm/ptrace.h b/arch/riscv/include/asm/ptrace.h
+index 6ecd461129d2..1a2a54c7c932 100644
+--- a/arch/riscv/include/asm/ptrace.h
++++ b/arch/riscv/include/asm/ptrace.h
+@@ -59,6 +59,9 @@ struct pt_regs {
+ #define REG_FMT "%08lx"
+ #endif
+ 
++/* Andes use trigger module to implement the ptrace single step. */
++#define arch_has_single_step() (1)
++
+ #define user_mode(regs) (((regs)->status & SR_PP) == 0)
+ 
+ #define MAX_REG_OFFSET offsetof(struct pt_regs, orig_a0)
+diff --git a/arch/riscv/include/asm/thread_info.h b/arch/riscv/include/asm/thread_info.h
+index f704c8dd57e0..64530c10e04c 100644
+--- a/arch/riscv/include/asm/thread_info.h
++++ b/arch/riscv/include/asm/thread_info.h
+@@ -94,7 +94,7 @@ struct thread_info {
+ #define TIF_SIGPENDING		2	/* signal pending */
+ #define TIF_NEED_RESCHED	3	/* rescheduling necessary */
+ #define TIF_RESTORE_SIGMASK	4	/* restore signal mask in do_signal() */
+-#define TIF_MEMDIE		5	/* is terminating due to OOM killer */
++#define TIF_MEMDIE		12	/* is terminating due to OOM killer */
+ #define TIF_SYSCALL_TRACEPOINT  6       /* syscall tracepoint instrumentation */
+ #define TIF_SYSCALL_AUDIT	7	/* syscall auditing */
+ #define TIF_SECCOMP		8	/* syscall secure computing */
+@@ -102,6 +102,17 @@ struct thread_info {
+ #define TIF_UPROBE		10	/* uprobe breakpoint or singlestep */
+ #define TIF_32BIT		11	/* compat-mode 32bit process */
+ 
++/*
++ * Andes trigger module support ptrace single step
++ *
++ * During the system call switch, the current context's thread flag
++ * uses the 'andi' instruction with _TIF_SYSCALL_WORK for a bitwise check.
++ * Therefore, if TIF_SINGLESTEP exceeds 12, it will cause a compile error.
++ * So, we swap the values of the new TIF_SINGLESETP and OOM's TIF_MEMDIE
++ * since TIF_MEMDIE doesn't judge in this case.
++ */
++#define TIF_SINGLESTEP		5
++
+ #define _TIF_SYSCALL_TRACE	(1 << TIF_SYSCALL_TRACE)
+ #define _TIF_NOTIFY_RESUME	(1 << TIF_NOTIFY_RESUME)
+ #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
+@@ -111,6 +122,7 @@ struct thread_info {
+ #define _TIF_SECCOMP		(1 << TIF_SECCOMP)
+ #define _TIF_NOTIFY_SIGNAL	(1 << TIF_NOTIFY_SIGNAL)
+ #define _TIF_UPROBE		(1 << TIF_UPROBE)
++#define _TIF_SINGLESTEP		(1 << TIF_SINGLESTEP)
+ 
+ #define _TIF_WORK_MASK \
+ 	(_TIF_NOTIFY_RESUME | _TIF_SIGPENDING | _TIF_NEED_RESCHED | \
+@@ -118,6 +130,6 @@ struct thread_info {
+ 
+ #define _TIF_SYSCALL_WORK \
+ 	(_TIF_SYSCALL_TRACE | _TIF_SYSCALL_TRACEPOINT | _TIF_SYSCALL_AUDIT | \
+-	 _TIF_SECCOMP)
++	 _TIF_SECCOMP | _TIF_SINGLESTEP)
+ 
+ #endif /* _ASM_RISCV_THREAD_INFO_H */
+diff --git a/arch/riscv/kernel/entry.S b/arch/riscv/kernel/entry.S
+index 3221a9e5f372..f5a3c3de94e2 100644
+--- a/arch/riscv/kernel/entry.S
++++ b/arch/riscv/kernel/entry.S
+@@ -272,6 +272,12 @@ resume_userspace:
+ 	call user_enter_callable
+ #endif
+ 
++.global bypass_singlestep
++bypass_singlestep:
++	j 1f
++	/* Set trigger module for single step */
++	call do_singlestep
++1:
+ 	/* Save unwound kernel stack pointer in thread_info */
+ 	addi s0, sp, PT_SIZE_ON_STACK
+ 	REG_S s0, TASK_TI_KERNEL_SP(tp)
+diff --git a/arch/riscv/kernel/ptrace.c b/arch/riscv/kernel/ptrace.c
+index 2ae8280ae475..c9f4bbc34185 100644
+--- a/arch/riscv/kernel/ptrace.c
++++ b/arch/riscv/kernel/ptrace.c
+@@ -11,6 +11,7 @@
+ #include <asm/syscall.h>
+ #include <asm/thread_info.h>
+ #include <asm/switch_to.h>
++#include <asm/cacheflush.h>
+ #include <linux/audit.h>
+ #include <linux/compat.h>
+ #include <linux/ptrace.h>
+@@ -18,6 +19,7 @@
+ #include <linux/regset.h>
+ #include <linux/sched.h>
+ #include <linux/sched/task_stack.h>
++#include <soc/andes/trigger_module.h>
+ 
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/syscalls.h>
+@@ -213,6 +215,7 @@ unsigned long regs_get_kernel_stack_nth(struct pt_regs *regs, unsigned int n)
+ void ptrace_disable(struct task_struct *child)
+ {
+ 	clear_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
++	user_disable_single_step(child);
+ }
+ 
+ long arch_ptrace(struct task_struct *child, long request,
+@@ -229,6 +232,42 @@ long arch_ptrace(struct task_struct *child, long request,
+ 	return ret;
+ }
+ 
++
++extern void bypass_singlestep(void);
++static void modify_bypass_to_nop(void)
++{
++	unsigned int nop = CNOP;
++
++	copy_to_kernel_nofault(&bypass_singlestep, &nop, CNOP_SIZE);
++	smp_mb();
++	flush_icache_range(&bypass_singlestep, &bypass_singlestep + CNOP_SIZE);
++}
++
++void do_singlestep(void)
++{
++	if (test_thread_flag(TIF_SINGLESTEP)) {
++		sbi_andes_set_trigger(TRIGGER_TYPE_ICOUNT, ICOUNT, 1);
++		csr_write(CSR_SCONTEXT, 1);
++	} else {
++		csr_write(CSR_SCONTEXT, 0);
++	}
++}
++
++static bool is_bypass_singlestep = true;
++void user_enable_single_step(struct task_struct *child)
++{
++	set_tsk_thread_flag(child, TIF_SINGLESTEP);
++	if (is_bypass_singlestep) {
++		modify_bypass_to_nop();
++		is_bypass_singlestep = false;
++	}
++}
++
++void user_disable_single_step(struct task_struct *child)
++{
++	clear_tsk_thread_flag(child, TIF_SINGLESTEP);
++}
++
+ /*
+  * Allows PTRACE_SYSCALL to work.  These are called from entry.S in
+  * {handle,ret_from}_syscall.
+@@ -258,10 +297,13 @@ __visible int do_syscall_trace_enter(struct pt_regs *regs)
+ 
+ __visible void do_syscall_trace_exit(struct pt_regs *regs)
+ {
++	int step;
++
+ 	audit_syscall_exit(regs);
++	step = test_thread_flag(TIF_SINGLESTEP);
+ 
+ 	if (test_thread_flag(TIF_SYSCALL_TRACE))
+-		ptrace_report_syscall_exit(regs, 0);
++		ptrace_report_syscall_exit(regs, step);
+ 
+ #ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
+ 	if (test_thread_flag(TIF_SYSCALL_TRACEPOINT))
+diff --git a/drivers/soc/andes/andes_sbi.c b/drivers/soc/andes/andes_sbi.c
+index 5492fa88bf0d..52520c99e2d5 100644
+--- a/drivers/soc/andes/andes_sbi.c
++++ b/drivers/soc/andes/andes_sbi.c
+@@ -12,13 +12,13 @@ void sbi_andes_set_ppma(void *arg)
+ 	size_t size = ((struct ppma_arg_t *)arg)->size;
+ 
+ 	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_SET_PPMA,
+-			phys_addr, va_addr, size, 0, 0, 0);
++		  phys_addr, va_addr, size, 0, 0, 0);
+ }
+ 
+ void sbi_andes_free_ppma(void *addr)
+ {
+ 	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_FREE_PPMA,
+-				(unsigned long)addr, 0, 0, 0, 0, 0);
++		  (unsigned long)addr, 0, 0, 0, 0, 0);
+ }
+ 
+ long sbi_andes_probe_ppma(void)
+@@ -26,6 +26,14 @@ long sbi_andes_probe_ppma(void)
+ 	struct sbiret ret;
+ 
+ 	ret = sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_PROBE_PPMA,
+-						0, 0, 0, 0, 0, 0);
++			0, 0, 0, 0, 0, 0);
+ 	return ret.value;
+ }
++
++/* trigger module support debug application with gdbserver */
++void sbi_andes_set_trigger(unsigned int type, uintptr_t data, int enable)
++{
++	sbi_ecall(SBI_EXT_ANDES, SBI_EXT_ANDES_TRIGGER,
++		  type, data, enable, 0, 0, 0);
++}
++EXPORT_SYMBOL(sbi_andes_set_trigger);
+diff --git a/include/soc/andes/csr.h b/include/soc/andes/csr.h
+index 3907c76d0334..e86859befbdd 100644
+--- a/include/soc/andes/csr.h
++++ b/include/soc/andes/csr.h
+@@ -120,7 +120,10 @@ extern u32 CCTL_L2_STATUS_PER_CORE_OFFSET;
+ #define L2C_REG_CN_HPM_OFFSET(n)	\
+ 	(L2C_REG_C0_HPM_OFFSET + (n * L2C_HPM_PER_CORE_OFFSET))
+ 
+-/* Debug/Trace Registers (shared with Debug Mode) */
++/*
++ * Debug/Trace Registers (shared with Debug Mode).
++ * Andes trigger module support ptrace single step.
++ */
+ #define CSR_SCONTEXT            0x7aa
+ 
+ /* Supervisor trap registers */
+diff --git a/include/soc/andes/sbi.h b/include/soc/andes/sbi.h
+index 05ac45cc78bd..47a51347e6a4 100644
+--- a/include/soc/andes/sbi.h
++++ b/include/soc/andes/sbi.h
+@@ -59,4 +59,7 @@ void sbi_andes_set_ppma(void *arg);
+ void sbi_andes_free_ppma(void *addr);
+ long sbi_andes_probe_ppma(void);
+ 
++/* Trigger module support debug application with gdbserver */
++void sbi_andes_set_trigger(unsigned int type, uintptr_t data, int enable);
++
+ #endif /* !__SOC_ANDES_SBI_H */
+diff --git a/include/soc/andes/trigger_module.h b/include/soc/andes/trigger_module.h
+new file mode 100644
+index 000000000000..db98dce06b08
+--- /dev/null
++++ b/include/soc/andes/trigger_module.h
+@@ -0,0 +1,19 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (C) 2023 Andes Technology Corporation.
++ */
++
++#ifndef __SOC_ANDES_TRIGGER_MODULE_H
++#define __SOC_ANDES_TRIGGER_MODULE_H
++
++#include <soc/andes/sbi.h>
++
++#define CNOP           0x0001
++#define CNOP_SIZE      0x2
++#define TRIGGER_TYPE_ICOUNT 3
++#define ICOUNT 1
++
++extern void bypass_singlestep(void);
++void do_singlestep(void);
++
++#endif /* !__SOC_ANDES_TRIGGER_MODULE_H */
+-- 
+2.34.1
+

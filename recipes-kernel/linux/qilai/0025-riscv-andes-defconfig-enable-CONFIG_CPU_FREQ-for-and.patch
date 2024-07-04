@@ -1,0 +1,26 @@
+From 7358d7d3a5492774af7588c65719061af95f193d Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Wed, 3 May 2023 14:45:46 +0800
+Subject: [PATCH 025/191] riscv: andes: defconfig: enable CONFIG_CPU_FREQ for
+ andes_defconfig
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/configs/andes_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/riscv/configs/andes_defconfig b/arch/riscv/configs/andes_defconfig
+index 6dba44942ad3..7a754e3a282c 100644
+--- a/arch/riscv/configs/andes_defconfig
++++ b/arch/riscv/configs/andes_defconfig
+@@ -30,6 +30,7 @@ CONFIG_SOC_VIRT=y
+ CONFIG_RISCV_SBI_V01=y
+ CONFIG_PM=y
+ CONFIG_CPU_IDLE=y
++CONFIG_CPU_FREQ=y
+ CONFIG_JUMP_LABEL=y
+ CONFIG_MODULES=y
+ CONFIG_MODULE_UNLOAD=y
+-- 
+2.34.1
+

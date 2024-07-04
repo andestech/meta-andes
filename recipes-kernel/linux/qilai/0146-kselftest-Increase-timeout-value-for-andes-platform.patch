@@ -1,0 +1,72 @@
+From 43c7ada5f108dbcf3c8bd36e1ea382ce31ed8442 Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Tue, 25 Jul 2023 16:44:52 +0800
+Subject: [PATCH 146/191] kselftest: Increase timeout value for andes platform
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ tools/testing/selftests/filesystems/epoll/settings | 1 +
+ tools/testing/selftests/livepatch/settings         | 2 +-
+ tools/testing/selftests/pidfd/settings             | 1 +
+ tools/testing/selftests/rseq/settings              | 2 +-
+ tools/testing/selftests/sync/settings              | 1 +
+ tools/testing/selftests/timers/settings            | 2 +-
+ tools/testing/selftests/zram/settings              | 1 +
+ 7 files changed, 7 insertions(+), 3 deletions(-)
+ create mode 100644 tools/testing/selftests/filesystems/epoll/settings
+ create mode 100644 tools/testing/selftests/pidfd/settings
+ create mode 100644 tools/testing/selftests/sync/settings
+ create mode 100644 tools/testing/selftests/zram/settings
+
+diff --git a/tools/testing/selftests/filesystems/epoll/settings b/tools/testing/selftests/filesystems/epoll/settings
+new file mode 100644
+index 000000000000..6091b45d226b
+--- /dev/null
++++ b/tools/testing/selftests/filesystems/epoll/settings
+@@ -0,0 +1 @@
++timeout=120
+diff --git a/tools/testing/selftests/livepatch/settings b/tools/testing/selftests/livepatch/settings
+index e7b9417537fb..694d70710ff0 100644
+--- a/tools/testing/selftests/livepatch/settings
++++ b/tools/testing/selftests/livepatch/settings
+@@ -1 +1 @@
+-timeout=0
++timeout=300
+diff --git a/tools/testing/selftests/pidfd/settings b/tools/testing/selftests/pidfd/settings
+new file mode 100644
+index 000000000000..ed8418e8217a
+--- /dev/null
++++ b/tools/testing/selftests/pidfd/settings
+@@ -0,0 +1 @@
++timeout=3600
+diff --git a/tools/testing/selftests/rseq/settings b/tools/testing/selftests/rseq/settings
+index e7b9417537fb..ed8418e8217a 100644
+--- a/tools/testing/selftests/rseq/settings
++++ b/tools/testing/selftests/rseq/settings
+@@ -1 +1 @@
+-timeout=0
++timeout=3600
+diff --git a/tools/testing/selftests/sync/settings b/tools/testing/selftests/sync/settings
+new file mode 100644
+index 000000000000..694d70710ff0
+--- /dev/null
++++ b/tools/testing/selftests/sync/settings
+@@ -0,0 +1 @@
++timeout=300
+diff --git a/tools/testing/selftests/timers/settings b/tools/testing/selftests/timers/settings
+index e7b9417537fb..694d70710ff0 100644
+--- a/tools/testing/selftests/timers/settings
++++ b/tools/testing/selftests/timers/settings
+@@ -1 +1 @@
+-timeout=0
++timeout=300
+diff --git a/tools/testing/selftests/zram/settings b/tools/testing/selftests/zram/settings
+new file mode 100644
+index 000000000000..694d70710ff0
+--- /dev/null
++++ b/tools/testing/selftests/zram/settings
+@@ -0,0 +1 @@
++timeout=300
+-- 
+2.34.1
+

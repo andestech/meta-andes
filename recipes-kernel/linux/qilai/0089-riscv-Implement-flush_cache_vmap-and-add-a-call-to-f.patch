@@ -1,0 +1,74 @@
+From 5bf0babbd0e7a06eb43f51411b20141b80ff6825 Mon Sep 17 00:00:00 2001
+From: Alexandre Ghiti <alexghiti@rivosinc.com>
+Date: Tue, 25 Jul 2023 15:22:46 +0200
+Subject: [PATCH 089/191] riscv: Implement flush_cache_vmap() and add a call to
+ flush_cache_vmap() in vmap_pfn()
+
+Andes PR : https://gitea.andestech.com/RD-SW/linux/pulls/52
+
+When VMAP_STACK is enabled, the kernel stack will be obtained through
+vmalloc(). Normally, we rely on the logic in vmalloc_fault() to update stale
+page table entries covering the vmalloc space in a task's page tables when it first
+accesses the problematic region. Unfortunately, this is not sufficient when
+the kernel stack resides in the vmalloc region, because vmalloc_fault() is a
+C function that needs a stack to run. So we need to ensure that these page table
+entries are up to date before the MM switch.
+
+Here's our symptom:
+core 0: A speculative load lead the kernel stack load to the TLB before the
+corresponding kernel stack's page table is created.
+core 1: Create page table mapping of that kernel stack.
+core 0: After a context switch, the kernel attempts to use the stack region.
+However, even if the page table is correct, the stack address mapping
+in the TLB is invalid, leading to subsequent nested exceptions.
+
+The current workaround from upstream is to update the TLB in flush_cache_vmap().
+The following are the patches we backported from upstream:
+
+Git repo : https://git.kernel.org/pub/scm/linux/kernel/git/akpm/mm.git
+Branch : mm-everything
+(b83cdc699b93) mm: Add a call to flush_cache_vmap() in vmap_pfn()
+(https://lkml.org/lkml/2023/8/9/857)
+
+Git repo : https://git.kernel.org/pub/scm/linux/kernel/git/riscv/linux.git
+Branch : fixes
+(7e3811521dc3) riscv: Implement flush_cache_vmap()
+(http://lists.infradead.org/pipermail/linux-riscv/2023-July/037056.html)
+---
+ arch/riscv/include/asm/cacheflush.h | 4 ++++
+ mm/vmalloc.c                        | 4 ++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/arch/riscv/include/asm/cacheflush.h b/arch/riscv/include/asm/cacheflush.h
+index f6fbe7042f1c..21eb0a600cf4 100644
+--- a/arch/riscv/include/asm/cacheflush.h
++++ b/arch/riscv/include/asm/cacheflush.h
+@@ -30,6 +30,10 @@ static inline void flush_dcache_page(struct page *page)
+ #define flush_icache_user_page(vma, pg, addr, len) \
+ 	flush_icache_mm(vma->vm_mm, 0)
+ 
++#ifdef CONFIG_64BIT
++#define flush_cache_vmap(start, end)	flush_tlb_kernel_range(start, end)
++#endif
++
+ #ifndef CONFIG_SMP
+ 
+ #define flush_icache_all() local_flush_icache_all()
+diff --git a/mm/vmalloc.c b/mm/vmalloc.c
+index d5dc361dc104..80bd104a4d42 100644
+--- a/mm/vmalloc.c
++++ b/mm/vmalloc.c
+@@ -2909,6 +2909,10 @@ void *vmap_pfn(unsigned long *pfns, unsigned int count, pgprot_t prot)
+ 		free_vm_area(area);
+ 		return NULL;
+ 	}
++
++	flush_cache_vmap((unsigned long)area->addr,
++			 (unsigned long)area->addr + count * PAGE_SIZE);
++
+ 	return area->addr;
+ }
+ EXPORT_SYMBOL_GPL(vmap_pfn);
+-- 
+2.34.1
+

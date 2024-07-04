@@ -1,0 +1,44 @@
+From 2e2567109e6bca0b9a38a48e98653dc57815638a Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Fri, 5 May 2023 08:37:19 +0800
+Subject: [PATCH 031/191] rtc: andes: atcrtc100: add new readl_fixup() when
+ driver probing
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ drivers/rtc/rtc-atcrtc100.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/rtc/rtc-atcrtc100.c b/drivers/rtc/rtc-atcrtc100.c
+index f5ced02f648b..a9b9dce6d181 100644
+--- a/drivers/rtc/rtc-atcrtc100.c
++++ b/drivers/rtc/rtc-atcrtc100.c
+@@ -217,6 +217,8 @@ const static struct rtc_class_ops rtc_ops = {
+ 
+ static int atc_rtc_probe(struct platform_device *pdev)
+ {
++	int (*read_fixup)(void __iomem *addr, unsigned int val,
++		unsigned int shift_bits);
+ 	struct atc_rtc *rtc = &rtc_platform_data;
+ 	int ret = -ENOENT;
+ 
+@@ -249,6 +251,16 @@ static int atc_rtc_probe(struct platform_device *pdev)
+ 	if (!rtc->regbase)
+ 		goto err_ioremap1;
+ 
++	read_fixup = symbol_get(readl_fixup);
++	/* Check ID and Revision register 0x030110 */
++	ret = read_fixup(rtc->regbase, 0x030110, 8);
++	symbol_put(readl_fixup);
++	if (!ret) {
++		dev_err(&pdev->dev,
++			"Failed to read the ID register, ATCRTC100 is not supported.\n");
++		return -ENOENT;
++	}
++
+ 	if ((RTC_ID & ID_MSK) != ATCRTC100ID)
+ 		return -ENOENT;
+ 
+-- 
+2.34.1
+

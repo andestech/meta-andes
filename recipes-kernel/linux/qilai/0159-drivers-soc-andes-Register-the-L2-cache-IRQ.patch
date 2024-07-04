@@ -1,0 +1,455 @@
+From 298ab8ba375b904b75cdd1e83ee73aec9b6b4ef0 Mon Sep 17 00:00:00 2001
+From: Ben Zong-You Xie <ben717@andestech.com>
+Date: Tue, 5 Dec 2023 14:23:25 +0800
+Subject: [PATCH 159/191] drivers: soc: andes: Register the  L2-cache IRQ
+
+Register the L2-cache IRQ. The IRQ will first clear the error status,
+and then print the error messages according to the asynchronous error
+register and the error register.
+
+Signed-off-by: Ben Zong-You Xie <ben717@andestech.com>
+---
+ .../a27l2_c1_d_dsp_noncoherent_ae350.dts      |   2 +
+ .../boot/dts/andes/a45mp_c4_d_dsp_ae350.dts   |   2 +
+ .../dts/andes/ax25mp_amp_c2_64_d_ae350.dts    |   2 +
+ .../boot/dts/andes/ax25mp_c4_d_dsp_ae350.dts  |   2 +
+ .../ax27l2_c1_d_dsp_noncoherent_ae350.dts     |   2 +
+ .../boot/dts/andes/ax45mp_c4_d_dsp_ae350.dts  |   2 +
+ arch/riscv/boot/dts/andes/ax45mp_c8_ae350.dts |   2 +
+ .../boot/dts/andes/ax45mpv_c4_d_dsp_ae350.dts |   2 +
+ .../boot/dts/andes/ax65mp_c2_d_dsp_ae350.dts  |   2 +
+ drivers/soc/andes/cache.c                     |  70 +++++++-
+ include/soc/andes/csr.h                       | 158 ++++++++++--------
+ 11 files changed, 174 insertions(+), 72 deletions(-)
+
+diff --git a/arch/riscv/boot/dts/andes/a27l2_c1_d_dsp_noncoherent_ae350.dts b/arch/riscv/boot/dts/andes/a27l2_c1_d_dsp_noncoherent_ae350.dts
+index 9eeba6602e47..f26289632f41 100644
+--- a/arch/riscv/boot/dts/andes/a27l2_c1_d_dsp_noncoherent_ae350.dts
++++ b/arch/riscv/boot/dts/andes/a27l2_c1_d_dsp_noncoherent_ae350.dts
+@@ -59,6 +59,8 @@ l2-cache@e0500000 {
+ 		andes,data-prefetch = <0x03>;
+ 		andes,tag-ram-ctl = <0x00 0x00>;
+ 		andes,data-ram-ctl = <0x00 0x00>;
++		interrupts = <0x10 0x04>;
++		interrupt-parent = <0x03>;
+ 		phandle = <0x01>;
+ 	};
+ 
+diff --git a/arch/riscv/boot/dts/andes/a45mp_c4_d_dsp_ae350.dts b/arch/riscv/boot/dts/andes/a45mp_c4_d_dsp_ae350.dts
+index 983fa08fa2b3..a987aa103fdd 100644
+--- a/arch/riscv/boot/dts/andes/a45mp_c4_d_dsp_ae350.dts
++++ b/arch/riscv/boot/dts/andes/a45mp_c4_d_dsp_ae350.dts
+@@ -143,6 +143,8 @@ l2-cache@e0500000 {
+ 		andes,data-prefetch = <0x03>;
+ 		andes,tag-ram-ctl = <0x00 0x00>;
+ 		andes,data-ram-ctl = <0x00 0x00>;
++		interrupts = <0x10 0x04>;
++		interrupt-parent = <0x06>;
+ 		phandle = <0x01>;
+ 	};
+ 
+diff --git a/arch/riscv/boot/dts/andes/ax25mp_amp_c2_64_d_ae350.dts b/arch/riscv/boot/dts/andes/ax25mp_amp_c2_64_d_ae350.dts
+index 5d80968907dc..ad28f289d49a 100644
+--- a/arch/riscv/boot/dts/andes/ax25mp_amp_c2_64_d_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax25mp_amp_c2_64_d_ae350.dts
+@@ -45,6 +45,8 @@ l2-cache@e0500000 {
+ 		andes,data-prefetch = <0x3>;
+ 		andes,tag-ram-ctl = <0x0 0x0>;
+ 		andes,data-ram-ctl = <0x0 0x0>;
++		interrupts = <0x10 0x4>;
++		interrupt-parent = <0x4>;
+ 		phandle = <0x1>;
+ 	};
+ 
+diff --git a/arch/riscv/boot/dts/andes/ax25mp_c4_d_dsp_ae350.dts b/arch/riscv/boot/dts/andes/ax25mp_c4_d_dsp_ae350.dts
+index f6e5753d0509..6fe19af94f0d 100644
+--- a/arch/riscv/boot/dts/andes/ax25mp_c4_d_dsp_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax25mp_c4_d_dsp_ae350.dts
+@@ -143,6 +143,8 @@ l2-cache@e0500000 {
+ 		andes,data-prefetch = <0x03>;
+ 		andes,tag-ram-ctl = <0x00 0x00>;
+ 		andes,data-ram-ctl = <0x00 0x00>;
++		interrupts = <0x10 0x04>;
++		interrupt-parent = <0x06>;
+ 		phandle = <0x01>;
+ 	};
+ 
+diff --git a/arch/riscv/boot/dts/andes/ax27l2_c1_d_dsp_noncoherent_ae350.dts b/arch/riscv/boot/dts/andes/ax27l2_c1_d_dsp_noncoherent_ae350.dts
+index 26041b04cd7f..8172d1c14558 100644
+--- a/arch/riscv/boot/dts/andes/ax27l2_c1_d_dsp_noncoherent_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax27l2_c1_d_dsp_noncoherent_ae350.dts
+@@ -59,6 +59,8 @@ l2-cache@e0500000 {
+ 		andes,data-prefetch = <0x03>;
+ 		andes,tag-ram-ctl = <0x00 0x00>;
+ 		andes,data-ram-ctl = <0x00 0x00>;
++		interrupts = <0x10 0x04>;
++		interrupt-parent = <0x03>;
+ 		phandle = <0x01>;
+ 	};
+ 
+diff --git a/arch/riscv/boot/dts/andes/ax45mp_c4_d_dsp_ae350.dts b/arch/riscv/boot/dts/andes/ax45mp_c4_d_dsp_ae350.dts
+index 56e023d94968..3be8a68201d5 100644
+--- a/arch/riscv/boot/dts/andes/ax45mp_c4_d_dsp_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax45mp_c4_d_dsp_ae350.dts
+@@ -143,6 +143,8 @@ l2-cache@e0500000 {
+ 		andes,data-prefetch = <0x03>;
+ 		andes,tag-ram-ctl = <0x00 0x00>;
+ 		andes,data-ram-ctl = <0x00 0x00>;
++		interrupts = <0x10 0x04>;
++		interrupt-parent = <0x06>;
+ 		phandle = <0x01>;
+ 	};
+ 
+diff --git a/arch/riscv/boot/dts/andes/ax45mp_c8_ae350.dts b/arch/riscv/boot/dts/andes/ax45mp_c8_ae350.dts
+index 55fcfb9c052a..93e33d2c5d57 100644
+--- a/arch/riscv/boot/dts/andes/ax45mp_c8_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax45mp_c8_ae350.dts
+@@ -255,6 +255,8 @@ l2-cache@e0500000 {
+ 		andes,data-prefetch = <0x03>;
+ 		andes,tag-ram-ctl = <0x00 0x00>;
+ 		andes,data-ram-ctl = <0x00 0x00>;
++		interrupts = <0x10 0x04>;
++		interrupt-parent = <0x0a>;
+ 		phandle = <0x01>;
+ 	};
+ 
+diff --git a/arch/riscv/boot/dts/andes/ax45mpv_c4_d_dsp_ae350.dts b/arch/riscv/boot/dts/andes/ax45mpv_c4_d_dsp_ae350.dts
+index 92844924260c..9cb59abdb124 100644
+--- a/arch/riscv/boot/dts/andes/ax45mpv_c4_d_dsp_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax45mpv_c4_d_dsp_ae350.dts
+@@ -143,6 +143,8 @@ l2-cache@e0500000 {
+ 		andes,data-prefetch = <0x03>;
+ 		andes,tag-ram-ctl = <0x00 0x00>;
+ 		andes,data-ram-ctl = <0x00 0x00>;
++		interrupts = <0x10 0x04>;
++		interrupt-parent = <0x06>;
+ 		phandle = <0x01>;
+ 	};
+ 
+diff --git a/arch/riscv/boot/dts/andes/ax65mp_c2_d_dsp_ae350.dts b/arch/riscv/boot/dts/andes/ax65mp_c2_d_dsp_ae350.dts
+index 50617d61462c..30501236f294 100644
+--- a/arch/riscv/boot/dts/andes/ax65mp_c2_d_dsp_ae350.dts
++++ b/arch/riscv/boot/dts/andes/ax65mp_c2_d_dsp_ae350.dts
+@@ -90,6 +90,8 @@ l2-cache@e0500000 {
+ 		andes,data-prefetch = <0x03>;
+ 		andes,tag-ram-ctl = <0x00 0x00>;
+ 		andes,data-ram-ctl = <0x00 0x00>;
++		interrupts = <0x10 0x04>;
++		interrupt-parent = <0x04>;
+ 		phandle = <0x01>;
+ 	};
+ 
+diff --git a/drivers/soc/andes/cache.c b/drivers/soc/andes/cache.c
+index 7d7772e3ecf3..1b088d4f6b83 100644
+--- a/drivers/soc/andes/cache.c
++++ b/drivers/soc/andes/cache.c
+@@ -9,6 +9,7 @@
+ #include <linux/smp.h>
+ #include <linux/irqflags.h>
+ #include <linux/io.h>
++#include <linux/of_irq.h>
+ #include <asm/csr.h>
+ #include <asm/sbi.h>
+ #include <soc/andes/csr.h>
+@@ -189,10 +190,65 @@ void cpu_dma_wb_range(void *info)
+ }
+ EXPORT_SYMBOL(cpu_dma_wb_range);
+ 
++static uint32_t get_l2c_async_err(void)
++{
++	return readl((void *)(l2c_base + L2C_REG_ASYNC_ERR_OFFSET));
++}
++
++static uint32_t get_l2c_err(void)
++{
++	return readl((void *)(l2c_base + L2C_REG_ERR_OFFSET));
++}
++
++static void l2c_print_err(u32 async_err_reg, u32 err_reg)
++{
++	if (async_err_reg) {
++		u32 err_type = err_reg & L2C_ERR_TYPE_MASK;
++		bool more_err = err_reg & L2C_ERR_MORERR_MASK;
++
++		if (more_err)
++			pr_err_ratelimited("More errors occur due to L2 cache. Below is the first error type\n");
++
++		switch (err_type) {
++		case L2C_RAM_ERROR:
++			pr_err_ratelimited("L2C RAM error: CCTL operation encounters uncorrectable RAM errors\n");
++			break;
++		case L2C_RELEASE_ERROR:
++			pr_err_ratelimited("L2C release error: D-cache writes back a line that is not in L2-cache\n");
++			break;
++		case L2C_PROBE_ERROR:
++			pr_err_ratelimited("L2C probe error: CCTL operation probes D-cache when D-cache coherency is disabled\n");
++			break;
++		case L2C_BUS_ERROR:
++			pr_err_ratelimited("L2C bus error: CCTL operation or writing back a line to L3 has bus errors\n");
++			break;
++		default:
++			pr_err_ratelimited("L2C unknown error\n");
++			break;
++		}
++	} else {
++		pr_err_ratelimited("L2C synchronous error\n");
++	}
++}
++
++static irqreturn_t l2c_irq(int irq, void *dev_id)
++{
++	u32 async_err_reg = get_l2c_async_err();
++	u32 err_reg = get_l2c_err();
++
++	/* Clear the error status */
++	writel(0x0, l2c_base + L2C_REG_ASYNC_ERR_OFFSET);
++	writel(0x0, l2c_base + L2C_REG_ERR_OFFSET);
++
++	l2c_print_err(async_err_reg, err_reg);
++	return IRQ_HANDLED;
++}
++
+ int __init l2c_init(void)
+ {
+ 	struct device_node *node;
+-	u32 l2c_cfg = 0;
++	u32 l2c_cfg = 0, irq;
++	int error;
+ 
+ 	node = of_find_compatible_node(NULL, NULL, "cache");
+ 
+@@ -211,6 +267,18 @@ int __init l2c_init(void)
+ 		L2C_REG_STATUS_OFFSET = 0x1000;
+ 	}
+ 
++	irq = irq_of_parse_and_map(node, 0);
++	if (irq <= 0) {
++		pr_err("Failed to get L2C irq number\n");
++		return irq;
++	}
++
++	error = request_irq(irq, l2c_irq, 0, "L2C", NULL);
++	if (error) {
++		pr_err("Failed to register L2C irq\n");
++		return error;
++	}
++
+ 	return 0;
+ }
+ arch_initcall(l2c_init)
+diff --git a/include/soc/andes/csr.h b/include/soc/andes/csr.h
+index e86859befbdd..c9dbf21ec952 100644
+--- a/include/soc/andes/csr.h
++++ b/include/soc/andes/csr.h
+@@ -6,6 +6,7 @@
+ #define __SOC_ANDES_CSR_H
+ 
+ #include <linux/types.h>
++
+ /* mdcm_cfg: Data Cache/Memory Configuration Register */
+ #define MDCM_CFG_DEST_OFFSET		0
+ #define MDCM_CFG_DWAY_OFFSET		3
+@@ -17,92 +18,107 @@
+ #define MDCM_CFG_ULM_2BANK_OFFSET	20
+ #define MDCM_CFG_DLM_ECC_OFFSET		21
+ 
+-#define MDCM_CFG_DEST_MASK	(0x7  << MDCM_CFG_DEST_OFFSET)
+-#define MDCM_CFG_DWAY_MASK	(0x7  << MDCM_CFG_DWAY_OFFSET)
+-#define MDCM_CFG_DSZ_MASK	(0x7  << MDCM_CFG_DSZ_OFFSET)
+-#define MDCM_CFG_DLCK_MASK	(0x1  << MDCM_CFG_DLCK_OFFSET)
+-#define MDCM_CFG_DC_ECC_MASK	(0x3  << MDCM_CFG_DC_ECC_OFFSET)
+-#define MDCM_CFG_DLMB_MASK	(0x7  << MDCM_CFG_DLMB_OFFSET)
+-#define MDCM_CFG_DLMSZ_MASK	(0x1f << MDCM_CFG_DLMSZ_OFFSET)
+-#define MDCM_CFG_ULM_2BANK_MASK	(0x1  << MDCM_CFG_ULM_2BANK_OFFSET)
+-#define MDCM_CFG_DLM_ECC_MASK	(0x3  << MDCM_CFG_DLM_ECC_OFFSET)
++#define MDCM_CFG_DEST_MASK		(0x7  << MDCM_CFG_DEST_OFFSET)
++#define MDCM_CFG_DWAY_MASK		(0x7  << MDCM_CFG_DWAY_OFFSET)
++#define MDCM_CFG_DSZ_MASK		(0x7  << MDCM_CFG_DSZ_OFFSET)
++#define MDCM_CFG_DLCK_MASK		(0x1  << MDCM_CFG_DLCK_OFFSET)
++#define MDCM_CFG_DC_ECC_MASK		(0x3  << MDCM_CFG_DC_ECC_OFFSET)
++#define MDCM_CFG_DLMB_MASK		(0x7  << MDCM_CFG_DLMB_OFFSET)
++#define MDCM_CFG_DLMSZ_MASK		(0x1f << MDCM_CFG_DLMSZ_OFFSET)
++#define MDCM_CFG_ULM_2BANK_MASK		(0x1  << MDCM_CFG_ULM_2BANK_OFFSET)
++#define MDCM_CFG_DLM_ECC_MASK		(0x3  << MDCM_CFG_DLM_ECC_OFFSET)
+ 
+ /* User mode control registers */
+-#define CSR_UITB					   0x800
+-#define CSR_UCODE					   0x801
+-#define CSR_UDCAUSE					   0x809
+-#define CCTL_REG_UCCTLBEGINADDR_NUM    0x80b
+-#define CCTL_REG_UCCTLCOMMAND_NUM      0x80c
+-#define CSR_WFE						   0x810
+-#define CSR_SLEEPVALUE				   0x811
+-#define CSR_TXEVT					   0x812
+-
+-#define custom_csr_write(csr_num, val) csr_write(csr_num, val)
++#define CSR_UITB			0x800
++#define CSR_UCODE			0x801
++#define CSR_UDCAUSE			0x809
++#define CCTL_REG_UCCTLBEGINADDR_NUM    	0x80b
++#define CCTL_REG_UCCTLCOMMAND_NUM      	0x80c
++#define CSR_WFE				0x810
++#define CSR_SLEEPVALUE			0x811
++#define CSR_TXEVT			0x812
++
++#define custom_csr_write(csr_num, val) 	csr_write(csr_num, val)
+ /* ucctlcommand */
+ /* D-cache operation */
+-#define CCTL_L1D_VA_INVAL	0
+-#define CCTL_L1D_VA_WB		1
+-#define CCTL_L1D_VA_WBINVAL	2
++#define CCTL_L1D_VA_INVAL		0
++#define CCTL_L1D_VA_WB			1
++#define CCTL_L1D_VA_WBINVAL		2
+ 
+ /* non-blocking & write around */
+-#define MMISC_CTL_NON_BLOCKING_ENABLE  (0x1  << MMISC_CTL_NON_BLOCKING_OFFSET)
+-#define MMISC_CTL_NON_BLOCKING_OFFSET  0x8
++#define MMISC_CTL_NON_BLOCKING_ENABLE	(0x1  << MMISC_CTL_NON_BLOCKING_OFFSET)
++#define MMISC_CTL_NON_BLOCKING_OFFSET 	0x8
+ 
+ #define MCACHE_CTL_L1I_PREFETCH_OFFSET  9
+ #define MCACHE_CTL_L1D_PREFETCH_OFFSET  10
+-#define MCACHE_CTL_DC_WAROUND_OFFSET_1  13
+-#define MCACHE_CTL_DC_WAROUND_OFFSET_2  14
+-#define MCACHE_CTL_L1I_PREFETCH_EN  (0x1  << MCACHE_CTL_L1I_PREFETCH_OFFSET)
+-#define MCACHE_CTL_L1D_PREFETCH_EN  (0x1  << MCACHE_CTL_L1D_PREFETCH_OFFSET)
+-#define MCACHE_CTL_DC_WAROUND_1_EN  (0x1  << MCACHE_CTL_DC_WAROUND_OFFSET_1)
+-#define MCACHE_CTL_DC_WAROUND_2_EN  (0x1  << MCACHE_CTL_DC_WAROUND_OFFSET_2)
+-#define WRITE_AROUND_ENABLE  (MCACHE_CTL_L1I_PREFETCH_EN | MCACHE_CTL_L1D_PREFETCH_EN | MCACHE_CTL_DC_WAROUND_1_EN)
++#define MCACHE_CTL_DC_WAROUND_OFFSET_1	13
++#define MCACHE_CTL_DC_WAROUND_OFFSET_2	14
++#define MCACHE_CTL_L1I_PREFETCH_EN  	(0x1  << MCACHE_CTL_L1I_PREFETCH_OFFSET)
++#define MCACHE_CTL_L1D_PREFETCH_EN  	(0x1  << MCACHE_CTL_L1D_PREFETCH_OFFSET)
++#define MCACHE_CTL_DC_WAROUND_1_EN  	(0x1  << MCACHE_CTL_DC_WAROUND_OFFSET_1)
++#define MCACHE_CTL_DC_WAROUND_2_EN  	(0x1  << MCACHE_CTL_DC_WAROUND_OFFSET_2)
++#define WRITE_AROUND_ENABLE  		(MCACHE_CTL_L1I_PREFETCH_EN |	\
++					 MCACHE_CTL_L1D_PREFETCH_EN | 	\
++					 MCACHE_CTL_DC_WAROUND_1_EN)
+ 
+ /* L1 I-cache , D-cache */
+-#define CACHE_CTL_offIC_EN  0   /* Enable I-cache */
+-#define CACHE_CTL_offDC_EN  1   /* Enable D-cache */
+-#define CACHE_CTL_mskIC_EN  (0x1  << CACHE_CTL_offIC_EN)
+-#define CACHE_CTL_mskDC_EN  (0x1  << CACHE_CTL_offDC_EN)
++#define CACHE_CTL_offIC_EN  		0   /* Enable I-cache */
++#define CACHE_CTL_offDC_EN  		1   /* Enable D-cache */
++#define CACHE_CTL_mskIC_EN  		(0x1  << CACHE_CTL_offIC_EN)
++#define CACHE_CTL_mskDC_EN  		(0x1  << CACHE_CTL_offDC_EN)
+ 
+ /* L2 cache */
+-#define L2_CACHE_CTL_mskCEN 1
++#define L2_CACHE_CTL_mskCEN 		1
+ /* L2 cache registers */
+-#define L2C_REG_CFG_OFFSET	0
+-#define L2C_REG_CTL_OFFSET	0x8
+-#define L2C_HPM_C0_CTL_OFFSET	0x10
+-#define L2C_HPM_C1_CTL_OFFSET	0x18
+-#define L2C_HPM_C2_CTL_OFFSET	0x20
+-#define L2C_HPM_C3_CTL_OFFSET	0x28
+-#define L2C_REG_C0_CMD_OFFSET	0x40
+-#define L2C_REG_C0_ACC_OFFSET	0x48
+-#define L2C_REG_C1_CMD_OFFSET	0x50
+-#define L2C_REG_C1_ACC_OFFSET	0x58
+-#define L2C_REG_C2_CMD_OFFSET	0x60
+-#define L2C_REG_C2_ACC_OFFSET	0x68
+-#define L2C_REG_C3_CMD_OFFSET	0x70
+-#define L2C_REG_C3_ACC_OFFSET	0x78
++#define L2C_REG_CFG_OFFSET		0
++#define L2C_REG_CTL_OFFSET		0x8
++#define L2C_HPM_C0_CTL_OFFSET		0x10
++#define L2C_HPM_C1_CTL_OFFSET		0x18
++#define L2C_HPM_C2_CTL_OFFSET		0x20
++#define L2C_HPM_C3_CTL_OFFSET		0x28
++#define L2C_REG_ASYNC_ERR_OFFSET	0x30
++#define L2C_REG_ERR_OFFSET		0x38
++#define L2C_REG_C0_CMD_OFFSET		0x40
++#define L2C_REG_C0_ACC_OFFSET		0x48
++#define L2C_REG_C1_CMD_OFFSET		0x50
++#define L2C_REG_C1_ACC_OFFSET		0x58
++#define L2C_REG_C2_CMD_OFFSET		0x60
++#define L2C_REG_C2_ACC_OFFSET		0x68
++#define L2C_REG_C3_CMD_OFFSET		0x70
++#define L2C_REG_C3_ACC_OFFSET		0x78
+ #define L2C_REG_C0_STATUS_OFFSET	0x80
+-#define L2C_REG_C0_HPM_OFFSET	0x200
++#define L2C_REG_C0_HPM_OFFSET		0x200
+ 
+ /* L2 cache configuration register */
+-#define V5_L2C_CFG_MAP_OFFSET       20
+-#define V5_L2C_CFG_MAP_MASK         (1UL << V5_L2C_CFG_MAP_OFFSET)
++#define V5_L2C_CFG_MAP_OFFSET       	20
++#define V5_L2C_CFG_MAP_MASK         	(1UL << V5_L2C_CFG_MAP_OFFSET)
++
++/* L2 cache error register */
++#define L2C_ERR_TYPE_OFFSET		27
++#define L2C_ERR_TYPE_MASK		(0x7 << L2C_ERR_TYPE_OFFSET)
++#define L2C_ERR_MORERR_OFFSET		30
++#define L2C_ERR_MORERR_MASK		(0x1 << L2C_ERR_MORERR_OFFSET)
++/* L2 cache error type */
++#define L2C_RAM_ERROR			0
++#define L2C_RELEASE_ERROR		1
++#define L2C_PROBE_ERROR			2
++#define L2C_BUS_ERROR			4
+ 
+ /* L2 CCTL status */
+-#define CCTL_L2_STATUS_IDLE	0
+-#define CCTL_L2_STATUS_PROCESS	1
+-#define CCTL_L2_STATUS_ILLEGAL	2
++#define CCTL_L2_STATUS_IDLE		0
++#define CCTL_L2_STATUS_PROCESS		1
++#define CCTL_L2_STATUS_ILLEGAL		2
+ /* L2 CCTL status cores mask */
+-#define CCTL_L2_STATUS_C0_MASK	0xF
+-#define CCTL_L2_STATUS_C1_MASK	0xF0
+-#define CCTL_L2_STATUS_C2_MASK	0xF00
+-#define CCTL_L2_STATUS_C3_MASK	0xF000
++#define CCTL_L2_STATUS_C0_MASK		0xF
++#define CCTL_L2_STATUS_C1_MASK		0xF0
++#define CCTL_L2_STATUS_C2_MASK		0xF00
++#define CCTL_L2_STATUS_C3_MASK		0xF000
+ 
+ /* L2 cache operation */
+-#define CCTL_L2_PA_INVAL	0x8
+-#define CCTL_L2_PA_WB		0x9
+-#define CCTL_L2_PA_WBINVAL	0xA
+-#define CCTL_L2_WBINVAL_ALL	0x12
++#define CCTL_L2_PA_INVAL		0x8
++#define CCTL_L2_PA_WB			0x9
++#define CCTL_L2_PA_WBINVAL		0xA
++#define CCTL_L2_WBINVAL_ALL		0x12
+ 
+ #define L2C_HPM_PER_CORE_OFFSET		0x8
+ #ifndef __ASSEMBLER__
+@@ -124,12 +140,12 @@ extern u32 CCTL_L2_STATUS_PER_CORE_OFFSET;
+  * Debug/Trace Registers (shared with Debug Mode).
+  * Andes trigger module support ptrace single step.
+  */
+-#define CSR_SCONTEXT            0x7aa
++#define CSR_SCONTEXT            	0x7aa
+ 
+ /* Supervisor trap registers */
+-#define CSR_SLIE				0x9c4
+-#define CSR_SLIP				0x9c5
+-#define CSR_SDCAUSE				0x9c9
++#define CSR_SLIE			0x9c4
++#define CSR_SLIP			0x9c5
++#define CSR_SDCAUSE			0x9c9
+ 
+ /* Supervisor counter registers */
+ #define CSR_SCOUNTERINTEN		0x9cf
+@@ -147,8 +163,8 @@ extern u32 CCTL_L2_STATUS_PER_CORE_OFFSET;
+ #define CSR_SCCTLDATA			0x9cd
+ #define CSR_SMISC_CTL			0x9d0
+ 
+-#define IRQ_HPM_OVF		18
+-#define SLIP_PMOVI		(_AC(0x1, UL) << IRQ_HPM_OVF)
+-#define IRQ_S_HPM		274
++#define IRQ_HPM_OVF			18
++#define SLIP_PMOVI			(_AC(0x1, UL) << IRQ_HPM_OVF)
++#define IRQ_S_HPM			274
+ 
+ #endif /* !__SOC_ANDES_CSR_H */
+-- 
+2.34.1
+

@@ -1,0 +1,50 @@
+From 856c72f742a28004d3f57b0a87c9beec94343a5d Mon Sep 17 00:00:00 2001
+From: Ben Zong-You Xie <ben717@andestech.com>
+Date: Tue, 26 Dec 2023 11:05:20 +0800
+Subject: [PATCH 160/191] drivers: soc: andes: Fix an error for
+ print_detailed_cause() on imprecise exception (#101)
+
+To print error messages for imprecise exception, extract the field sdcause
+in the CSR sdcause instead of reading the whole register.
+
+Signed-off-by: Ben Zong-You Xie <ben717@andestech.com>
+
+Reviewed-on: https://gitea.andestech.com/RD-SW/linux/pulls/101
+Reviewed-by: Tim Shih-Ting OuYang <tim609@andestech.com>
+Reviewed-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+Reviewed-by: Dylan Dai-Rong Jhong <dylan@andestech.com>
+Co-authored-by: Ben Zong-You Xie <ben717@andestech.com>
+Co-committed-by: Ben Zong-You Xie <ben717@andestech.com>
+---
+ drivers/soc/andes/dcause.c | 1 +
+ include/soc/andes/dcause.h | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/drivers/soc/andes/dcause.c b/drivers/soc/andes/dcause.c
+index 45b0e97d63e7..446b139f45be 100644
+--- a/drivers/soc/andes/dcause.c
++++ b/drivers/soc/andes/dcause.c
+@@ -45,6 +45,7 @@ void print_detailed_cause(long scause, unsigned long sdcause)
+ 		}
+ 	} else {
+ 		scause &= ~CAUSE_IRQ_FLAG;
++		sdcause &= SDCAUSE_DCAUSE_MASK;
+ 		switch (scause) {
+ 		case IRQ_IMPRECISE_ECC:
+ 			pr_info("The detailed trap cause: %s\n",
+diff --git a/include/soc/andes/dcause.h b/include/soc/andes/dcause.h
+index 96017434230d..53adae365bd3 100644
+--- a/include/soc/andes/dcause.h
++++ b/include/soc/andes/dcause.h
+@@ -10,6 +10,8 @@
+ #define IRQ_BUS_RW_TRANS	0x111
+ #define IRQ_PMOVI		0x112
+ 
++#define SDCAUSE_DCAUSE_MASK	0x1f
++
+ static const char *const sdcause_fetch_access[] = {
+ 	"Reserved",
+ 	"ECC/Parity error",
+-- 
+2.34.1
+

@@ -1,0 +1,751 @@
+From d296fd282efa8c283b676900ced2f9175c0a2abb Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Wed, 26 Apr 2023 18:44:21 +0800
+Subject: [PATCH 035/191] dmaengine: andes: atcdmac300g: support cyclic mode
+
+1. Support cyclic mode
+2. Fine-tune the DMAC driver to avoid potential risks.
+3. Change the address aligned from 32 to 64
+   when creating the descriptor memory pool.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/dma/atcdmac300g.c | 350 +++++++++++++++++++++++++++++++++-----
+ drivers/dma/atcdmac300g.h |  58 ++++---
+ 2 files changed, 348 insertions(+), 60 deletions(-)
+
+diff --git a/drivers/dma/atcdmac300g.c b/drivers/dma/atcdmac300g.c
+index 01b380a07d9f..20970fb1b75d 100644
+--- a/drivers/dma/atcdmac300g.c
++++ b/drivers/dma/atcdmac300g.c
+@@ -15,6 +15,8 @@
+ #include <linux/of.h>
+ #include <linux/of_device.h>
+ #include <linux/of_dma.h>
++#include <linux/of_address.h>
++#include <linux/dma-map-ops.h>
+ #include "dmaengine.h"
+ #include "atcdmac300g.h"
+ 
+@@ -39,6 +41,11 @@ static inline void v5_dis_channel(struct v5_dma_chan *v5chan)
+ 	clrbl(CHEN, v5chan->ch_regs+CH_CTL_OFF);
+ }
+ 
++static inline void v5_abort_channel(struct v5_dma_chan *v5chan)
++{
++	setbl(v5chan->chan_id, v5chan->ch_regs + CH_ABT);
++}
++
+ static dma_cookie_t v5_tx_submit(struct dma_async_tx_descriptor *tx)
+ {
+ 	struct v5_desc		*desc = txd_to_v5_desc(tx);
+@@ -85,7 +92,10 @@ static struct v5_desc *v5_alloc_descriptor(struct dma_chan *chan,
+ 		/* txd.flags will be overwritten in prep functions */
+ 		desc->txd.flags = DMA_CTRL_ACK;
+ 		desc->txd.tx_submit = v5_tx_submit;
+-		desc->txd.phys = phys;
++		if (v5dma->io_regs)
++			desc->txd.phys = phys | IOCP_MASK;
++		else
++			desc->txd.phys = phys;
+ 	}
+ 
+ 	return desc;
+@@ -155,7 +165,7 @@ static void v5_desc_put(struct v5_dma_chan *v5chan, struct v5_desc *desc)
+ 	}
+ }
+ 
+-/**
++/*
+  * v5_desc_chain - build chain adding a descriptor
+  * @first: address of first descriptor of the chain
+  * @prev: address of previous descriptor of the chain
+@@ -166,15 +176,22 @@ static void v5_desc_chain(struct v5_desc **first, struct v5_desc **prev,
+ {
+ 	if (!(*first)) {
+ 		*first = desc;
++		desc->at = &desc->tx_list;
+ 	} else {
+-		(*prev)->lli.llPointerl = lower_32_bits(desc->txd.phys);
++		if ((*first)->cyclic == false) {
++			(*prev)->lli.llPointerl = lower_32_bits(desc->txd.phys);
+ #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
+-		(*prev)->lli.llPointerh = upper_32_bits(desc->txd.phys);
++			(*prev)->lli.llPointerh = upper_32_bits(desc->txd.phys);
+ #endif
++		}
++
+ 		/* insert the descriptor to the ring */
+ 		list_add_tail(&desc->desc_node, &(*first)->tx_list);
+ 	}
+ 	*prev = desc;
++
++	desc->lli.llPointerh = 0;
++	desc->lli.llPointerl = 0;
+ }
+ 
+ /**
+@@ -262,19 +279,59 @@ static void v5_complete_all(struct v5_dma_chan *v5chan)
+  */
+ static void v5_advance_work(struct v5_dma_chan *v5chan)
+ {
++	struct v5_desc *v5desc = NULL;
++
+ 	dev_vdbg(chan2dev(&v5chan->chan_common), "advance_work\n");
+ 	clear_bit(V5_IS_TC, &v5chan->status);
+ 	if (v5_chan_is_enabled(v5chan))
+ 		return;
+ 
+-	if (list_empty(&v5chan->active_list) ||
+-	    list_is_singular(&v5chan->active_list)) {
+-		v5_complete_all(v5chan);
++	v5desc = v5_first_active(v5chan);
++	if (!v5desc->cyclic) {
++		if (list_empty(&v5chan->active_list) ||
++		    list_is_singular(&v5chan->active_list)) {
++			v5_complete_all(v5chan);
++		} else {
++			v5_chain_complete(v5chan, v5_first_active(v5chan),
++				DMA_TRANS_NOERROR);
++			/* advance work */
++			v5_dostart(v5chan, v5_first_active(v5chan));
++		}
+ 	} else {
+-		v5_chain_complete(v5chan, v5_first_active(v5chan),
+-			DMA_TRANS_NOERROR);
+-		/* advance work */
+-		v5_dostart(v5chan, v5_first_active(v5chan));
++		/* For cyclic mode */
++		struct dmaengine_result res;
++
++		if (!list_empty(&v5chan->active_list)) {
++			res.result = DMA_TRANS_NOERROR;
++
++			if (v5desc->num_sg == 1) {
++				/* Just repeat itself */
++				v5_dostart(v5chan, v5_first_active(v5chan));
++			} else {
++				struct v5_desc *next_tx;
++				unsigned long flags;
++
++				/* do next SG and set the at pointer */
++				v5desc->at = v5desc->at->next;
++
++				spin_lock_irqsave(&v5chan->lock, flags);
++				if ((uintptr_t)v5desc->at == (uintptr_t)&v5desc->tx_list) {
++					next_tx = list_entry(v5desc->at, struct v5_desc,
++						tx_list);
++				} else {
++					next_tx = list_entry(v5desc->at, struct v5_desc,
++						desc_node);
++				}
++				spin_unlock_irqrestore(&v5chan->lock, flags);
++
++				v5_dostart(v5chan, next_tx);
++
++				dmaengine_desc_get_callback_invoke(&v5desc->txd, &res);
++			}
++		} else {
++			dev_vdbg(chan2dev(&v5chan->chan_common),
++				"active list is empty\n");
++		}
+ 	}
+ }
+ 
+@@ -323,14 +380,11 @@ static void v5_handle_error(struct v5_dma_chan *v5chan)
+ static void v5_tasklet(unsigned long data)
+ {
+ 	struct v5_dma_chan *v5chan = (struct v5_dma_chan *)data;
+-	unsigned long flags;
+ 
+-	spin_lock_irqsave(&v5chan->lock, flags);
+ 	if (test_and_clear_bit(V5_IS_ERR, &v5chan->status))
+ 		v5_handle_error(v5chan);
+ 	else
+ 		v5_advance_work(v5chan);
+-	spin_unlock_irqrestore(&v5chan->lock, flags);
+ }
+ 
+ static irqreturn_t v5_dma_interrupt(int irq, void *dev_id)
+@@ -346,6 +400,11 @@ static irqreturn_t v5_dma_interrupt(int irq, void *dev_id)
+ 
+ 		dev_vdbg(v5dma->dma_common.dev,
+ 			"int: sta = 0x%08x\n", status);
++		if (status == 0)
++			break;
++
++		v5_dma_writel(v5dma, INT_STA, status);
++
+ 		for (i = 0; i < v5dma->dma_common.chancnt; i++) {
+ 			v5chan = &v5dma->chan[i];
+ 			if (status & (V5_DMA_TC(i)))
+@@ -359,8 +418,6 @@ static irqreturn_t v5_dma_interrupt(int irq, void *dev_id)
+ 				ret = IRQ_HANDLED;
+ 			}
+ 		}
+-		v5_dma_writel(v5dma, INT_STA, status);
+-		status = 0;
+ 	} while (status);
+ 
+ 	return ret;
+@@ -425,6 +482,10 @@ v5_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dst, dma_addr_t src,
+ 	if (!desc)
+ 		goto err_desc_get;
+ 
++	if (v5dma->io_regs) {
++		dst |= IOCP_MASK;
++		src |= IOCP_MASK;
++	}
+ 	src_maxburst = DMAC_CSR_SIZE_1024;
+ 	src_width = dst_width = xfer_width(v5dma, src, dst, len);
+ 	convert_burst(&src_maxburst);
+@@ -443,6 +504,8 @@ v5_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dst, dma_addr_t src,
+ #endif
+ 	desc->lli.ctrl = ctrl;
+ 	desc->lli.tranSize = (len >> src_width);
++	desc->num_sg = 1;
++	desc->total_len = len;
+ 
+ 	return &desc->txd;
+ 
+@@ -465,6 +528,7 @@ v5_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
+ 		unsigned int sg_len, enum dma_transfer_direction direction,
+ 		unsigned long flags, void *context)
+ {
++	struct v5_dma		*v5dma = to_v5_dma(chan->device);
+ 	struct v5_dma_chan	*v5chan = to_v5_dma_chan(chan);
+ 	struct v5_dma_slave	*v5slave = chan->private;
+ 	struct dma_slave_config	*sconfig = &v5chan->dma_sconfig;
+@@ -473,6 +537,7 @@ v5_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
+ 	u32			ctrl;
+ 	dma_addr_t		reg;
+ 	unsigned int		reg_width;
++	unsigned int		src_reg_width;
+ 	unsigned int		i;
+ 	struct scatterlist	*sg;
+ 	size_t			total_len = 0;
+@@ -489,8 +554,8 @@ v5_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
+ 	ctrl &= ~(SRCWIDTH_MASK|SRCADDRCTRL_MASK|DSTWIDTH_MASK|
+ 		DSTADDRCTRL_MASK|SRC_HS|DST_HS|SRCREQSEL_MASK|DSTREQSEL_MASK);
+ 	ctrl =   SBSIZE(sconfig->src_maxburst);
+-	reg_width = convert_buswidth(sconfig->src_addr_width);
+-	ctrl |=  SRC_WIDTH(reg_width);
++	src_reg_width = convert_buswidth(sconfig->src_addr_width);
++	ctrl |=  SRC_WIDTH(src_reg_width);
+ 	reg_width = convert_buswidth(sconfig->dst_addr_width);
+ 	ctrl |=  DST_WIDTH(reg_width);
+ 
+@@ -510,6 +575,10 @@ v5_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
+ 				goto err_desc_get;
+ 
+ 			mem = sg_dma_address(sg);
++
++			if (v5dma->io_regs)
++				mem |= IOCP_MASK;
++
+ 			len = sg_dma_len(sg);
+ 			if (unlikely(!len)) {
+ 				dev_dbg(chan2dev(chan),
+@@ -528,9 +597,10 @@ v5_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
+ 			desc->lli.dstAddrh = upper_32_bits(reg);
+ #endif
+ 			desc->lli.ctrl = ctrl;
+-			desc->lli.tranSize = (len >> sconfig->src_maxburst);
++			desc->lli.tranSize = (len >> src_reg_width);
+ 			v5_desc_chain(&first, &prev, desc);
+ 			total_len += len;
++			desc->num_sg = 1;
+ 		}
+ 		break;
+ 
+@@ -542,12 +612,16 @@ v5_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
+ 		for_each_sg(sgl, sg, sg_len, i) {
+ 			struct v5_desc	*desc;
+ 			u32		len;
+-			u32		mem;
++			phys_addr_t	mem;
+ 
+ 			desc = v5_desc_get(v5chan);
+ 			if (!desc)
+ 				goto err_desc_get;
+ 			mem = sg_dma_address(sg);
++
++			if (v5dma->io_regs)
++				mem |= IOCP_MASK;
++
+ 			len = sg_dma_len(sg);
+ 			if (unlikely(!len)) {
+ 				dev_dbg(chan2dev(chan),
+@@ -566,9 +640,10 @@ v5_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
+ 			desc->lli.dstAddrh = upper_32_bits(mem);
+ #endif
+ 			desc->lli.ctrl = ctrl;
+-			desc->lli.tranSize = (len >> sconfig->src_maxburst);
++			desc->lli.tranSize = (len >> src_reg_width);
+ 			v5_desc_chain(&first, &prev, desc);
+ 			total_len += len;
++			desc->num_sg = 1;
+ 		}
+ 		break;
+ 	default:
+@@ -577,6 +652,7 @@ v5_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
+ 	/* First descriptor of the chain embedds additional information */
+ 	first->txd.cookie = -EBUSY;
+ 	first->total_len = total_len;
++	first->cyclic = false;
+ 
+ 	/* first link descriptor of list is responsible of flags */
+ 	first->txd.flags = flags;
+@@ -590,6 +666,167 @@ v5_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
+ 	return NULL;
+ }
+ 
++static struct dma_async_tx_descriptor *
++v5_prep_dma_cyclic(struct dma_chan *chan, dma_addr_t buf_addr,
++		size_t buf_len, size_t period_len,
++		enum dma_transfer_direction direction, unsigned long flags)
++{
++
++	struct v5_dma_chan *v5chan = to_v5_dma_chan(chan);
++	struct dma_slave_config *sconfig = &v5chan->dma_sconfig;
++	struct v5_desc *first = NULL;
++	struct v5_desc *prev = NULL;
++	u32 ctrl;
++	dma_addr_t reg;
++	unsigned int reg_width;
++	unsigned int i;
++	size_t total_len = 0;
++	struct v5_dma *v5dma = to_v5_dma(chan->device);
++	int period_index;
++	u32 src_maxburst;
++
++	src_maxburst = DMAC_CSR_SIZE_1;
++	convert_burst(&src_maxburst);
++	sconfig->src_maxburst = src_maxburst;
++
++	ctrl = v5_channel_readl(v5chan, CH_CTL_OFF);
++	ctrl &= ~(SRCWIDTH_MASK | SRCADDRCTRL_MASK | DSTWIDTH_MASK |
++		  DSTADDRCTRL_MASK | SRC_HS | DST_HS | SRCREQSEL_MASK |
++		  DSTREQSEL_MASK | INTABTMASK | INTERRMASK | INTTCMASK);
++	ctrl =   SBSIZE(sconfig->src_maxburst);
++	reg_width = WIDTH_4;
++	ctrl |=  SRC_WIDTH(reg_width);
++	ctrl |=  DST_WIDTH(convert_buswidth(sconfig->dst_addr_width));
++
++	switch (direction) {
++	case DMA_MEM_TO_DEV:
++		ctrl |= DST_HS;
++		ctrl |= (SRC_ADDR_MODE_INCR | DST_ADDR_MODE_FIXED);
++		ctrl |= ((v5chan->req_num << DSTREQSEL) & DSTREQSEL_MASK);
++		reg = sconfig->dst_addr;
++
++		for (period_index = 0; period_index < buf_len; period_index += period_len) {
++			struct v5_desc *desc;
++			u32 len;
++			dma_addr_t mem;
++
++			desc = v5_desc_get(v5chan);
++			if (!desc)
++				goto err_desc_get;
++
++			mem = buf_addr + period_index;
++
++			if ((buf_len - period_index) > period_len)
++				len = period_len;
++			else
++				len = buf_len - period_index;
++
++			if (unlikely(!len)) {
++				dev_dbg(chan2dev(chan),
++					"sg(%d) data length is zero\n", i);
++				goto err;
++			}
++
++			if (unlikely(mem & 3 || len & 3)) {
++				dev_dbg(chan2dev(chan),
++					"sg(%d) data length is not aligned\n", i);
++				goto err_desc_get;
++			}
++
++			if (v5dma->io_regs)
++				mem |= IOCP_MASK;
++
++			desc->lli.srcAddrl = lower_32_bits(mem);
++			desc->lli.dstAddrl = lower_32_bits(reg);
++#ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
++			desc->lli.srcAddrh = upper_32_bits(mem);
++			desc->lli.dstAddrh = upper_32_bits(reg);
++#endif
++			desc->lli.ctrl = ctrl;
++			desc->lli.tranSize = (len >> reg_width);
++
++			desc->cyclic = true;
++			desc->num_sg = (buf_len + period_len - 1) / period_len;
++			desc->len = len;
++			desc->total_len = buf_len - period_index;
++			v5_desc_chain(&first, &prev, desc);
++			total_len += len;
++		}
++		break;
++
++	case DMA_DEV_TO_MEM:
++		ctrl |= SRC_HS;
++		ctrl |= (SRC_ADDR_MODE_FIXED | DST_ADDR_MODE_INCR);
++		ctrl |= ((v5chan->req_num << SRCREQSEL) & SRCREQSEL_MASK);
++		reg = sconfig->src_addr;
++
++
++		for (period_index = 0; period_index < buf_len;
++		     period_index += period_len) {
++			struct v5_desc *desc;
++			u32 len;
++			phys_addr_t mem;
++
++			desc = v5_desc_get(v5chan);
++			if (!desc)
++				goto err_desc_get;
++
++			mem = buf_addr + period_index;
++
++			if (v5dma->io_regs)
++				mem |= IOCP_MASK;
++
++			if ((buf_len - period_index) > period_len)
++				len = period_len;
++			else
++				len = buf_len - period_index;
++
++			if (unlikely(!len)) {
++				dev_dbg(chan2dev(chan),
++					"sg(%d) data length is zero\n", i);
++				goto err;
++			}
++
++			if (unlikely(mem & 3 || len & 3)) {
++				dev_dbg(chan2dev(chan),
++					"sg(%d) data length is not aligned\n", i);
++				goto err;
++			}
++
++			desc->lli.srcAddrl = lower_32_bits(reg);
++			desc->lli.dstAddrl = lower_32_bits(mem);
++#ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
++			desc->lli.srcAddrh = upper_32_bits(reg);
++			desc->lli.dstAddrh = upper_32_bits(mem);
++#endif
++			desc->lli.ctrl = ctrl;
++			desc->lli.tranSize = (len >> reg_width);
++
++			desc->cyclic = true;
++			desc->num_sg = (buf_len + period_len - 1) / period_len;
++			desc->len = len;
++			desc->total_len = buf_len - period_index;
++			v5_desc_chain(&first, &prev, desc);
++			total_len += len;
++		}
++		break;
++	default:
++		return NULL;
++	}
++
++	first->txd.flags = flags;
++
++	return &first->txd;
++
++err_desc_get:
++	dev_err(chan2dev(chan), "Not enough descriptors available\n");
++err:
++	v5_desc_put(v5chan, first);
++
++
++	return NULL;
++}
++
+ static int v5_config(struct dma_chan *chan,
+ 		      struct dma_slave_config *sconfig)
+ {
+@@ -611,8 +848,6 @@ static int v5_config(struct dma_chan *chan,
+ static int v5_terminate_all(struct dma_chan *chan)
+ {
+ 	struct v5_dma_chan	*v5chan = to_v5_dma_chan(chan);
+-	struct v5_desc		*desc, *_desc;
+-	unsigned long		flags;
+ 	LIST_HEAD(list);
+ 
+ 	dev_vdbg(chan2dev(chan), "%s\n", __func__);
+@@ -621,23 +856,18 @@ static int v5_terminate_all(struct dma_chan *chan)
+ 	 * we don't really care about the data. Just disable the
+ 	 * channel.
+ 	 */
+-	spin_lock_irqsave(&v5chan->lock, flags);
+ 
+ 	/* disabling channel: must also remove suspend state */
++	v5_abort_channel(v5chan);
+ 	v5_dis_channel(v5chan);
+ 	/* confirm that this channel is disabled */
+ 	while (v5_chan_is_enabled(v5chan))
+ 		cpu_relax();
+ 	/* active_list entries will end up before queued entries */
+-	list_splice_init(&v5chan->queue, &list);
+-	list_splice_init(&v5chan->active_list, &list);
+-
+-	/* Flush all pending and queued descriptors */
+-	list_for_each_entry_safe(desc, _desc, &list, desc_node)
+-		v5_chain_complete(v5chan, desc, DMA_TRANS_NOERROR);
++	list_splice_init(&v5chan->queue, &v5chan->free_list);
++	list_splice_init(&v5chan->active_list, &v5chan->free_list);
+ 
+ 	clear_bit(V5_IS_PAUSED, &v5chan->status);
+-	spin_unlock_irqrestore(&v5chan->lock, flags);
+ 
+ 	return 0;
+ }
+@@ -653,25 +883,38 @@ v5_tx_status(struct dma_chan *chan,
+ 		dma_cookie_t cookie,
+ 		struct dma_tx_state *txstate)
+ {
+-	struct v5_dma_chan	*v5chan = to_v5_dma_chan(chan);
+-	enum dma_status		ret;
+-
+-	if (test_and_clear_bit(V5_IS_TC, &v5chan->status))
+-		return DMA_COMPLETE;
+-
+-	if (test_and_clear_bit(V5_IS_ERR, &v5chan->status))
+-		return DMA_ERROR;
++	struct v5_dma_chan *v5chan = to_v5_dma_chan(chan);
++	struct v5_desc *v5desc = NULL;
++	enum dma_status ret;
++	size_t residue = 0;
+ 
+ 	ret = dma_cookie_status(chan, cookie, txstate);
+ 	if (ret == DMA_COMPLETE)
+ 		return ret;
++
+ 	/*
+ 	 * There's no point calculating the residue if there's
+ 	 * no txstate to store the value.
+ 	 */
+ 	if (!txstate)
+-		return DMA_ERROR;
++		return ret;
++
++	v5desc = v5_first_active(v5chan);
++	if (v5desc) {
++		if (v5desc->num_sg == 1) {
++			residue = v5desc->total_len;
++		} else {
++			struct v5_desc *v5desc_cur = NULL;
++
++			if ((uintptr_t)v5desc->at == (uintptr_t)&v5desc->tx_list)
++				v5desc_cur = v5desc;
++			else
++				v5desc_cur = list_entry(v5desc->at, struct v5_desc, desc_node);
+ 
++			residue = v5desc_cur->total_len;
++		}
++	}
++	dma_set_residue(txstate, residue);
+ 	return ret;
+ }
+ 
+@@ -874,9 +1117,12 @@ static int __init v5_dma_probe(struct platform_device *pdev)
+ 	int			err;
+ 	int			i;
+ 	const struct v5_dma_platform_data *plat_dat;
++	const __be32 *prop;
++	int len;
+ 
+ 	dma_cap_set(DMA_SLAVE, v5dma_config.cap_mask);
+ 	dma_cap_set(DMA_MEMCPY, v5dma_config.cap_mask);
++	dma_cap_set(DMA_CYCLIC, v5dma_config.cap_mask);
+ 
+ 	/* get DMA parameters from controller type */
+ 	plat_dat = v5_dma_get_driver_data(pdev);
+@@ -897,6 +1143,16 @@ static int __init v5_dma_probe(struct platform_device *pdev)
+ 	if (!v5dma)
+ 		return -ENOMEM;
+ 
++	v5dma->io_regs = 0;
++	if (dev_is_dma_coherent(&pdev->dev)) {
++		u64 taddr;
++
++		prop = of_get_property(pdev->dev.of_node, "iocp-address", &len);
++		if (prop) {
++			taddr = of_translate_address(pdev->dev.of_node, prop);
++			v5dma->io_regs = ioremap(taddr, 0x10);
++		}
++	}
+ 	/* discover transaction capabilities */
+ 	v5dma->dma_common.cap_mask = plat_dat->cap_mask;
+ 	v5dma->all_chan_mask = (1 << plat_dat->nr_channels) - 1;
+@@ -926,7 +1182,8 @@ static int __init v5_dma_probe(struct platform_device *pdev)
+ 	/* create a pool of consistent memory blocks for hardware descriptors */
+ 	v5dma->dma_desc_pool = dma_pool_create("v5_desc_pool",
+ 			&pdev->dev, sizeof(struct v5_desc),
+-			4 /* word alignment */, 0);
++			64 /* 8 bytes aligned */, 4096);
++
+ 	if (!v5dma->dma_desc_pool) {
+ 		dev_err(&pdev->dev, "No memory for descriptors dma pool\n");
+ 		err = -ENOMEM;
+@@ -950,6 +1207,8 @@ static int __init v5_dma_probe(struct platform_device *pdev)
+ 		tasklet_init(&v5chan->tasklet, v5_tasklet,
+ 				(unsigned long)v5chan);
+ 		v5_enable_chan_irq(v5dma, i);
++		v5chan->device = v5dma;
++		v5chan->chan_id = i;
+ 	}
+ 	/* set base routines */
+ 	v5dma->dma_common.device_alloc_chan_resources = v5_alloc_chan_resources;
+@@ -960,6 +1219,10 @@ static int __init v5_dma_probe(struct platform_device *pdev)
+ 	if (dma_has_cap(DMA_MEMCPY, v5dma->dma_common.cap_mask))
+ 		v5dma->dma_common.device_prep_dma_memcpy = v5_prep_dma_memcpy;
+ 
++	if (dma_has_cap(DMA_CYCLIC, v5dma->dma_common.cap_mask)) {
++		v5dma->dma_common.device_prep_dma_cyclic = v5_prep_dma_cyclic;
++	}
++
+ 	if (dma_has_cap(DMA_SLAVE, v5dma->dma_common.cap_mask)) {
+ 		v5dma->dma_common.device_prep_slave_sg = v5_prep_slave_sg;
+ 		v5dma->dma_common.device_config = v5_config;
+@@ -977,6 +1240,11 @@ static int __init v5_dma_probe(struct platform_device *pdev)
+ 	  v5dma->ch);
+ 	dma_async_device_register(&v5dma->dma_common);
+ 
++	if (v5dma->io_regs) {
++		v5_dma_soc_writel(v5dma, CACHE_CTRL, IOCP_CACHE_DMAC0_AW |
++			IOCP_CACHE_DMAC0_AR | IOCP_CACHE_DMAC1_AW |
++			IOCP_CACHE_DMAC1_AW);
++	}
+ 	/*
+ 	 * Do not return an error if the dmac node is not present in order to
+ 	 * not break the existing way of requesting channel with
+diff --git a/drivers/dma/atcdmac300g.h b/drivers/dma/atcdmac300g.h
+index 849880ff4083..a5d876f7c57d 100644
+--- a/drivers/dma/atcdmac300g.h
++++ b/drivers/dma/atcdmac300g.h
+@@ -148,6 +148,13 @@ static inline void clrbl(addr_t bit, void __iomem *reg)
+ /* Channel Enable */
+ #define CHEN				BIT(0)
+ 
++#define CACHE_CTRL			0x184
++#define IOCP_MASK			0x4000000000
++#define IOCP_CACHE_DMAC0_AW 0xF
++#define IOCP_CACHE_DMAC0_AR 0xF0
++#define IOCP_CACHE_DMAC1_AW 0xF00
++#define IOCP_CACHE_DMAC1_AR 0xF000
++
+ /* Channel n Transfer Size Register */
+ /* total transfer size from source */
+ #define DMAC_TOT_SIZE_MASK          0xffffffff
+@@ -162,7 +169,7 @@ struct v5_lli {
+ 	u32	llPointerh;
+ };
+ 
+-/**
++/*
+  * struct v5_desc - software descriptor
+  * @v5_lli: hardware lli structure
+  * @txd: support for the async_tx api
+@@ -172,17 +179,26 @@ struct v5_lli {
+  */
+ struct v5_desc {
+ 	/* FIRST values the hardware uses */
+-	struct v5_lli			lli;
++	struct v5_lli lli;
++
+ 	/* THEN values for driver housekeeping */
+-	struct list_head		tx_list;
+-	struct dma_async_tx_descriptor	txd;
+-	struct list_head		desc_node;
+-	size_t				len;
+-	size_t				total_len;
++	struct list_head tx_list;
++	struct dma_async_tx_descriptor txd;
++	struct list_head desc_node;
++	struct list_head *at;
++	size_t len;
++
++	/* Total_len indicates that the remaining data in the descriptor
++	 * has not been transferred in cyclic mode.
++	 */
++	size_t total_len;
++
+ 	/* Interleaved data */
+-	size_t				boundary;
+-	size_t				dst_hole;
+-	size_t				src_hole;
++	size_t boundary;
++	size_t dst_hole;
++	size_t src_hole;
++	bool cyclic;
++	int num_sg;
+ };
+ 
+ static inline struct v5_desc *
+@@ -203,7 +219,7 @@ enum v5_status {
+ 	V5_IS_CYCLIC	= 24,
+ };
+ 
+-/**
++/*
+  * struct v5_dma_chan - internal representation of an channel
+  * @chan_common: common dmaengine channel object members
+  * @device: parent device
+@@ -232,11 +248,13 @@ struct v5_dma_chan {
+ 	struct tasklet_struct	tasklet;
+ 	struct dma_slave_config dma_sconfig;
+ 	spinlock_t		lock;
++
+ 	/* these other elements are all protected by lock */
+-	struct list_head	active_list;
+-	struct list_head	queue;
+-	struct list_head	free_list;
+-	unsigned int		descs_allocated;
++	struct list_head active_list;
++	struct list_head queue;
++	struct list_head free_list;
++	unsigned int descs_allocated;
++	int chan_id;
+ };
+ 
+ #define	v5_channel_readl(v5chan, name) \
+@@ -250,15 +268,12 @@ static inline struct v5_dma_chan *to_v5_dma_chan(struct dma_chan *dchan)
+ 	return container_of(dchan, struct v5_dma_chan, chan_common);
+ }
+ 
+-/*
+- * Note fls(0) = 0, fls(1) = 1, fls(0x8) = 4.
+- */
++/* Note fls(0) = 0, fls(1) = 1, fls(0x8) = 4. */
+ static inline void convert_burst(u32 *maxburst)
+ {
+ 	*maxburst = fls(*maxburst) - 1;
+ }
+ 
+-
+ /*
+  * Fix sconfig's bus width
+  * 1 byte -> 0, 2 bytes -> 1, 4 bytes -> 2.
+@@ -287,6 +302,7 @@ static inline u8 convert_buswidth(enum dma_slave_buswidth addr_width)
+ struct v5_dma {
+ 	struct dma_device	dma_common;
+ 	void __iomem		*regs;
++	void __iomem		*io_regs;
+ 	u32			ctl;
+ 	u8			data_width;
+ 	u8			ch;
+@@ -299,6 +315,10 @@ struct v5_dma {
+ 	__raw_readl((v5_dma)->regs + name)
+ #define	v5_dma_writel(v5_dma, name, val) \
+ 	__raw_writel((val), (v5_dma)->regs + name)
++#define	v5_dma_soc_readl(v5_dma, name) \
++	__raw_readl((v5_dma)->io_regs + name)
++#define	v5_dma_soc_writel(v5_dma, name, val) \
++	__raw_writel((val), (v5_dma)->io_regs + name)
+ 
+ static inline struct v5_dma *to_v5_dma(struct dma_device *ddev)
+ {
+-- 
+2.34.1
+

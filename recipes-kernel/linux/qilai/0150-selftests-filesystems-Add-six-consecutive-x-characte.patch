@@ -1,0 +1,31 @@
+From a5b214793cfbe7556b7ac6ac962960ec2f5654cf Mon Sep 17 00:00:00 2001
+From: Hui Min Mina Chou <minachou@andestech.com>
+Date: Tue, 18 Jul 2023 11:00:04 +0800
+Subject: [PATCH 150/191] selftests/filesystems: Add six consecutive 'x'
+ characters to mktemp
+
+In busybox, the mktemp requires that the generated filename be
+suffixed with at least six consecutive 'X' characters. Otherwise,
+it will return an "Invalid argument" error.
+
+Signed-off-by: Hui Min Mina Chou <minachou@andestech.com>
+---
+ tools/testing/selftests/filesystems/fat/run_fat_tests.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/testing/selftests/filesystems/fat/run_fat_tests.sh b/tools/testing/selftests/filesystems/fat/run_fat_tests.sh
+index 13e496b9d42a..400e01a60153 100755
+--- a/tools/testing/selftests/filesystems/fat/run_fat_tests.sh
++++ b/tools/testing/selftests/filesystems/fat/run_fat_tests.sh
+@@ -12,7 +12,7 @@ set -u
+ set -o pipefail
+ 
+ BASE_DIR="$(dirname $0)"
+-TMP_DIR="$(mktemp -d /tmp/fat_tests_tmp.XXXX)"
++TMP_DIR="$(mktemp -d /tmp/fat_tests_tmp.XXXXXX)"
+ IMG_PATH="${TMP_DIR}/fat.img"
+ MNT_PATH="${TMP_DIR}/mnt"
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,32 @@
+From 5a2f7920856d4e88e2c511246e99a21d4ab74075 Mon Sep 17 00:00:00 2001
+From: Lad Prabhakar <prabhakar.mahadev-lad.rj@bp.renesas.com>
+Date: Tue, 15 Nov 2022 10:51:33 +0000
+Subject: [PATCH 024/191] riscv: Kconfig: Enable cpufreq kconfig menu
+
+Enable cpufreq kconfig menu for RISC-V.
+
+Signed-off-by: Lad Prabhakar <prabhakar.mahadev-lad.rj@bp.renesas.com>
+Reviewed-by: Conor Dooley <conor.dooley@microchip.com>
+Acked-by: Conor Dooley <conor.dooley@microchip.com>
+Link: https://lore.kernel.org/r/20221115105135.1180490-2-prabhakar.mahadev-lad.rj@bp.renesas.com
+Signed-off-by: Palmer Dabbelt <palmer@rivosinc.com>
+---
+ arch/riscv/Kconfig | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/riscv/Kconfig b/arch/riscv/Kconfig
+index 7d99f3a92ccb..982ccf011fb0 100644
+--- a/arch/riscv/Kconfig
++++ b/arch/riscv/Kconfig
+@@ -713,6 +713,8 @@ menu "CPU Power Management"
+ 
+ source "drivers/cpuidle/Kconfig"
+ 
++source "drivers/cpufreq/Kconfig"
++
+ endmenu # "CPU Power Management"
+ 
+ source "arch/riscv/kvm/Kconfig"
+-- 
+2.34.1
+

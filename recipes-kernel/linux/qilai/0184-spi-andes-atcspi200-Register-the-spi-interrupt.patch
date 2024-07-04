@@ -1,0 +1,71 @@
+From 49a8a71bbb501679e0362760a46bbf78ebda4c72 Mon Sep 17 00:00:00 2001
+From: Locus Wei-Han Chen <locus84@andestech.com>
+Date: Thu, 23 Nov 2023 14:00:02 +0800
+Subject: [PATCH 184/191] spi: andes: atcspi200: Register the spi interrupt
+
+Register the interrupt but currently do nothing.
+The reason for this is that the ads7846 probe checks
+whether the SPI interrupt is registered
+
+Signed-off-by: Locus Wei-Han Chen <locus84@andestech.com>
+---
+ drivers/spi/spi-atcspi200.c | 22 +++++++++++++++++++++-
+ 1 file changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/spi/spi-atcspi200.c b/drivers/spi/spi-atcspi200.c
+index 781f831ec3ae..40b2a9368df6 100644
+--- a/drivers/spi/spi-atcspi200.c
++++ b/drivers/spi/spi-atcspi200.c
+@@ -387,6 +387,11 @@ static void atcspi200_set_qmode(struct atcspi200_spi *spi, const struct spi_mem_
+ 	atcspi200_spi_write(spi, SPI_CMD, op->cmd.opcode);
+ }
+ 
++static irqreturn_t andes_spi_irq(int irq, void *dev_id)
++{
++	return IRQ_HANDLED;
++}
++
+ static int atcspi200_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
+ {
+ 	int ret, max_trans_len, data_len, trans_len, num_blks, num_chunks;
+@@ -444,7 +449,7 @@ static int atcspi200_spi_probe(struct platform_device *pdev)
+ 	struct resource *res;
+ 	struct spi_master *master;
+ 	struct atcspi200_spi *spi;
+-	int ret;
++	int ret, irq;
+ 	u32 num_cs = NSPI_MAX_CS_NUM;
+ 
+ 	master = spi_alloc_master(&pdev->dev, sizeof(struct atcspi200_spi));
+@@ -488,6 +493,12 @@ static int atcspi200_spi_probe(struct platform_device *pdev)
+ 		goto put_master;
+ 	}
+ 
++	irq = platform_get_irq(pdev, 0);
++	if (irq < 0) {
++		ret = irq;
++		goto put_master;
++	}
++
+ 	/* Optional parameters */
+ 	ret = of_property_read_u32(pdev->dev.of_node, "spi-max-frequency", &master->max_speed_hz);
+ 	if (ret) {
+@@ -531,6 +542,15 @@ static int atcspi200_spi_probe(struct platform_device *pdev)
+ 	atcspi200_spi_setup(spi);
+ 	spi->mtiming = atcspi200_spi_read(spi, SPI_TIMING);
+ 
++	ret = devm_request_irq(&pdev->dev, irq, andes_spi_irq, 0,
++			       "andes-spi", spi);
++
++	if (ret)
++		dev_err(&pdev->dev, "Unable to bind to Interrupt\n");
++
++	dev_info(&pdev->dev, "mapped; irq=%d, cs=%d\n",
++		 irq, master->num_chipselect);
++
+ 	ret = devm_spi_register_master(&pdev->dev, master);
+ 	if (ret < 0) {
+ 		dev_err(&pdev->dev, "spi_register_master failed\n");
+-- 
+2.34.1
+

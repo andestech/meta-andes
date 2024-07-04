@@ -1,0 +1,56 @@
+From 691e4bdf51f37cedd874b3ef48097f5f07426b5b Mon Sep 17 00:00:00 2001
+From: Charles Ci-Jyun Wu <dminus@andestech.com>
+Date: Thu, 3 Aug 2023 17:03:21 +0800
+Subject: [PATCH 127/191] riscv: andes: Add RECOVER_UPSTREAM_CONFIG_RISCV to
+ support upstream riscv make defconfig
+
+RECOVER_UPSTREAM_CONFIG_RISCV support for recovering the upstream "config RISCV,"
+as setting in the arch/riscv/Kconfig. When selecting the PLAT_AE350 configuration,
+certain default enabled configurations from "config RISCV" are not needed.
+Therefore, we modified these configurations to be default-disabled and then
+re-enabled them under this specific configuration.
+
+Signed-off-by: Charles Ci-Jyun Wu <dminus@andestech.com>
+---
+ arch/riscv/Kconfig.socs | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/arch/riscv/Kconfig.socs b/arch/riscv/Kconfig.socs
+index 959dc31c2963..be0793207ab9 100644
+--- a/arch/riscv/Kconfig.socs
++++ b/arch/riscv/Kconfig.socs
+@@ -1,11 +1,31 @@
+ menu "SoC selection"
+ 
++choice
++	prompt "Andes Linux for AE350 platform or upstream riscv"
++	default RECOVER_UPSTREAM_CONFIG_RISCV
++	help
++	  Andes Platform use PLAT_AE350 for Andes full features support.
++
++config RECOVER_UPSTREAM_CONFIG_RISCV
++	bool "Andes Linux kernel recover upstream config RISCV setting"
++	select SIFIVE_PLIC
++	select OF_DMA_DEFAULT_COHERENT
++	select DMA_DIRECT_REMAP
++	help
++	  This enables support for recovering the upstream "config RISCV",
++	  as setting in the arch/riscv/Kconfig. When selecting the PLAT_AE350
++	  configuration, certain default enabled configurations from
++	  "config RISCV" are not needed. Therefore, we modified these
++	  configurations to be default-disabled and then re-enabled them
++	  under this specific configuration.
++
+ config PLAT_AE350
+ 	bool "Andes AE350 Platform"
+ 	select SIFIVE_PLIC
+ 	select ERRATA_ANDES if !XIP_KERNEL
+ 	help
+ 	  This enables support for Andes AE350 platform hardware.
++endchoice
+ 
+ config ANDES_QEMU_SUPPORT
+ 	bool "Andes QEMU SUPPORT"
+-- 
+2.34.1
+

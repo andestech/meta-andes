@@ -1,0 +1,177 @@
+From 18021d1990ba4363e59de5c68e1da98890031a53 Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Wed, 16 Aug 2023 09:38:07 +0800
+Subject: [PATCH 092/191] clocksource: andes: atcpit: Refine the source code of
+ the atcpit driver.
+
+Please refer to the following link for the detailed reason for the change.
+https://gitea.andestech.com/RD-SW/linux/pulls/53
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ drivers/clocksource/Kconfig        |  6 ++--
+ drivers/clocksource/Makefile       |  2 +-
+ drivers/clocksource/timer-atcpit.c | 48 ++++++++++++++++++++----------
+ 3 files changed, 36 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/clocksource/Kconfig b/drivers/clocksource/Kconfig
+index 1f901f933d3e..ca19d376f1aa 100755
+--- a/drivers/clocksource/Kconfig
++++ b/drivers/clocksource/Kconfig
+@@ -620,14 +620,14 @@ config GXP_TIMER
+ 	  Provides a driver for the timer control found on HPE
+ 	  GXP SOCs. This is required for all GXP SOCs.
+ 
+-config ATCPIT_TIMER
+-	bool "ATCPIT timer driver"
++config ATCPIT100_TIMER
++	bool "ATCPIT100 timer driver"
+ 	select CLKSRC_MMIO
+ 	depends on HAS_IOMEM
+ 	select TIMER_PROBE
+ 	select TIMER_OF
+ 	help
+-	  This option enables support for Andes ATCPIT timer.
++	  This option enables support for Andes ATCPIT100 timer.
+ 
+ config RISCV_TIMER
+ 	bool "Timer for the RISC-V platform" if COMPILE_TEST
+diff --git a/drivers/clocksource/Makefile b/drivers/clocksource/Makefile
+index dffc7163c428..e6cecc08983e 100755
+--- a/drivers/clocksource/Makefile
++++ b/drivers/clocksource/Makefile
+@@ -79,7 +79,7 @@ obj-$(CONFIG_INGENIC_SYSOST)	+= ingenic-sysost.o
+ obj-$(CONFIG_INGENIC_TIMER)		+= ingenic-timer.o
+ obj-$(CONFIG_CLKSRC_ST_LPC)		+= clksrc_st_lpc.o
+ obj-$(CONFIG_X86_NUMACHIP)		+= numachip.o
+-obj-$(CONFIG_ATCPIT_TIMER)		+= timer-atcpit.o
++obj-$(CONFIG_ATCPIT100_TIMER)		+= timer-atcpit.o
+ obj-$(CONFIG_RISCV_TIMER)		+= timer-riscv.o
+ obj-$(CONFIG_CLINT_TIMER)		+= timer-clint.o
+ obj-$(CONFIG_CSKY_MP_TIMER)		+= timer-mp-csky.o
+diff --git a/drivers/clocksource/timer-atcpit.c b/drivers/clocksource/timer-atcpit.c
+index c3b60304c515..1fd6ce321230 100755
+--- a/drivers/clocksource/timer-atcpit.c
++++ b/drivers/clocksource/timer-atcpit.c
+@@ -17,6 +17,9 @@
+ 
+ /* ID and Revision Register */
+ #define ID_REV           0x0
++#define ATCPIT_ID        0x03031
++#define ATCPIT_ID_MSK    0xFFFFF000
++#define ATCPIT_ID_SFT    12
+ 
+ /* Configuration Register */
+ #define CFG              0x10
+@@ -24,11 +27,11 @@
+ 
+ /* Interrupt Enable Register */
+ #define INT_EN           0x14
+-#define CH_INT_EN(c, t)  (t << (4 * c))
++#define CH_INT_EN(c, t)  (t << (c * 4))
+ 
+ /* Interrupt Status Register */
+ #define INT_STA          0x18
+-#define CH_INT_STA(c, t) (t << (4 * c))
++#define CH_INT_STA(c, t) (t << (c * 4))
+ 
+ /* Channel Enable Register */
+ #define CH_EN_REG        0x1C
+@@ -44,19 +47,19 @@
+ #define TIMER2           4
+ #define TIMER3           8
+ 
+-/* Channel clock source , bit 3 , 0:External clock , 1:APB clock */
++/* Channel clock source, bit 3, 0:External clock, 1:APB clock */
+ #define PIT_CLK_SRC_PCLK 1
+ #define PIT_CLK_SRC_EXT  0
+ 
+-/* Channel mode , bit 0~2 */
++/* Channel mode, bit 0~2 */
+ #define TIMER_32         0x1
+ #define TIMER_16         0x2
+ #define TIMER_8          0x3
+ 
+-/* Channel 0 , 1 Reload Register */
++/* Channel 0, 1 Reload Register */
+ #define CH_REL(ch)       (0x24 + (ch * 0x10))
+ 
+-/* Channel 0 , 1 Counter Register */
++/* Channel 0, 1 Counter Register */
+ #define CH_CNT(ch)       (0x28 + (ch * 0x10))
+ 
+ #define to_atcpit_data_clksrc(x) \
+@@ -77,18 +80,22 @@ struct atcpit_data {
+ 	u8                        irq;
+ };
+ 
+-#define atcpit_check_pit_id(base) \
+-			((readl(base + ID_REV) & 0xFFFFF000) != 0x3031000)
+-#define atcpit_get_num_ch(base) \
+-			(readl(base + CFG) & NUM_PIT_CH_MSK)
++static inline u8 atcpit_check_pit_id(void __iomem *base)
++{
++	return ((readl(base + ID_REV) & ATCPIT_ID_MSK) >> ATCPIT_ID_SFT) == ATCPIT_ID;
++}
++
++static inline u8 atcpit_get_num_ch(void __iomem *base)
++{
++	return readl(base + CFG) & NUM_PIT_CH_MSK;
++}
+ 
+ static inline void atcpit_ch_reload(void __iomem *base, u8 ch, u32 reload)
+ {
+ 	writel(reload, base + CH_REL(ch));
+ }
+ 
+-static void atcpit_ch_crtl(void __iomem *base, u8 ch, u8 ch_clksrc,
+-								u8 ch_mode)
++static void atcpit_ch_crtl(void __iomem *base, u8 ch, u8 ch_clksrc, u8 ch_mode)
+ {
+ 	u32 ch_ctrl;
+ 
+@@ -186,10 +193,8 @@ static irqreturn_t atcpit_timer_interrupt(int irq, void *dev_id)
+ static u64 atcpit_clksrc_read(struct clocksource *clksrc)
+ {
+ 	struct atcpit_data *atcpit = NULL;
+-	u64 src_cnt;
+ 
+ 	atcpit = to_atcpit_data_clksrc(clksrc);
+-	src_cnt = readl(atcpit->base + CH_CNT(atcpit->clock_src_ch));
+ 
+ 	return ~readl(atcpit->base + CH_CNT(atcpit->clock_src_ch));
+ }
+@@ -262,6 +267,7 @@ static int __init atcpit_clocksource_init(struct device_node *node, struct atcpi
+ 
+ static int __init atcpit_timer_init(struct device_node *node)
+ {
++	int (*read_fixup)(void __iomem *addr, unsigned int val, unsigned int shift_bits);
+ 	struct atcpit_data *pit_data = NULL;
+ 	int                ret = 0;
+ 	u32                val;
+@@ -280,10 +286,20 @@ static int __init atcpit_timer_init(struct device_node *node)
+ 		goto ERR_EXIT;
+ 	}
+ 
+-	if (atcpit_check_pit_id(pit_data->base)) {
+-		pr_err("Invalid pit id\n");
++	/* Check ID register */
++	read_fixup = symbol_get(readl_fixup);
++	if (read_fixup != NULL) {
++		ret = read_fixup(pit_data->base, ATCPIT_ID, 12);
++		symbol_put(readl_fixup);
++	} else {
++		ret = atcpit_check_pit_id(pit_data->base);
++	}
++	if (!ret) {
++		pr_err("Invalid ID register, ATCPIT is not supported\n");
++		ret = -ENXIO;
+ 		goto ERR_EXIT;
+ 	}
++
+ 	pit_data->pit_num_ch = atcpit_get_num_ch(pit_data->base);
+ 
+ 	pit_data->src_clk = of_clk_get(node, 0);
+-- 
+2.34.1
+

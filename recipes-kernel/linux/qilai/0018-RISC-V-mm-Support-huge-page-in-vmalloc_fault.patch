@@ -1,0 +1,50 @@
+From 5d4e2af29678749825c34473528573c519b036c3 Mon Sep 17 00:00:00 2001
+From: Dylan Jhong <dylan@andestech.com>
+Date: Fri, 24 Feb 2023 17:52:23 +0800
+Subject: [PATCH 018/191] RISC-V: mm: Support huge page in vmalloc_fault()
+
+Since RISC-V supports ioremap() with huge page (pud/pmd) mapping,
+However, vmalloc_fault() assumes that the vmalloc range is limited
+to pte mappings. To complete the vmalloc_fault() function by adding
+huge page support.
+
+Fixes: 310f541a027b ("riscv: Enable HAVE_ARCH_HUGE_VMAP for 64BIT")
+Signed-off-by: Dylan Jhong <dylain@andestech.com>
+Reviewed-by: Alexandre Ghiti <alexghiti@rivosinc.com>
+---
+ arch/riscv/mm/fault.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/arch/riscv/mm/fault.c b/arch/riscv/mm/fault.c
+index 274bc6dd839f..e6337ae3bc8f 100644
+--- a/arch/riscv/mm/fault.c
++++ b/arch/riscv/mm/fault.c
+@@ -152,6 +152,8 @@ static inline void vmalloc_fault(struct pt_regs *regs, int code, unsigned long a
+ 		no_context(regs, addr);
+ 		return;
+ 	}
++	if (pud_leaf(*pud_k))
++		goto flush_tlb;
+ 
+ 	/*
+ 	 * Since the vmalloc area is global, it is unnecessary
+@@ -162,6 +164,8 @@ static inline void vmalloc_fault(struct pt_regs *regs, int code, unsigned long a
+ 		no_context(regs, addr);
+ 		return;
+ 	}
++	if (pmd_leaf(*pmd_k))
++		goto flush_tlb;
+ 
+ 	/*
+ 	 * Make sure the actual PTE exists as well to
+@@ -181,6 +185,7 @@ static inline void vmalloc_fault(struct pt_regs *regs, int code, unsigned long a
+ 	 * ordering constraint, not a cache flush; it is
+ 	 * necessary even after writing invalid entries.
+ 	 */
++flush_tlb:
+ 	local_flush_tlb_page(addr);
+ }
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,29 @@
+From 13905956e4651c1bf52852c4e4022ff0c7037101 Mon Sep 17 00:00:00 2001
+From: CL Chin-Long Wang <cl634@atctrx.andestech.com>
+Date: Fri, 2 Jun 2023 17:29:47 +0800
+Subject: [PATCH 058/191] fbdev: andes: ftlcdc100: Change the default LCD panel
+ type from CONFIG_PANEL_LW500AC9601 to CONFIG_PANEL_AUA036QN01.
+
+1. Change the default LCD panel type from CONFIG_PANEL_LW500AC9601 to CONFIG_PANEL_AUA036QN01.
+
+Signed-off-by: CL Wang <cl634@andestech.com>
+---
+ arch/riscv/configs/andes-support.config | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/riscv/configs/andes-support.config b/arch/riscv/configs/andes-support.config
+index 398d1a7befc9..1b676cc36ea1 100644
+--- a/arch/riscv/configs/andes-support.config
++++ b/arch/riscv/configs/andes-support.config
+@@ -26,7 +26,7 @@ CONFIG_ATCIIC_IRQ=y
+ CONFIG_GPIO_ATCGPIO100=y
+ 
+ CONFIG_FB_FTLCDC100=y
+-CONFIG_PANEL_LW500AC9601=y
++CONFIG_PANEL_AUA036QN01=y
+ CONFIG_FFB_MODE_RGB=y
+ CONFIG_FFB_MODE_24BPP=y
+ 
+-- 
+2.34.1
+

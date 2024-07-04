@@ -1,0 +1,31 @@
+From 68aefedde67b3285c39924268ee1c914a390ff5d Mon Sep 17 00:00:00 2001
+From: Locus Wei-Han Chen <locus84@andestech.com>
+Date: Fri, 19 May 2023 14:53:01 +0800
+Subject: [PATCH 070/191] riscv: andes: Fix the error for 32-bit perf
+
+error message:
+util/genelf.h:47:2: error: #error "unsupported architecture"
+   47 | #error "unsupported architecture"
+
+Signed-off-by: Locus Wei-Han Chen <locus84@andestech.com>
+---
+ tools/perf/util/genelf.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/tools/perf/util/genelf.h b/tools/perf/util/genelf.h
+index 6af062d1c452..3c5e5a252006 100644
+--- a/tools/perf/util/genelf.h
++++ b/tools/perf/util/genelf.h
+@@ -43,6 +43,9 @@ int jit_add_debug_info(Elf *e, uint64_t code_addr, void *debug, int nr_debug_ent
+ #elif defined(__riscv) && __riscv_xlen == 64
+ #define GEN_ELF_ARCH	EM_RISCV
+ #define GEN_ELF_CLASS	ELFCLASS64
++#elif defined(__riscv) && __riscv_xlen == 32
++#define GEN_ELF_ARCH	EM_RISCV
++#define GEN_ELF_CLASS	ELFCLASS32
+ #else
+ #error "unsupported architecture"
+ #endif
+-- 
+2.34.1
+

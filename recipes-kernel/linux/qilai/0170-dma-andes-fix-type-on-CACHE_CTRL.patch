@@ -1,0 +1,25 @@
+From 763e50da53cbcf3f2dd21ec72e7ef203ce43ae09 Mon Sep 17 00:00:00 2001
+From: Randolph <randolph@andestech.com>
+Date: Mon, 11 Mar 2024 16:33:53 +0800
+Subject: [PATCH 170/191] dma: andes: fix type on CACHE_CTRL
+
+---
+ drivers/dma/atcdmac300g.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/dma/atcdmac300g.c b/drivers/dma/atcdmac300g.c
+index af8412a080db..7fa3bf22dc1f 100644
+--- a/drivers/dma/atcdmac300g.c
++++ b/drivers/dma/atcdmac300g.c
+@@ -1312,7 +1312,7 @@ static int __init v5_dma_probe(struct platform_device *pdev)
+ 	if (v5dma->io_regs) {
+ 		v5_dma_soc_writel(v5dma, CACHE_CTRL, IOCP_CACHE_DMAC0_AW |
+ 			IOCP_CACHE_DMAC0_AR | IOCP_CACHE_DMAC1_AW |
+-			IOCP_CACHE_DMAC1_AW);
++			IOCP_CACHE_DMAC1_AR);
+ 	}
+ 	/*
+ 	 * Do not return an error if the dmac node is not present in order to
+-- 
+2.34.1
+

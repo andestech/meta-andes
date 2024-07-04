@@ -1,0 +1,61 @@
+From 470c4a4609e939e8756e25e3ea8a69463f36dbb9 Mon Sep 17 00:00:00 2001
+From: Palmer Dabbelt <palmer@rivosinc.com>
+Date: Tue, 29 Aug 2023 21:39:19 -0700
+Subject: [PATCH 182/191] RISC-V: Provide pgtable_l5_enabled on rv32
+
+A few of the other page table level helpers are defined on rv32, but not
+pgtable_l5_enabled.  This adds the definition as a constant and converts
+pgtable_l4_enabled to a constant as well.
+
+Link: https://lore.kernel.org/r/20230830044129.11481-2-palmer@rivosinc.com
+Signed-off-by: Palmer Dabbelt <palmer@rivosinc.com>
+---
+ arch/riscv/include/asm/pgtable-32.h | 3 +++
+ arch/riscv/include/asm/pgtable.h    | 1 -
+ arch/riscv/mm/init.c                | 2 ++
+ 3 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/arch/riscv/include/asm/pgtable-32.h b/arch/riscv/include/asm/pgtable-32.h
+index 59ba1fbaf784..00f3369570a8 100644
+--- a/arch/riscv/include/asm/pgtable-32.h
++++ b/arch/riscv/include/asm/pgtable-32.h
+@@ -33,4 +33,7 @@
+ 					  _PAGE_WRITE | _PAGE_EXEC |	\
+ 					  _PAGE_USER | _PAGE_GLOBAL))
+ 
++static const __maybe_unused int pgtable_l4_enabled;
++static const __maybe_unused int pgtable_l5_enabled;
++
+ #endif /* _ASM_RISCV_PGTABLE_32_H */
+diff --git a/arch/riscv/include/asm/pgtable.h b/arch/riscv/include/asm/pgtable.h
+index 8e660dbd94ff..9b106cc466a8 100644
+--- a/arch/riscv/include/asm/pgtable.h
++++ b/arch/riscv/include/asm/pgtable.h
+@@ -884,7 +884,6 @@ extern uintptr_t _dtb_early_pa;
+ #define dtb_early_pa	_dtb_early_pa
+ #endif /* CONFIG_XIP_KERNEL */
+ extern u64 satp_mode;
+-extern bool pgtable_l4_enabled;
+ 
+ void paging_init(void);
+ void misc_mem_init(void);
+diff --git a/arch/riscv/mm/init.c b/arch/riscv/mm/init.c
+index 2708580c5901..092900f8c080 100644
+--- a/arch/riscv/mm/init.c
++++ b/arch/riscv/mm/init.c
+@@ -44,10 +44,12 @@ u64 satp_mode __ro_after_init = SATP_MODE_32;
+ #endif
+ EXPORT_SYMBOL(satp_mode);
+ 
++#ifdef CONFIG_64BIT
+ bool pgtable_l4_enabled = IS_ENABLED(CONFIG_64BIT) && !IS_ENABLED(CONFIG_XIP_KERNEL);
+ bool pgtable_l5_enabled = IS_ENABLED(CONFIG_64BIT) && !IS_ENABLED(CONFIG_XIP_KERNEL);
+ EXPORT_SYMBOL(pgtable_l4_enabled);
+ EXPORT_SYMBOL(pgtable_l5_enabled);
++#endif
+ 
+ phys_addr_t phys_ram_base __ro_after_init;
+ EXPORT_SYMBOL(phys_ram_base);
+-- 
+2.34.1
+
