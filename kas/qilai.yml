@@ -13,6 +13,8 @@ local_conf_header:
     # Use 'haveged' instead 'rng-tools' due to 'SIGSEGV' error during start 'rngd'
     PACKAGE_EXCLUDE:append = " rng-tools"
     IMAGE_INSTALL:append = " haveged"
+    # AMD GPU firmware blobs
+    IMAGE_INSTALL:append = " linux-firmware"
     IMAGE_FEATURES += " \
         ssh-server-openssh \
         debug-tweaks \

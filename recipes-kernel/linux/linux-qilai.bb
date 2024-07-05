@@ -205,6 +205,7 @@ SRC_URI:append:qilai = " \
     file://0190-drivers-soc-andes-fix-cpu_dcache_-wb-inval-_range-fa.patch \
     file://0191-drivers-i2c-andes-using-subsys_initcall.patch \
     file://qilai_rv64_smp_demo_defconfig \
+    file://amdgpu.cfg \
 "
 
 LINUX_VERSION ?= "v6.1.47"
