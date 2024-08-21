@@ -1,6 +1,6 @@
 # Andes OpenEmbedded/Yocto Layer
 
-This layer provides machine configurations and recipes for building the bootable disk image with AndeSight Linux packages.
+This layer provides machine configurations and recipes for building the bootable disk image with AndeSight™ Linux packages.
 
 ## Supported AndesCore™ Processors
 
@@ -15,7 +15,7 @@ This layer provides machine configurations and recipes for building the bootable
 
 ## Building SD Card Image with kas-container
 
-[kas-container](https://kas.readthedocs.io/en/4.1/userguide.html) provides a Yocto development environment based on the Debian docker image. Before you proceed with the build process, make sure to have Docker installed on your host machine.
+[kas-container](https://kas.readthedocs.io/en/4.1/userguide.html) provides a Yocto development environment based on the Debian docker image. Before you proceed with the build process, make sure Docker is installed on your host machine.
 
 ```
 $ mkdir riscv-andes && cd riscv-andes
@@ -24,7 +24,7 @@ $ wget https://raw.githubusercontent.com/siemens/kas/4.1/kas-container
 $ chmod a+x ./kas-container
 ```
 
-AndeSight v5.3.0 includes OpenSBI, U-Boot and Linux source based on the following versions.
+AndeSight™ v5.3.0 includes OpenSBI, U-Boot and Linux source based on the following versions.
 
 * [OpenSBI v1.2](https://github.com/andestech/opensbi/tree/ast-v5_3_0-branch)
 * [U-Boot v2023.01](https://github.com/andestech/uboot/tree/ast-v5_3_0-branch)
@@ -69,8 +69,54 @@ Next, insert the SD card, access the serial console with the baud rate settings 
 
 ## (Optional) Updating U-Boot SPL, U-Boot ITB and Device Tree on Flash
 
-If you want to update the bootloader, find the XIP mode SPL (u-boot-spl.bin), ITB (u-boot.itb) and device tree blob needed to be burned to the flash in the first partition. You can then burn the images using the `sf` command in the U-Boot prompt as follows, or alternatively using the [SPI_Burn tool](https://github.com/andestech/Andes-Development-Kit).
-(Please note that U-Boot SPL is prioritized to use u-boot.itb in the first partition of SD card. If it cannot be found, it will use the one burned to the flash.)
+To update the bootloader, use the [SPI_Burn](https://github.com/andestech/Andes-Development-Kit) tool.
+Ensure you have an ICEman connection set up as follows:
+
+```
+  Local Host                 Local/Remote Host
+ .----------------.          .--------------.
+ | yocto images   |          |              |
+ |                |         ICEman host <IP:PORT>
+ | .----------.   |          |  .--------.  |
+ | | SPI_burn |<--+--socket--+->| ICEman |  |
+ | '----------'   |          |  '--.-----'  |
+ '----------------'          '-----|--------'
+                                   |
+                                   USB
+   .--------------.                |
+   | target       |          .-----v-----.
+   | board        <---JTAG---| ICE       |
+   |              |          '-----------'
+   '--------------'
+```
+
+Download & extract `SPI_burn`:
+
+```
+$ wget https://github.com/andestech/Andes-Development-Kit/releases/download/ast-v5_3_0-release-windows/flash.zip
+$ unzip flash.zip
+$ cd ./flash/src-SPI_burn
+```
+
+Build `SPI_burn`:
+
+```
+$ ./build_SPIburn.sh
+```
+
+Program the U-Boot SPL & ITB and device-tree blob onto flash memory:
+
+```
+$ ICE_HOST=<ICEman host IP>
+$ ICE_PORT=<ICEman host port> # Note that this is the "Burner port"
+$ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0x0 -i u-boot-spl.bin
+$ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0x10000 -i u-boot.itb
+$ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0xf0000 -i ae350.dtb
+```
+
+Upon inserting the SD card and resetting the board, you should see the Yocto image starting the boot process.
+
+The U-Boot sf command provides an alternative method for updating flash memory. Upon flashing the `<IMAGE>.wic.gz` file to an SD card, the U-Boot SPL (`u-boot-spl.bin`), ITB (`u-boot.itb`), and the device-tree blob are subsequently located in the first partition.
 
 ```
 RISC-V # fatload mmc 0:1 0x600000 u-boot-spl.bin
@@ -83,7 +129,7 @@ RISC-V # sf probe 0:0 50000000 0
 RISC-V # sf erase 0x10000 0xa0000
 RISC-V # sf write 0x600000 0x10000 0xa0000
 
-RISC-V # fatload mmc 0:1 0x20000000 <DTB>
+RISC-V # fatload mmc 0:1 0x20000000 ae350.dtb
 RISC-V # sf probe 0:0 50000000 0
 RISC-V # sf erase 0xf0000 0x10000
 RISC-V # sf write 0x20000000 0xf0000 0x10000
