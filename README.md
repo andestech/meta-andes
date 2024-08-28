@@ -53,21 +53,7 @@ Find the built image, bootloader binaries and boot files generated in **build/tm
 * u-boot-spl.bin
 * u-boot.itb
 
-## Flashing Image to SD Card
-
-Use the Linux `dd` command to flash the image to an SD card.
-
-```
-$ gunzip -c <IMAGE>.wic.gz | sudo dd of=/dev/sdX bs=4M iflag=fullblock oflag=direct conv=fsync status=progress && sync
-```
-
-You can also use the [belenaEther](https://www.balena.io/etcher/) GUI to flash the image on Windows and macOS.
-
-<img src="https://i.imgur.com/W7YZc8j.png" width="450px" />
-
-Next, insert the SD card, access the serial console with the baud rate settings `38400/8-N-1`, and then reset the board. It will boot the target from MMC and load `fw_dynamic.bin` and `u-boot.bin` from `u-boot.itb` in the first partition.
-
-## (Optional) Updating U-Boot SPL, U-Boot ITB and Device Tree on Flash
+## Updating U-Boot SPL, U-Boot ITB and Device Tree on Flash
 
 To update the bootloader, use the [SPI_Burn](https://github.com/andestech/Andes-Development-Kit) tool.
 Ensure you have an ICEman connection set up as follows:
@@ -114,9 +100,53 @@ $ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0x10000 -i u-boot.itb
 $ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0xf0000 -i ae350.dtb
 ```
 
-Upon inserting the SD card and resetting the board, you should see the Yocto image starting the boot process.
+## Flashing Image to SD Card
 
-The U-Boot sf command provides an alternative method for updating flash memory. Upon flashing the `<IMAGE>.wic.gz` file to an SD card, the U-Boot SPL (`u-boot-spl.bin`), ITB (`u-boot.itb`), and the device-tree blob are subsequently located in the first partition.
+Use the Linux `dd` command to flash the image to an SD card.
+
+```
+$ gunzip -c <IMAGE>.wic.gz | sudo dd of=/dev/sdX bs=4M iflag=fullblock oflag=direct conv=fsync status=progress
+$ sync
+```
+
+You can also use the [belenaEther](https://www.balena.io/etcher/) GUI to flash the image on Windows and macOS.
+
+<img src="https://i.imgur.com/W7YZc8j.png" width="450px" />
+
+Upon inserting the SD card, access the serial console (e.g. [`picocom`](https://linux.die.net/man/8/picocom)) with the baud rate settings `38400/8-N-1`, and then reset the board, the system should start the boot process.
+
+```
+$ sudo picocom -b 38400 /dev/ttyUSB1
+```
+
+### RISC-V Boot Process
+
+Andes platforms follow the typical RISC-V boot process illustrated below.
+
+```
+                       .-------------------------.
+                       | (u-boot.itb)            |
+                       |                         |
+(1)-----------------+  | (2)-----------------+   |
+ |  U-Boot SPL      |--+->|  OpenSBI         |---|
+ | (u-boot-spl.bin) |  |  | (fw_dynamic.bin) |   |
+ +------------------+  |  +---------.--------+   |
+                       |            |            |
+Machine mode           |            |            |
+.......................|............|............|..................
+Supervisor mode        |            |            |
+                       |            v            |
+                       | (3)-------------------+ |   (4)-----------+
+                       |  |  U-Boot            |-+--->|  Linux     |
+                       |  | (u-boot-nodtb.bin) | |    | (fitImage) |
+                       |  +--------------------+ |    +------------+
+                       '-------------------------'
+```
+
+## (Optional.) Updating U-Boot SPL, U-Boot ITB and Device Tree via U-Boot `sf` command
+
+The U-Boot [`sf`](https://docs.u-boot.org/en/latest/usage/cmd/sf.html) command provides an alternative method for updating flash memory.
+Upon flashing the `<IMAGE>.wic.gz` file to an SD card, the U-Boot SPL (`u-boot-spl.bin`), ITB (`u-boot.itb`), and the device-tree blob are subsequently located in the first partition.
 
 ```
 RISC-V # fatload mmc 0:1 0x600000 u-boot-spl.bin
@@ -135,7 +165,7 @@ RISC-V # sf erase 0xf0000 0x10000
 RISC-V # sf write 0x20000000 0xf0000 0x10000
 ```
 
-### Reset the Board via GDB
+### Resetting the Board via GDB
 
 Set `<TARGET_IP>` to the IP address of the ICEman host.
 
