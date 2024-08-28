@@ -55,7 +55,7 @@ Find the built image, bootloader binaries and boot files generated in **build/tm
 
 ## Updating U-Boot SPL, U-Boot ITB and Device Tree on Flash
 
-To update the bootloader, use the [SPI_Burn](https://github.com/andestech/Andes-Development-Kit) tool.
+To update the bootloader, use the [SPI_burn](https://github.com/andestech/Andes-Development-Kit) tool.
 Ensure you have an ICEman connection set up as follows:
 
 ```
@@ -76,7 +76,9 @@ Ensure you have an ICEman connection set up as follows:
    '--------------'
 ```
 
-Download & extract `SPI_burn`:
+> You can download the [pre-built SPI_burn](https://github.com/andestech/meta-andes/raw/ast-v5_3_0-branch/tools/SPI_burn) for x86 hosts and skip building it locally from source.
+
+Download & extract `SPI_burn` source code:
 
 ```
 $ wget https://github.com/andestech/Andes-Development-Kit/releases/download/ast-v5_3_0-release-windows/flash.zip
