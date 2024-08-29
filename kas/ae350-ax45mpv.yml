@@ -4,3 +4,13 @@ header:
     - base-riscv.yml
 
 machine: ae350-ax45mpv
+
+local_conf_header:
+  standard: |
+    INITRAMFS_IMAGE_BUNDLE = "1"
+    INITRAMFS_IMAGE = "core-image-minimal"
+    INITRAMFS_IMAGE_NAME = "${INITRAMFS_IMAGE}-${MACHINE}.rootfs"
+    BOOT_SPACE = "1073741"
+    INITRAMFS_MAXSIZE = "315400"
+    INITRAMFS_FSTYPES = "cpio.gz"
+    IMAGE_FSTYPES:pn-${INITRAMFS_IMAGE} = "${INITRAMFS_FSTYPES}"
