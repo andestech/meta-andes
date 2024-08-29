@@ -45,7 +45,6 @@ IMAGE_BOOT_FILES ?= " \
     boot.scr.uimg \
     uEnv.txt \
     u-boot.itb \
-    u-boot-spl.bin \
 "
 WKS_FILE ?= "andes-ae350-spl.wks"
 #============================================
