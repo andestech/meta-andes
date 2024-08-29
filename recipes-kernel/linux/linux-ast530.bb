@@ -15,6 +15,7 @@ SRC_URI:riscv64 = " \
     file://0002-riscv-dts-Add-support-for-single-core-AX65.patch \
     file://ae350_rv64_smp_defconfig \
     file://tweak.cfg \
+    file://disable-mmc.cfg \
 "
 
 SRC_URI:riscv32 = " \
