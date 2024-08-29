@@ -19,7 +19,7 @@ This layer provides machine configurations and recipes for building the bootable
 
 ```
 $ mkdir riscv-andes && cd riscv-andes
-$ git clone https://github.com/andestech/meta-andes.git -b ast-v5_3_0-branch
+$ git clone https://github.com/andestech/meta-andes.git -b dev-ax45mpv-initramfs
 $ wget https://raw.githubusercontent.com/siemens/kas/4.1/kas-container
 $ chmod a+x ./kas-container
 ```
@@ -35,22 +35,22 @@ And, its RISC-V GNU toolchain versions are as follows:
 * GCC 13.2.0
 * Binutils 2.41
 
-To build a Poky reference distribution, take `ae350-ax45mp` as an example:
+To build a Poky reference distribution, take `ae350-ax45mpv` as an example:
 
 ```
-$ ./kas-container build meta-andes/kas/ae350-ax45mp.yml
+$ ./kas-container build meta-andes/kas/ae350-ax45mpv.yml
 ```
 
 ### Build Results
 
 Find the built image, bootloader binaries and boot files generated in **build/tmp/deploy/images/<MACHINE>**, such as
 
-* core-image-base-ae350-ax45mp.rootfs.wic.gz
+* ~~core-image-base-ae350-ax45mp.rootfs.wic.gz~~
 * fitImage
-* ax45mp_c4_d_dsp_ae350.dtb
-* boot.scr.uimg
-* uEnv.txt
-* u-boot-spl.bin
+* ax45mpv_c2_d_dsp_ae350.dtb
+* ~~boot.scr.uimg~~
+* ~~uEnv.txt~~
+* ~~u-boot-spl.bin~~ u-boot-spl
 * u-boot.itb
 
 ## Updating U-Boot SPL, U-Boot ITB and Device Tree on Flash
@@ -96,7 +96,7 @@ Program the U-Boot SPL & ITB and device-tree blob onto flash memory:
 
 ```
 $ ICE_HOST=<ICEman host IP>
-$ ICE_PORT=<ICEman host port> # Note that this is the "Burner port"
+$ ICE_PORT=<ICEman host burner port>
 $ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0x0 -i u-boot-spl.bin
 $ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0x10000 -i u-boot.itb
 $ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0xf0000 -i ae350.dtb
@@ -167,17 +167,78 @@ RISC-V # sf erase 0xf0000 0x10000
 RISC-V # sf write 0x20000000 0xf0000 0x10000
 ```
 
-### Resetting the Board via GDB
+### Generating and accessing cross toolchain and GDB
 
-Set `<TARGET_IP>` to the IP address of the ICEman host.
+> If you just need a cross GDB, you can choose from the [Andes pre-built toolchains](https://github.com/andestech/Andes-Development-Kit/releases)
+
+Assume that we are using `core-image-minimal` as our rootfs image.
 
 ```
-$ $GDB -ex "target remote <TARGET_IP>:<PORT>" \
+$ ./kas-container shell meta-andes/kas/ae350-ax45mpv.yml -c "bitbake -c do_populate_sdk core-image-minimal"
+$ ./build/tmp/deploy/sdk/poky-glibc-x86_64-core-image-minimal-riscv64-ae350-ax45mpv-toolchain-5.0.2.sh
+```
+
+You will need to specify a local path to install Yocto cross toolchain.
+Then, access the toolchain:
+
+```
+$ . /path/to/your/environment-setup-riscv64-poky-linux
+$ $GDB --version
+```
+
+### Resetting the Board via GDB
+
+```
+$ ICE_HOST=<ICEman host IP>
+$ ICE_PORT=<ICEman host debug port>
+$ $GDB -ex "target remote $ICE_HOST:$ICE_PORT" \
        -ex "set confirm off" \
        -ex "set pagination off" \
        -ex "monitor reset halt" \
        -ex "set \$ra=0" \
        -ex "set \$sp=0" \
-       -ex "flushregs" \
+       -ex "maintenance flush register-cache" \
        -ex "c"
 ```
+
+### Booting U-Boot from RAM
+
+```
+$ ICE_HOST=<ICEman host IP>
+$ ICE_PORT=<ICEman host debug port>
+$ IMAGE_DIR=build/tmp/deploy/images/ae350-ax45mpv
+$ $GDB -q \
+    -ex "target remote $ICE_HOST:$ICE_PORT" \
+    -ex 'set confirm off' \
+    -ex 'set pagination off' \
+    -ex 'monitor reset halt' \
+    -ex 'set $ra=0' \
+    -ex 'set $sp=0' \
+    -ex 'maintenance flush register-cache' \
+    -ex "file $IMAGE_DIR/u-boot-spl" \
+    -ex "load" \
+    -ex "restore $IMAGE_DIR/u-boot.itb binary 0x10000000" \
+    -ex "restore $IMAGE_DIR/ax45mpv_c2_d_dsp_ae350.dtb binary 0x20000000" \
+    -ex 'thread apply all set $pc=&_start' \
+    -ex 'thread apply all set $a0=$mhartid' \
+    -ex 'thread apply all set $a1=0x20000000' \
+    $IMAGE_DIR/u-boot-spl
+```
+
+#### Load and boot Liunx image with initramfs
+
+Connect to the system using a serial port and wait for the U-Boot prompt to appear.
+In the GDB terminal, press `<Ctrl-C>` to interrupt the system.
+
+```
+(gdb) restore build/tmp/deploy/images/ae350-ax45mpv/fitImage binary 0x08900000
+(gdb) continue
+```
+
+Enter the following U-Boot command to boot the Yocto-generated Linux image:
+
+```
+RISC-V # bootm $ramdisk_addr_r
+```
+
+You should see the system starting to boot.
