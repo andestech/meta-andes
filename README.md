@@ -43,15 +43,17 @@ $ ./kas-container build meta-andes/kas/ae350-ax45mp.yml
 
 ### Build Results
 
-Find the built image, bootloader binaries and boot files generated in **build/tmp/deploy/images/<MACHINE>**, such as
+Upon completion of the build process, the build results are located within the directory `build/tmp/deploy/images/`.
 
-* core-image-base-ae350-ax45mp.rootfs.wic.gz
-* fitImage
-* ax45mp_c4_d_dsp_ae350.dtb
-* boot.scr.uimg
-* uEnv.txt
-* u-boot-spl.bin
-* u-boot.itb
+| File                            | Description                                                                                      |
+|---------------------------------|--------------------------------------------------------------------------------------------------|
+| `core-image-base-ae350-ax45mp.rootfs.wic.gz` | A compressed root filesystem image which will be written onto the SD card. |
+| `fitImage`                    | A Flattened Image Tree (FIT) that contains the Linux kernel and device-tree with their load address. |
+| `ax45mp_c4_d_dsp_ae350.dtb`     | Device Tree Blob generated using the `ae350-ax45mp` YAML file. The naming convention is structured as follows: `<cpu>_c<core-count>_<double-float-support>_<andes-dsp-support>_<platform>.dtb`. It will be programmed onto flash memory using `SPI_burn` tool. |
+| [`boot.scr.uimg`](https://github.com/andestech/meta-andes/blob/ast-v5_3_0-branch/recipes-bsp/u-boot/files/tftp-mmc-boot.txt)                 | U-Boot script image, automating the boot process by attempting various boot scenarios such as loading boot files via TFTP or MMC, and executing the corresponding commands to load and boot the kernel images. |
+| [`uEnv.txt`](https://github.com/andestech/meta-andes/blob/ast-v5_3_0-branch/recipes-bsp/u-boot/files/uEnv.txt)                      | Contains boot environment variables for U-Boot, specifying parameters like boot arguments, and commands to load and run kernel images (e.g. `fitImage`). |
+| `u-boot-spl.bin`                | The Secondary Program Loader (SPL) of U-Boot which will be programmed onto flash memory using `SPI_burn` tool. |
+| `u-boot.itb`                    | An image tree binary of U-Boot, combining OpenSBI (fw_dynamic.bin) which will be loaded by U-Boot SPL. It will be programmed onto flash memory using `SPI_burn` tool.|
 
 ## Updating U-Boot SPL, U-Boot ITB and Device Tree on Flash
 
