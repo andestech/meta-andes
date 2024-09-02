@@ -98,7 +98,7 @@ Program the U-Boot SPL & ITB and device-tree blob onto flash memory:
 
 ```
 $ ICE_HOST=<ICEman host IP>
-$ ICE_PORT=<ICEman host port> # Note that this is the "Burner port"
+$ ICE_PORT=<ICEman host burner port>
 $ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0x0 -i u-boot-spl.bin
 $ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0x10000 -i u-boot.itb
 $ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0xf0000 -i ae350.dtb
@@ -132,7 +132,7 @@ Andes platforms follow the typical RISC-V boot process illustrated below.
                        | (u-boot.itb)            |
                        |                         |
 (1)-----------------+  | (2)-----------------+   |
- |  U-Boot SPL      |--+->|  OpenSBI         |---|
+ |  U-Boot SPL      |--+->|  OpenSBI         |   |
  | (u-boot-spl.bin) |  |  | (fw_dynamic.bin) |   |
  +------------------+  |  +---------.--------+   |
                        |            |            |
@@ -171,15 +171,15 @@ RISC-V # sf write 0x20000000 0xf0000 0x10000
 
 ### Resetting the Board via GDB
 
-Set `<TARGET_IP>` to the IP address of the ICEman host.
-
 ```
-$ $GDB -ex "target remote <TARGET_IP>:<PORT>" \
+$ ICE_HOST=<ICEman host IP>
+$ ICE_PORT=<ICEman host debug port>
+$ $GDB -ex "target remote $ICE_HOST:$ICE_PORT" \
        -ex "set confirm off" \
        -ex "set pagination off" \
        -ex "monitor reset halt" \
        -ex "set \$ra=0" \
        -ex "set \$sp=0" \
-       -ex "flushregs" \
+       -ex "maintenance flush register-cache" \
        -ex "c"
 ```
