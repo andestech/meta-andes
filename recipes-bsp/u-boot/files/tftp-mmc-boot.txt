@@ -5,7 +5,7 @@
 #  3. MMC load a uEnv.txt
 #  4. MMC load a fitImage
 #  5. TFTP load a uImage
-#  6. MMC load a fitImage
+#  6. MMC load a uImage
 
 # Setup the DHCP for a TFTP boot
 setenv serverip @SERVERIP@

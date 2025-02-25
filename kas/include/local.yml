@@ -20,8 +20,15 @@ local_conf_header:
     PACKAGE_CLASSES = "package_rpm"
     SDKMACHINE = "x86_64"
     CONF_VERSION = "2"
-  ast530:
-    PREFERRED_VERSION_linux-libc-headers = "linux-libc-headers_6.1"
+  ast540: |
+    PREFERRED_VERSION_linux-libc-headers = "6.6"
+  bbmask: |
+    # Mask meta-riscv recipes that use the git:// protocol to fetch from
+    # git.kernel.org. The git:// protocol (port 9418) is blocked by most
+    # corporate proxies and has been deprecated by kernel.org.
+    # These recipes are not needed for Andes ae350-* machines.
+    BBMASK += "meta-riscv/recipes-kernel/linux/linux-milkv-duo\.bb"
+    BBMASK += "meta-riscv/recipes-kernel/linux/linux-mainline_6\.2\.bb"
 
 bblayers_conf_header:
   standard: |

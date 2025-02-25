@@ -6,20 +6,17 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 DEPENDS:append = " bc-native u-boot-tools-native python3-setuptools-native"
 
 FORK = "andestech"
-SRCREV = "777ecdea665976baff7410dc45ac0fba5820f5e8"
-BRANCH = "ast-v5_3_0-branch"
+SRCREV = "274c8e532c6fc30bb680661f420984e1031814cf"
+BRANCH = "ast-v5_4_0-branch"
 SRC_URI = " \
     git://github.com/${FORK}/uboot.git;protocol=https;branch=${BRANCH} \
-    file://0001-board-ae350-Add-missing-env-variables-for-booti.patch \
-    file://0002-vbe-Allow-probing-the-VBE-bootmeth-to-fail-in-OS-fix.patch \
     file://mmc-support.cfg \
     file://opensbi-options.cfg \
-    file://display-info.cfg \
     file://tftp-mmc-boot.txt \
     file://uEnv.txt \
     "
 
-do_compile[depends] += "opensbi-ast530:do_deploy"
+do_compile[depends] += "opensbi-ast540:do_deploy"
 
 do_compile:prepend() {
     export OPENSBI=${DEPLOY_DIR_IMAGE}/fw_dynamic.bin

@@ -11,7 +11,9 @@ This layer provides machine configurations and recipes for building the bootable
 - [x] [ae350-ax27l2](https://www.andestech.com/en/products-solutions/andescore-processors/riscv-ax27l2/)
 - [x] [ae350-ax45mp](https://www.andestech.com/en/products-solutions/andescore-processors/riscv-ax45mp/)
 - [x] [ae350-ax45mpv](https://www.andestech.com/en/products-solutions/andescore-processors/riscv-ax45mpv/)
+- [x] [ae350-ax46mpv](https://www.andestech.com/en/products-solutions/andescore-processors/riscv-ax46mpv/)
 - [x] [ae350-ax65](https://www.andestech.com/en/products-solutions/andescore-processors/riscv-ax65/)
+- [x] [ae350-ax66](https://www.andestech.com/en/products-solutions/andescore-processors/riscv-ax66/)
 
 ## Building SD Card Image with kas-container
 
@@ -19,21 +21,21 @@ This layer provides machine configurations and recipes for building the bootable
 
 ```
 $ mkdir riscv-andes && cd riscv-andes
-$ git clone https://github.com/andestech/meta-andes.git -b ast-v5_3_0-branch
+$ git clone https://github.com/andestech/meta-andes.git -b ast-v5_4_0-branch
 $ wget https://raw.githubusercontent.com/siemens/kas/4.1/kas-container
 $ chmod a+x ./kas-container
 ```
 
-AndeSight™ v5.3.0 includes OpenSBI, U-Boot and Linux source based on the following versions.
+AndeSight™ v5.4.0 includes OpenSBI, U-Boot and Linux source based on the following versions.
 
-* [OpenSBI v1.2](https://github.com/andestech/opensbi/tree/ast-v5_3_0-branch)
-* [U-Boot v2023.01](https://github.com/andestech/uboot/tree/ast-v5_3_0-branch)
-* [Linux 6.1.47](https://github.com/andestech/linux/tree/ast-v5_3_0-branch)
+* [OpenSBI v1.5.1](https://github.com/andestech/opensbi/tree/ast-v5_4_0-branch)
+* [U-Boot v2024.07](https://github.com/andestech/uboot/tree/ast-v5_4_0-branch)
+* [Linux 6.6.49](https://github.com/andestech/linux/tree/ast-v5_4_0-branch)
 
 And, its RISC-V GNU toolchain versions are as follows:
 
 * GCC 13.2.0
-* Binutils 2.41
+* Binutils 2.42
 
 To build a Poky reference distribution, take `ae350-ax45mp` as an example:
 
@@ -43,15 +45,15 @@ $ ./kas-container build meta-andes/kas/ae350-ax45mp.yml
 
 ### Build Results
 
-Upon completion of the build process, the build results are located within the directory `build/tmp/deploy/images/`.
+Upon completion of the build process, the build results are located within the directory `build/tmp/deploy/images/ae350-ax45mp/`.
 
 | File                            | Description                                                                                      |
 |---------------------------------|--------------------------------------------------------------------------------------------------|
 | `core-image-base-ae350-ax45mp.rootfs.wic.gz` | A compressed root filesystem image which will be written onto the SD card. |
 | `fitImage`                    | A Flattened Image Tree (FIT) that contains the Linux kernel and device-tree with their load address. |
 | `ax45mp_c4_d_dsp_ae350.dtb`     | Device Tree Blob generated using the `ae350-ax45mp` YAML file. The naming convention is structured as follows: `<cpu>_c<core-count>_<double-float-support>_<andes-dsp-support>_<platform>.dtb`. It will be programmed onto flash memory using `SPI_burn` tool. |
-| [`boot.scr.uimg`](https://github.com/andestech/meta-andes/blob/ast-v5_3_0-branch/recipes-bsp/u-boot/files/tftp-mmc-boot.txt)                 | U-Boot script image, automating the boot process by attempting various boot scenarios such as loading boot files via TFTP or MMC, and executing the corresponding commands to load and boot the kernel images. |
-| [`uEnv.txt`](https://github.com/andestech/meta-andes/blob/ast-v5_3_0-branch/recipes-bsp/u-boot/files/uEnv.txt)                      | Contains boot environment variables for U-Boot, specifying parameters like boot arguments, and commands to load and run kernel images (e.g. `fitImage`). |
+| [`boot.scr.uimg`](https://github.com/andestech/meta-andes/blob/ast-v5_4_0-branch/recipes-bsp/u-boot/files/tftp-mmc-boot.txt)                 | U-Boot script image, automating the boot process by attempting various boot scenarios such as loading boot files via TFTP or MMC, and executing the corresponding commands to load and boot the kernel images. |
+| [`uEnv.txt`](https://github.com/andestech/meta-andes/blob/ast-v5_4_0-branch/recipes-bsp/u-boot/files/uEnv.txt)                      | Contains boot environment variables for U-Boot, specifying parameters like boot arguments, and commands to load and run kernel images (e.g. `fitImage`). |
 | `u-boot-spl.bin`                | The Secondary Program Loader (SPL) of U-Boot which will be programmed onto flash memory using `SPI_burn` tool. |
 | `u-boot.itb`                    | An image tree binary of U-Boot, combining OpenSBI (fw_dynamic.bin) which will be loaded by U-Boot SPL. It will be programmed onto flash memory using `SPI_burn` tool.|
 
@@ -100,8 +102,8 @@ Program the U-Boot SPL & ITB and device-tree blob onto flash memory:
 $ ICE_HOST=<ICEman host IP>
 $ ICE_PORT=<ICEman host burner port>
 $ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0x0 -i u-boot-spl.bin
-$ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0x10000 -i u-boot.itb
-$ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0xf0000 -i ae350.dtb
+$ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0x40000 -i u-boot.itb
+$ ./SPI_burn --host $ICE_HOST --port $ICE_PORT --addr 0x1E0000 -i ax45mp_c4_d_dsp_ae350.dtb
 ```
 
 ## Flashing Image to SD Card
@@ -113,14 +115,14 @@ $ gunzip -c <IMAGE>.wic.gz | sudo dd of=/dev/sdX bs=4M iflag=fullblock oflag=dir
 $ sync
 ```
 
-You can also use the [belenaEther](https://www.balena.io/etcher/) GUI to flash the image on Windows and macOS.
+You can also use the [balenaEther](https://www.balena.io/etcher/) GUI to flash the image on Windows and macOS.
 
 <img src="https://i.imgur.com/W7YZc8j.png" width="450px" />
 
-Upon inserting the SD card, access the serial console (e.g. [`picocom`](https://linux.die.net/man/8/picocom)) with the baud rate settings `38400/8-N-1`, and then reset the board, the system should start the boot process.
+Upon inserting the SD card, access the serial console (e.g. [`picocom`](https://linux.die.net/man/8/picocom)) with the baud rate settings `115200/8-N-1`, and then reset the board, the system should start the boot process.
 
 ```
-$ sudo picocom -b 38400 /dev/ttyUSB1
+$ sudo picocom -b 115200 /dev/ttyUSB1
 ```
 
 ### RISC-V Boot Process

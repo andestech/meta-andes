@@ -3,4 +3,4 @@ header:
   includes:
     - kas/base-riscv.yml
 
-machine: ae350-ax27l2
+machine: ae350-ax46mpv
