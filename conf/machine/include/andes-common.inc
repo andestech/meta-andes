@@ -1,5 +1,5 @@
 #@DESCRIPTION: Machine configuration for the Andes platforms
-#@MAINTAINER: Yu Chien Peter Lin <peterlin@andestech.com>
+#@MAINTAINER: Ben Zong-You Xie <ben717@andestech.com>
 
 require conf/machine/include/riscv/tune-riscv.inc
 
@@ -12,14 +12,14 @@ KERNEL_IMAGETYPE = "fitImage"
 #============================================
 # Common Hardware Configuration
 MACHINE_FEATURES = "screen keyboard ext2 ext3 serial"
-SERIAL_CONSOLES = "38400;ttyS0"
+SERIAL_CONSOLES = "115200;ttyS0"
 MACHINE_EXTRA_RRECOMMENDS += " kernel-modules"
 #============================================
 
 #============================================
 # Preferred Providers
-PREFERRED_PROVIDER_virtual/kernel ?= "linux-ast530"
-PREFERRED_PROVIDER_virtual/bootloader ?= "u-boot-ast530"
+PREFERRED_PROVIDER_virtual/kernel ?= "linux-ast540"
+PREFERRED_PROVIDER_virtual/bootloader ?= "u-boot-ast540"
 #============================================
 
 #============================================
@@ -30,11 +30,11 @@ RISCV_SBI_PAYLOAD ?= "u-boot.bin"
 
 #============================================
 # Common Image Configuration
-EXTRA_IMAGEDEPENDS += "opensbi-ast530"
-EXTRA_IMAGEDEPENDS += "u-boot-ast530"
+EXTRA_IMAGEDEPENDS += "opensbi-ast540"
+EXTRA_IMAGEDEPENDS += "u-boot-ast540"
 WKS_FILE_DEPENDS ?= " \
-    u-boot-ast530 \
-    opensbi-ast530 \
+    u-boot-ast540 \
+    opensbi-ast540 \
     e2fsprogs-native \
     bmaptool-native \
 "

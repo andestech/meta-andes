@@ -20,8 +20,8 @@ local_conf_header:
     PACKAGE_CLASSES = "package_rpm"
     SDKMACHINE = "x86_64"
     CONF_VERSION = "2"
-  ast530:
-    PREFERRED_VERSION_linux-libc-headers = "linux-libc-headers_6.1"
+  ast540: |
+    PREFERRED_VERSION_linux-libc-headers = "6.6"
 
 bblayers_conf_header:
   standard: |

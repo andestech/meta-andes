@@ -6,11 +6,11 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 inherit autotools-brokensep deploy
 
-PV = "1.2+git${SRCPV}"
+PV = "1.5.1git${SRCPV}"
 
 FORK = "andestech"
-BRANCH = "ast-v5_3_0-branch"
-SRCREV = "6005a1b252ac0d7aa4f8d9cfd4d35b076b9dad8c"
+BRANCH = "ast-v5_4_0-branch"
+SRCREV = "6bc151c581803354cd0327b69b9335b32901d537"
 SRC_URI = "git://github.com/${FORK}/opensbi.git;protocol=https;branch=${BRANCH} \
            file://0001-Makefile-Force-GNU-hashing.patch \
           "

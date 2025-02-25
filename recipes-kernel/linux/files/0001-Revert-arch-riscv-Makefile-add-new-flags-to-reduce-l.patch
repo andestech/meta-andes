@@ -1,0 +1,33 @@
+From ac0fe22f302377c87065a13b1481ac7dc46791d6 Mon Sep 17 00:00:00 2001
+From: Ben Zong-You Xie <ben717@andestech.com>
+Date: Wed, 19 Feb 2025 10:55:58 +0800
+Subject: [PATCH] Revert "arch: riscv: Makefile: add new flags to reduce
+ linking-time (#232)"
+
+This reverts commit ecc0c45246e3d4a26b851d383d284da0d3ff36cc.
+
+The upstream toolchain does not recognize the option "-mno-btb-align".
+---
+ arch/riscv/Makefile | 6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/arch/riscv/Makefile b/arch/riscv/Makefile
+index b598a7c945db..f5daa46be7d4 100644
+--- a/arch/riscv/Makefile
++++ b/arch/riscv/Makefile
+@@ -43,12 +43,6 @@ else
+ 	KBUILD_LDFLAGS += -melf32lriscv
+ endif
+ 
+-ifeq ($(CONFIG_ARCH_ANDES),y)
+-	KBUILD_CFLAGS += -Wa,-mno-btb-align
+-	KBUILD_AFLAGS += -Wa,-mno-btb-align
+-	KBUILD_LDFLAGS += --mno-relax-align --mno-relax-call --mno-target-aligned --mno-avoid-btb-miss
+-endif
+-
+ ifeq ($(CONFIG_LD_IS_LLD),y)
+ ifeq ($(call test-lt, $(CONFIG_LLD_VERSION), 150000),y)
+ 	KBUILD_CFLAGS += -mno-relax
+-- 
+2.34.1
+
