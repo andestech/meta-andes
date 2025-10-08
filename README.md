@@ -21,7 +21,7 @@ This layer provides machine configurations and recipes for building the bootable
 
 ```
 $ mkdir riscv-andes && cd riscv-andes
-$ git clone https://github.com/andestech/meta-andes.git -b ast-v5_4_0-branch
+$ git clone https://github.com/andestech/meta-andes.git -b ast-v5_4_0-external-toolchain
 $ wget https://raw.githubusercontent.com/siemens/kas/4.1/kas-container
 $ chmod a+x ./kas-container
 ```
@@ -34,8 +34,22 @@ AndeSight™ v5.4.0 includes OpenSBI, U-Boot and Linux source based on the follo
 
 And, its RISC-V GNU toolchain versions are as follows:
 
-* GCC 13.2.0
+* GCC 14.2.0
 * Binutils 2.42
+
+To integrate the Andes toolchain into the build process, follow these steps:
+* Place the Andes toolchain under meta-andes/. The toolchain's folder name is nds64le-linux-glibc-v5d by default.
+
+* If you modify the toolchain's folder name or location, ensure the following variables are correctly set:
+
+       EXTERNAL_TOOLCHAIN in toolchain-init.sh: Default is nds64le-linux-glibc-v5d
+       EXTERNAL_TOOLCHAIN in kas/include/local.yml: Default is /work/meta-andes/nds64le-linux-glibc-v5d
+
+* Run the toolchain-init.sh script:
+
+      $ cd meta-andes
+      $ ./toolchain-init.sh
+      $ cd ..
 
 To build a Poky reference distribution, take `ae350-ax45mp` as an example:
 

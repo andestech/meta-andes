@@ -11,14 +11,12 @@ BRANCH = "ast-v5_4_0-branch"
 
 SRC_URI:riscv64 = " \
     git://github.com/${FORK}/linux.git;protocol=https;branch=${BRANCH} \
-    file://0001-Revert-arch-riscv-Makefile-add-new-flags-to-reduce-l.patch \
     file://ae350_rv64_smp_defconfig \
     file://tweak.cfg \
 "
 
 SRC_URI:riscv32 = " \
     git://github.com/${FORK}/linux.git;protocol=https;branch=${BRANCH} \
-    file://0001-Revert-arch-riscv-Makefile-add-new-flags-to-reduce-l.patch \
     file://ae350_rv32_smp_defconfig \
     file://tweak.cfg \
 "

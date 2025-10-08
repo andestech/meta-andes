@@ -22,6 +22,13 @@ local_conf_header:
     CONF_VERSION = "2"
   ast540: |
     PREFERRED_VERSION_linux-libc-headers = "6.6"
+  external_toolchain: |
+    EXTERNAL_TOOLCHAIN ?= "/work/meta-andes/nds64le-linux-glibc-v5d"
+    TCMODE = "external"
+
+    # Disable the use of QEMU user mode when building packages for your machine
+    # since the upstream QEMU does not recognize Andes custom instructions
+    MACHINE_FEATURES_BACKFILL_CONSIDERED = "qemu-usermode"
 
 bblayers_conf_header:
   standard: |
