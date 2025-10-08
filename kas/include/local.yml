@@ -29,6 +29,13 @@ local_conf_header:
     # These recipes are not needed for Andes ae350-* machines.
     BBMASK += "meta-riscv/recipes-kernel/linux/linux-milkv-duo\.bb"
     BBMASK += "meta-riscv/recipes-kernel/linux/linux-mainline_6\.2\.bb"
+  external_toolchain: |
+    EXTERNAL_TOOLCHAIN ?= "/work/meta-andes/nds64le-linux-glibc-v5d"
+    TCMODE = "external"
+
+    # Disable the use of QEMU user mode when building packages for your machine
+    # since the upstream QEMU does not recognize Andes custom instructions
+    MACHINE_FEATURES_BACKFILL_CONSIDERED = "qemu-usermode"
 
 bblayers_conf_header:
   standard: |

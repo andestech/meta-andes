@@ -17,7 +17,7 @@ SRC_URI = "git://github.com/${FORK}/opensbi.git;protocol=https;branch=${BRANCH} 
 
 S = "${WORKDIR}/git"
 
-EXTRA_OEMAKE += "PLATFORM=${RISCV_SBI_PLAT} I=${D} INSTALL_LIB_PATH=lib"
+EXTRA_OEMAKE += "PLATFORM=${RISCV_SBI_PLAT} PLATFORM_RISCV_ISA=rv64v5d PLATFORM_RISCV_ABI=lp64d I=${D} INSTALL_LIB_PATH=lib"
 
 do_install:append() {
 	# In the future these might be required as a dependency for other packages.

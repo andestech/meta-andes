@@ -2,6 +2,11 @@ header:
   version: 14
 
 repos:
+  meta-external-toolchain:
+    url: https://github.com/andestech/meta-external-toolchain.git
+    path: layers/meta-external-toolchain
+    commit: d4dcd540ed58239c1ae1f7165b5e522c3acb511a
+
   meta-riscv:
     url: https://github.com/riscv/meta-riscv
     path: layers/meta-riscv
