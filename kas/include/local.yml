@@ -29,6 +29,9 @@ local_conf_header:
     # Disable the use of QEMU user mode when building packages for your machine
     # since the upstream QEMU does not recognize Andes custom instructions
     MACHINE_FEATURES_BACKFILL_CONSIDERED = "qemu-usermode"
+  workaround_35102: |
+    TARGET_LDFLAGS += "-Wl,--mb35102"
+    TARGET_CFLAGS += "-Wa,-mb35102"
 
 bblayers_conf_header:
   standard: |
