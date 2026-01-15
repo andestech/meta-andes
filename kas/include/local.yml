@@ -29,9 +29,14 @@ local_conf_header:
     # Disable the use of QEMU user mode when building packages for your machine
     # since the upstream QEMU does not recognize Andes custom instructions
     MACHINE_FEATURES_BACKFILL_CONSIDERED = "qemu-usermode"
-  workaround_35102: |
+  metanoia: |
     TARGET_LDFLAGS += "-Wl,--mb35102"
     TARGET_CFLAGS += "-Wa,-mb35102"
+    DISTRO_FEATURES:append = " systemd usrmerge"
+    VIRTUAL-RUNTIME_init_manager = "systemd"
+    VIRTUAL-RUNTIME_initscripts = "systemd-compat-units"
+    DISTRO_FEATURES_BACKFILL_CONSIDERED += "sysvinit"
+    ROOT_HOME = "/root"
 
 bblayers_conf_header:
   standard: |

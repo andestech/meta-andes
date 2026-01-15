@@ -45,10 +45,10 @@ To integrate the Andes toolchain into the build process, follow these steps:
        EXTERNAL_TOOLCHAIN in toolchain-init.sh: Default is nds64le-linux-glibc-v5d
        EXTERNAL_TOOLCHAIN in kas/include/local.yml: Default is /work/meta-andes/nds64le-linux-glibc-v5d
 
-* Run the toolchain-init.sh script:
+* Run the toolchain-init.sh script. If your distro enables usrmerge, please also pass `usrmerge=y` to the script
 
       $ cd meta-andes
-      $ ./toolchain-init.sh
+      $ ./toolchain-init.sh usrmerge=y
       $ cd ..
 
 To build a Poky reference distribution, take `ae350-ax45mp` as an example:
