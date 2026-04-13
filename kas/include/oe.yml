@@ -5,7 +5,7 @@ repos:
   meta-external-toolchain:
     url: https://github.com/andestech/meta-external-toolchain.git
     path: layers/meta-external-toolchain
-    commit: d4dcd540ed58239c1ae1f7165b5e522c3acb511a
+    commit: 83d948d028919b65781fd96dee3eefa0521da1cd
 
   meta-riscv:
     url: https://github.com/riscv/meta-riscv

@@ -15,6 +15,27 @@ This layer provides machine configurations and recipes for building the bootable
 - [x] [ae350-ax65](https://www.andestech.com/en/products-solutions/andescore-processors/riscv-ax65/)
 - [x] [ae350-ax66](https://www.andestech.com/en/products-solutions/andescore-processors/riscv-ax66/)
 
+### Selecting the Target ABI
+
+The target ABI is selected by `DEFAULTTUNE` in the machine configuration file `meta-andes/conf/machine/ae350-*.conf`. The Andes toolchain provides multilib sysroots for both hard-float (`lp64d`) and soft-float (`lp64`) on 64-bit cores, and `ilp32d`/`ilp32` on 32-bit cores. The matching sysroot subdirectory is auto-detected at build time, so switching ABI requires only editing `DEFAULTTUNE` — no other changes are needed.
+
+| `DEFAULTTUNE` | Target ABI | `-march` / `-mabi` |
+|---|---|---|
+| `riscv64`   | `lp64d` (double-float) | `rv64gc` / `lp64d` |
+| `riscv64nf` | `lp64`  (soft-float)   | `rv64imac` / `lp64` |
+| `riscv32`   | `ilp32d` (double-float)| `rv32gc` / `ilp32d` |
+| `riscv32nf` | `ilp32` (soft-float)   | `rv32imac` / `ilp32` |
+
+Current per-machine defaults:
+- 64-bit cores (`ae350-ax25mp`, `ae350-ax27l2`, `ae350-ax45mp`,`ae350-ax45mpv`, `ae350-ax46mpv`, `ae350-ax65`, `ae350-ax66`): `riscv64`
+- 32-bit cores (`ae350-a25mp`, `ae350-a27l2`, `ae350-a45mp`): `riscv32`
+
+For example, to build `ae350-ax45mp` with the soft-float `lp64` ABI:
+
+```
+DEFAULTTUNE = "riscv64nf"
+```
+
 ## Building SD Card Image with kas-container
 
 [kas-container](https://kas.readthedocs.io/en/4.1/userguide.html) provides a Yocto development environment based on the Debian docker image. Before you proceed with the build process, make sure Docker is installed on your host machine.
@@ -44,12 +65,6 @@ To integrate the Andes toolchain into the build process, follow these steps:
 
        EXTERNAL_TOOLCHAIN in toolchain-init.sh: Default is nds64le-linux-glibc-v5d
        EXTERNAL_TOOLCHAIN in kas/include/local.yml: Default is /work/meta-andes/nds64le-linux-glibc-v5d
-
-* Run the toolchain-init.sh script:
-
-      $ cd meta-andes
-      $ ./toolchain-init.sh
-      $ cd ..
 
 To build a Poky reference distribution, take `ae350-ax45mp` as an example:
 
