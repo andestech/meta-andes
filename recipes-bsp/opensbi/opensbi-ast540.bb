@@ -10,7 +10,8 @@ PV = "1.5.1git${SRCPV}"
 
 FORK = "andestech"
 BRANCH = "ast-v5_4_0-branch"
-SRCREV = "6bc151c581803354cd0327b69b9335b32901d537"
+# Tag: ast-v5_4_2-release (2026/4/9)
+SRCREV = "2d821146970e2408540bb9df24e66ba86fd54607"
 SRC_URI = "git://github.com/${FORK}/opensbi.git;protocol=https;branch=${BRANCH} \
            file://0001-Makefile-Force-GNU-hashing.patch \
           "
@@ -34,3 +35,4 @@ do_deploy () {
 addtask deploy before do_build after do_install
 
 FILES:${PN} += "/share/opensbi/*/${RISCV_SBI_PLAT}/firmware/fw_dynamic.*"
+
