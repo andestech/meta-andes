@@ -6,7 +6,8 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 DEPENDS:append = " bc-native u-boot-tools-native python3-setuptools-native"
 
 FORK = "andestech"
-SRCREV = "274c8e532c6fc30bb680661f420984e1031814cf"
+# Tag: ast-v5_4_2-release (2025/11/11)
+SRCREV = "87f5c8d143743025fe6b6381c516d5649bd604d2"
 BRANCH = "ast-v5_4_0-branch"
 SRC_URI = " \
     git://github.com/${FORK}/uboot.git;protocol=https;branch=${BRANCH} \
